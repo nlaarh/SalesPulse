@@ -480,7 +480,7 @@ export async function submitIssue(payload: {
 
 export async function fetchIssues(state: 'open' | 'closed' | 'all' = 'open') {
   const { data } = await api.get('/api/issues', { params: { state } })
-  return data as GithubIssue[]
+  return (Array.isArray(data) ? data : data.issues ?? []) as GithubIssue[]
 }
 
 export async function fetchIssue(number: number) {
