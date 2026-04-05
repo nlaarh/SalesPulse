@@ -11,6 +11,7 @@ from shared import (
     resolve_dates as _resolve_dates,
     prev_dates as _prev_dates,
     is_sales_agent,
+    get_owner_map,
 )
 
 router = APIRouter()
@@ -162,16 +163,13 @@ def advisor_leaderboard(
                   AND CloseDate <= NEXT_N_MONTHS:12
                 GROUP BY OwnerId
             """,
-            owners="""SELECT Id, Name FROM User WHERE IsActive = true LIMIT 500""",
         )
 
-        owner_map = {r['Id']: r['Name'] for r in data.get('owners', [])}
+        owner_map = get_owner_map()
 
         # Build lookup maps using OwnerId
         closed_map = {r['OwnerId']: r['cnt'] for r in data['closed']}
         pipe_map = {r['OwnerId']: {'cnt': r['cnt'], 'rev': r.get('rev', 0) or 0} for r in data['pipeline']}
-
-        advisors = []
         for r in data['won']:
             owner_id = r.get('OwnerId', '')
             name = owner_map.get(owner_id, '')

@@ -16,6 +16,7 @@ from database import get_db
 from models import TargetUpload, AdvisorTarget, MonthlyAdvisorTarget, User
 from auth import get_current_user, require_admin
 from activity_logger import log_activity
+from shared import get_owner_map
 
 router = APIRouter()
 log = logging.getLogger('salesinsight.targets')
@@ -42,14 +43,22 @@ def _sf_advisors_with_bookings(line: str, year: int, cache_module, sf_query_all,
     """Get all advisors who had bookings in a given year from SF."""
     key = f"sf_advisors_{line}_{year}"
     def fetch():
-        return sf_query_all(f"""
-            SELECT Owner.Name, SUM(Amount) rev, SUM(Earned_Commission_Amount__c) comm
+        # OwnerId avoids the User cross-object join in GROUP BY
+        rows = sf_query_all(f"""
+            SELECT OwnerId, SUM(Amount) rev, SUM(Earned_Commission_Amount__c) comm
             FROM Opportunity
             WHERE {WON_STAGES} AND {lf}
               AND CloseDate >= {year}-01-01 AND CloseDate <= {year}-12-31
               AND Amount != null
-            GROUP BY Owner.Name
+            GROUP BY OwnerId
         """)
+        owner_map = get_owner_map()
+        out = []
+        for r in rows:
+            name = owner_map.get(r.get('OwnerId', ''), '')
+            if name:
+                out.append({**r, 'Name': name})
+        return out
     return cache_module.cached_query(key, fetch, ttl=1800, disk_ttl=43200)
 
 
@@ -225,15 +234,17 @@ def get_monthly_targets(
     #    Use raw Earned_Commission_Amount__c to match what Monthly Report shows
     py_monthly_key = f"targets_py_monthly_v2_{line}_{prior_year}"
     def fetch_py_monthly():
-        return sf_query_all(f"""
-            SELECT Owner.Name, CALENDAR_MONTH(CloseDate) mo,
+        rows = sf_query_all(f"""
+            SELECT OwnerId, CALENDAR_MONTH(CloseDate) mo,
                    SUM(Amount) rev, SUM(Earned_Commission_Amount__c) comm
             FROM Opportunity
             WHERE {WON_STAGES} AND {lf}
               AND CloseDate >= {prior_year}-01-01 AND CloseDate <= {prior_year}-12-31
               AND Amount != null
-            GROUP BY Owner.Name, CALENDAR_MONTH(CloseDate)
+            GROUP BY OwnerId, CALENDAR_MONTH(CloseDate)
         """)
+        owner_map = get_owner_map()
+        return [{**r, 'Name': owner_map.get(r.get('OwnerId', ''), '')} for r in rows]
     py_monthly_records = cache.cached_query(py_monthly_key, fetch_py_monthly, ttl=3600, disk_ttl=86400)
 
     # Estimated commission per month (Bookings × rate) for seasonal shape
@@ -260,15 +271,17 @@ def get_monthly_targets(
     # 8. Current year actuals per advisor per month
     cur_monthly_key = f"targets_monthly_actuals_{line}_{year}"
     def fetch_monthly():
-        return sf_query_all(f"""
-            SELECT Owner.Name, CALENDAR_MONTH(CloseDate) mo,
+        rows = sf_query_all(f"""
+            SELECT OwnerId, CALENDAR_MONTH(CloseDate) mo,
                    SUM(Amount) rev, SUM(Earned_Commission_Amount__c) comm
             FROM Opportunity
             WHERE {WON_STAGES} AND {lf}
               AND CloseDate >= {year}-01-01 AND CloseDate <= {year}-12-31
               AND Amount != null
-            GROUP BY Owner.Name, CALENDAR_MONTH(CloseDate)
+            GROUP BY OwnerId, CALENDAR_MONTH(CloseDate)
         """)
+        owner_map = get_owner_map()
+        return [{**r, 'Name': owner_map.get(r.get('OwnerId', ''), '')} for r in rows]
     monthly_records = cache.cached_query(cur_monthly_key, fetch_monthly, ttl=1800, disk_ttl=43200)
 
     actuals_map: dict[str, dict[int, float]] = {}
@@ -405,15 +418,17 @@ def get_target_achievement(
     # YTD actuals
     ytd_key = f"achievement_ytd_{line}_{year}_{month}_{day}"
     def fetch_ytd():
-        return sf_query_all(f"""
-            SELECT Owner.Name, CALENDAR_MONTH(CloseDate) mo,
+        rows = sf_query_all(f"""
+            SELECT OwnerId, CALENDAR_MONTH(CloseDate) mo,
                    SUM(Amount) rev, SUM(Earned_Commission_Amount__c) comm
             FROM Opportunity
             WHERE {WON_STAGES} AND {lf}
               AND CloseDate >= {year}-01-01 AND CloseDate <= {today.isoformat()}
               AND Amount != null
-            GROUP BY Owner.Name, CALENDAR_MONTH(CloseDate)
+            GROUP BY OwnerId, CALENDAR_MONTH(CloseDate)
         """)
+        owner_map = get_owner_map()
+        return [{**r, 'Name': owner_map.get(r.get('OwnerId', ''), '')} for r in rows]
     ytd_records = cache.cached_query(ytd_key, fetch_ytd, ttl=900, disk_ttl=21600)
 
     actuals_map: dict[str, dict[int, float]] = {}

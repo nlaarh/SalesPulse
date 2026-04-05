@@ -21,6 +21,7 @@ from shared import (
     line_filter_lead as _line_filter_lead,
     resolve_dates as _resolve_dates,
     is_sales_agent,
+    get_owner_map,
 )
 from constants import WIN_RATE_COACHING_THRESHOLD, MIN_CLOSED_DEALS_FOR_EVAL, PIPELINE_COVERAGE_HEALTHY
 
@@ -88,11 +89,9 @@ def performance_monthly(
                   AND Amount != null
                 GROUP BY OwnerId, CALENDAR_YEAR(CloseDate), CALENDAR_MONTH(CloseDate)
             """,
-            owners="""SELECT Id, Name FROM User WHERE IsActive = true LIMIT 500""",
         )
 
-        # Map OwnerId → Name for agent grouping and filtering
-        owner_map = {r['Id']: r['Name'] for r in data.get('owners', [])}
+        owner_map = get_owner_map()
 
         agents: dict = {}
 
@@ -338,10 +337,9 @@ def performance_insights(
                 WHERE IsClosed = false AND {lf_opp} AND PushCount >= 3
                   AND CloseDate >= TODAY AND CloseDate <= NEXT_N_MONTHS:12
             """,
-            owners="""SELECT Id, Name FROM User WHERE IsActive = true LIMIT 500""",
         )
 
-        owner_map = {r['Id']: r['Name'] for r in data.get('owners', [])}
+        owner_map = get_owner_map()
 
         # Enrich OwnerId → Name and filter to whitelisted agents
         def enrich(rows):
