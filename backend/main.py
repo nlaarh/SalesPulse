@@ -11,10 +11,27 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from contextlib import asynccontextmanager
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s %(message)s')
+log = logging.getLogger('main')
 
-app = FastAPI(title="SalesInsight", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Flush stale disk cache on every startup so deployments always start fresh."""
+    import cache
+    flushed = 0
+    if cache._CACHE_DIR.exists():
+        for f in cache._CACHE_DIR.glob('*.json'):
+            f.unlink(missing_ok=True)
+            flushed += 1
+    if flushed:
+        log.info(f"Startup: flushed {flushed} stale disk cache entries")
+    yield  # app runs here
+
+
+app = FastAPI(title="SalesInsight", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

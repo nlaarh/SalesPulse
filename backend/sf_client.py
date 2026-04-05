@@ -64,9 +64,9 @@ def _base():
 
 _rate_lock = threading.Lock()
 _call_times = []
-# 20 calls/min per worker — 3 workers × 20 = 60 total, matching SF org limit.
-# Prevents one worker from consuming the full quota and starving others.
-_RATE_LIMIT = 20
+# 50 calls/min per worker — raised from 20 to handle cold-cache dashboard loads
+# which can fire 30+ parallel queries at once.
+_RATE_LIMIT = 50
 _RATE_WINDOW = 60
 
 
@@ -187,6 +187,8 @@ def sf_parallel(**queries) -> dict:
                     results[name] = []
                 else:
                     results[name] = res
+            except RateLimitExceeded:
+                raise  # propagate as-is — not a data error, don't cache zeros
             except Exception as e:
                 log.error(f"Parallel query '{name}' exception: {e}")
                 errors.append(name)
