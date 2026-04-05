@@ -19,15 +19,31 @@ log = logging.getLogger('main')
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Flush stale disk cache on every startup so deployments always start fresh."""
-    import cache
-    flushed = 0
-    if cache._CACHE_DIR.exists():
-        for f in cache._CACHE_DIR.glob('*.json'):
-            f.unlink(missing_ok=True)
-            flushed += 1
-    if flushed:
-        log.info(f"Startup: flushed {flushed} stale disk cache entries")
+    """On startup: flush disk cache only if code changed since last run (new deployment).
+    On a plain restart (same code), the cache is preserved.
+    """
+    import cache, hashlib
+
+    # Hash the key backend files that affect query logic / response shape
+    backend_dir = Path(__file__).resolve().parent
+    hasher = hashlib.md5()
+    for pattern in ('*.py', 'routers/*.py'):
+        for f in sorted(backend_dir.glob(pattern)):
+            hasher.update(f.read_bytes())
+    current_hash = hasher.hexdigest()
+
+    version_file = cache._CACHE_DIR / '.deploy_hash'
+    cache._CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    stored_hash = version_file.read_text().strip() if version_file.exists() else ''
+
+    if current_hash != stored_hash:
+        # New deployment — flush stale cache so old query shapes don't persist
+        flushed = sum(1 for f in cache._CACHE_DIR.glob('*.json') if (f.unlink(), True)[1])
+        version_file.write_text(current_hash)
+        log.info(f"New deployment detected: flushed {flushed} cache entries")
+    else:
+        log.info("Restart detected (same code): keeping existing cache")
+
     yield  # app runs here
 
 
