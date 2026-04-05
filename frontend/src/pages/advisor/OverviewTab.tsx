@@ -103,10 +103,11 @@ export default function OverviewTab({
 }: OverviewTabProps) {
   const nav = useNavigate()
 
-  // Revenue: apple-to-apple same-month comparison everywhere
-  const billedValue = yoy?.ytd_current_total ?? summary.bookings
-  const billedPct   = yoy?.ytd_yoy_pct ?? summary.bookings_yoy_pct
-  const billedPrev  = yoy?.ytd_prior_total ?? summary.bookings_prev
+  // KPI values come from summary (period-filtered by the date picker)
+  // yoy is used only for the monthly bar chart context
+  const billedValue = summary.bookings
+  const billedPct   = summary.bookings_yoy_pct
+  const billedPrev  = summary.bookings_prev
   const commValue   = isInsurance ? summary.bookings : summary.commission
 
   // Bar chart from yoy.months — same source as headline
