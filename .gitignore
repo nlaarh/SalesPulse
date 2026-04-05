@@ -1,0 +1,42 @@
+# Environment & secrets
+.env
+.env.*
+*.env
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cache
+~/.salesinsight/
+**/__pycache__/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Session & brainstorm artifacts
+.superpowers/
+.mcp.json
+
+# Excel working files
+*.xlsx

@@ -1,0 +1,226 @@
+/**
+ * AdvisorDashboard — Main container.
+ *
+ * Owns all state + data fetching. Routes to tab components via props.
+ * Tab content lives in ./advisor/OverviewTab, RankingsTab, SummaryTab.
+ */
+
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useSales } from '@/contexts/SalesContext'
+import {
+  fetchAdvisorSummary, fetchAdvisorLeaderboard,
+  fetchPerformanceInsights, fetchAdvisorYoY,
+  fetchPerformanceFunnel,
+  fetchPipelineSlipping, fetchLeadsVolume,
+  fetchAgentCloseSpeed,
+  fetchTargets, fetchTargetAchievement,
+} from '@/lib/api'
+import { cn } from '@/lib/utils'
+import { useChartColors } from '@/lib/chart-theme'
+import type { Insight, SlippingDeal } from '@/lib/types'
+import type { Summary, Advisor, YoYData, CloseSpeed } from './advisor/types'
+import type { FunnelData } from '@/components/FunnelChart'
+import OverviewTab from './advisor/OverviewTab'
+import RankingsTab from './advisor/RankingsTab'
+import SummaryTab from './advisor/SummaryTab'
+import { Loader2, BarChart3, Trophy, Sparkles } from 'lucide-react'
+import type { AchievementResponse } from '@/lib/api'
+import TargetProgressBar from '@/components/TargetProgressBar'
+
+/* ── Types ────────────────────────────────────────────────────────────────── */
+
+type Tab = 'overview' | 'rankings' | 'summary'
+
+const TABS: { key: Tab; label: string; icon: typeof BarChart3 }[] = [
+  { key: 'overview', label: 'Overview', icon: BarChart3 },
+  { key: 'rankings', label: 'Rankings & Data', icon: Trophy },
+  { key: 'summary', label: 'Executive Summary', icon: Sparkles },
+]
+
+/* ── Main Component ──────────────────────────────────────────────────────── */
+
+export default function AdvisorDashboard() {
+  const { line, period, startDate, endDate, viewMode } = useSales()
+  const navigate = useNavigate()
+  const c = useChartColors()
+
+  const [summary, setSummary] = useState<Summary | null>(null)
+  const [leaders, setLeaders] = useState<Advisor[]>([])
+  const [insights, setInsights] = useState<Insight[]>([])
+  const [yoy, setYoY] = useState<YoYData | null>(null)
+  const [funnel, setFunnel] = useState<FunnelData | null>(null)
+  const [slipping, setSlipping] = useState<SlippingDeal[]>([])
+  const [leadSources, setLeadSources] = useState<{ source: string; count: number }[]>([])
+  const [closeSpeed, setCloseSpeed] = useState<CloseSpeed | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState<Tab>('overview')
+  const [targetMap, setTargetMap] = useState<Map<string, number>>(new Map())
+  const [achievement, setAchievement] = useState<AchievementResponse | null>(null)
+
+  const isInsurance = line.toLowerCase() === 'insurance'
+
+  const periodLabel = viewMode === 'custom' && startDate && endDate
+    ? `${startDate} \u2192 ${endDate}`
+    : viewMode === 'month' ? 'Last month'
+    : viewMode === 'quarter' ? 'Last 3 months'
+    : viewMode === '6m' ? 'Last 6 months'
+    : viewMode === 'ytd' ? `${new Date().getFullYear()} Year to Date`
+    : viewMode === 'last-year' ? `${new Date().getFullYear() - 1}`
+    : 'Last 12 months'
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    Promise.all([
+      fetchAdvisorSummary(line, period, startDate, endDate),
+      fetchAdvisorLeaderboard(line, period, startDate, endDate),
+      fetchPerformanceInsights(line, period, startDate, endDate),
+      fetchAdvisorYoY(line),
+      fetchPerformanceFunnel(line, period, startDate, endDate),
+      fetchPipelineSlipping(line),
+      fetchLeadsVolume(line, period, startDate, endDate),
+      fetchAgentCloseSpeed(line, period, startDate, endDate),
+    ]).then(([s, l, i, y, fn, sl, lv, cs]) => {
+      if (cancelled) return
+      setSummary(s)
+      setLeaders(l.advisors ?? [])
+      setInsights(i.insights ?? [])
+      setYoY(y)
+      setFunnel(fn)
+      setSlipping(sl.deals ?? [])
+      setLeadSources(lv.by_source ?? [])
+      setCloseSpeed(cs)
+    }).catch(console.error)
+      .finally(() => { if (!cancelled) setLoading(false) })
+    // Load targets in parallel (non-blocking)
+    fetchTargets()
+      .then((td) => {
+        if (cancelled) return
+        const map = new Map<string, number>()
+        for (const t of td.targets) {
+          if (t.monthly_target != null) map.set(t.sf_name.toLowerCase(), t.monthly_target)
+        }
+        setTargetMap(map)
+      })
+      .catch(() => {})
+    // Load achievement data for progress bars
+    fetchTargetAchievement(line)
+      .then((data) => {
+        if (cancelled) return
+        setAchievement(data)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [line, period, startDate, endDate])
+
+  if (loading) {
+    return <div className="flex h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary/50" /></div>
+  }
+
+  // Use period-matched YoY from summary (apple-to-apple), not calendar YTD
+  const dealsYoyPct = (summary as any)?.deals_yoy_pct ?? 0
+
+  const annualizedBookings = summary && summary.bookings > 0 ? summary.bookings * (12 / period) : 0
+  const pipelineCoverage = annualizedBookings > 0
+    ? Math.round(summary!.pipeline_value / annualizedBookings * 10) / 10
+    : 0
+
+  return (
+    <div className="space-y-3">
+
+      {/* PAGE HEADER + TABS */}
+      <div className="animate-enter flex items-end justify-between">
+        <div>
+          <p className="text-[12px] font-medium text-muted-foreground">
+            {line} Division &middot; {periodLabel}
+          </p>
+          <h1 className="mt-0.5 text-2xl font-bold tracking-tight">Sales Performance</h1>
+        </div>
+
+        {/* Tab bar */}
+        <div className="flex gap-1 rounded-lg border border-border bg-secondary/30 p-1">
+          {TABS.map((t) => {
+            const Icon = t.icon
+            return (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all duration-200',
+                  tab === t.key
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <Icon className="h-3 w-3" />
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ── Target Achievement ────────────────────────────────────────── */}
+      {achievement?.current_month && achievement?.yearly && (
+        <div className="animate-enter card-premium px-5 py-4">
+          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
+            Target Achievement
+          </div>
+          <div className="grid grid-cols-2 gap-6">
+            <TargetProgressBar
+              label={`${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][achievement.current_month.month - 1]} Target`}
+              actual={achievement.current_month.company.actual}
+              target={achievement.current_month.company.target}
+              pacePct={achievement.current_month.pace_pct}
+              paceLabel={`Day ${achievement.current_month.day_of_month}/${achievement.current_month.days_in_month}`}
+              color="indigo"
+            />
+            <TargetProgressBar
+              label={`${achievement.yearly.year} Yearly Target`}
+              actual={achievement.yearly.company.actual}
+              target={achievement.yearly.company.target}
+              pacePct={achievement.yearly.pace_pct}
+              paceLabel={`Month ${achievement.yearly.month_of_year}/12`}
+              color="green"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* TAB CONTENT */}
+      {tab === 'overview' && summary && (
+        <OverviewTab
+          summary={summary} isInsurance={isInsurance}
+          dealsYoyPct={dealsYoyPct} pipelineCoverage={pipelineCoverage}
+          yoy={yoy}
+          funnel={funnel} c={c}
+          leaders={leaders} insights={insights}
+          slipping={slipping}
+          onSelectAdvisor={(name) => navigate(`/agent/${encodeURIComponent(name)}`)}
+          onViewSummary={() => setTab('summary')}
+        />
+      )}
+
+      {tab === 'rankings' && (
+        <RankingsTab
+          leaders={leaders} slipping={slipping}
+          leadSources={leadSources} c={c}
+          targetMap={targetMap}
+          onSelectAdvisor={(name) => navigate(`/agent/${encodeURIComponent(name)}`)}
+        />
+      )}
+
+      {tab === 'summary' && summary && (
+        <SummaryTab
+          summary={summary} insights={insights}
+          pipelineCoverage={pipelineCoverage}
+          slipping={slipping} leaders={leaders}
+          yoy={yoy} line={line} periodLabel={periodLabel}
+          closeSpeed={closeSpeed}
+          onSelectAdvisor={(name) => navigate(`/agent/${encodeURIComponent(name)}`)}
+        />
+      )}
+    </div>
+  )
+}

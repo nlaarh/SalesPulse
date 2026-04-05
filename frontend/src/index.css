@@ -1,0 +1,312 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+/* ═══ Dual Theme Variables ═══ */
+
+:root {
+  /* ── Light Mode (default) ── */
+  --si-bg: #F8FAFC;
+  --si-fg: #0F172A;
+  --si-card: #FFFFFF;
+  --si-card-fg: #0F172A;
+  --si-popover: #FFFFFF;
+  --si-popover-fg: #0F172A;
+  --si-primary: #F97316;
+  --si-primary-fg: #FFFFFF;
+  --si-primary-soft: rgba(249, 115, 22, 0.08);
+  --si-secondary: #F1F5F9;
+  --si-secondary-fg: #334155;
+  --si-muted: #F1F5F9;
+  --si-muted-fg: #64748B;
+  --si-accent: #F97316;
+  --si-accent-fg: #FFFFFF;
+  --si-destructive: #EF4444;
+  --si-destructive-fg: #FFFFFF;
+  --si-border: #E2E8F0;
+  --si-input: #E2E8F0;
+  --si-ring: #F97316;
+  --si-sidebar: #FFFFFF;
+  --si-sidebar-border: #E2E8F0;
+  --si-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --si-card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --si-success: #16A34A;
+  --si-warning: #D97706;
+  --si-chart-1: #F97316;
+  --si-chart-2: #16A34A;
+  --si-chart-3: #2563EB;
+  --si-chart-4: #DB2777;
+  --si-chart-5: #7C3AED;
+  --si-chart-6: #0891B2;
+  --si-grid: rgba(0, 0, 0, 0.04);
+  --si-tick: #94A3B8;
+  --si-tooltip-bg: #FFFFFF;
+  --si-tooltip-border: #E2E8F0;
+  color-scheme: light;
+}
+
+:root.dark {
+  /* ── Dark Mode ── */
+  --si-bg: #050A18;
+  --si-fg: #F1F5F9;
+  --si-card: #0C1222;
+  --si-card-fg: #F1F5F9;
+  --si-popover: #0C1222;
+  --si-popover-fg: #F1F5F9;
+  --si-primary: #5E6AD2;
+  --si-primary-fg: #FFFFFF;
+  --si-primary-soft: rgba(94, 106, 210, 0.12);
+  --si-secondary: #141B2D;
+  --si-secondary-fg: #E2E8F0;
+  --si-muted: #141B2D;
+  --si-muted-fg: #64748B;
+  --si-accent: #D97706;
+  --si-accent-fg: #FFFFFF;
+  --si-destructive: #EF4444;
+  --si-destructive-fg: #FFFFFF;
+  --si-border: rgba(255, 255, 255, 0.06);
+  --si-input: #141B2D;
+  --si-ring: #5E6AD2;
+  --si-sidebar: #060B16;
+  --si-sidebar-border: rgba(255, 255, 255, 0.04);
+  --si-card-shadow: none;
+  --si-card-shadow-hover: 0 0 24px rgba(94, 106, 210, 0.06);
+  --si-success: #22C55E;
+  --si-warning: #F59E0B;
+  --si-chart-1: #5E6AD2;
+  --si-chart-2: #22C55E;
+  --si-chart-3: #F59E0B;
+  --si-chart-4: #EC4899;
+  --si-chart-5: #8B5CF6;
+  --si-chart-6: #06B6D4;
+  --si-grid: rgba(255, 255, 255, 0.04);
+  --si-tick: #475569;
+  --si-tooltip-bg: #0C1222;
+  --si-tooltip-border: rgba(255, 255, 255, 0.08);
+  color-scheme: dark;
+}
+
+/* ═══ Tailwind Theme Tokens ═══ */
+
+@theme {
+  --color-background: var(--si-bg);
+  --color-foreground: var(--si-fg);
+  --color-card: var(--si-card);
+  --color-card-foreground: var(--si-card-fg);
+  --color-popover: var(--si-popover);
+  --color-popover-foreground: var(--si-popover-fg);
+  --color-primary: var(--si-primary);
+  --color-primary-foreground: var(--si-primary-fg);
+  --color-secondary: var(--si-secondary);
+  --color-secondary-foreground: var(--si-secondary-fg);
+  --color-muted: var(--si-muted);
+  --color-muted-foreground: var(--si-muted-fg);
+  --color-accent: var(--si-accent);
+  --color-accent-foreground: var(--si-accent-fg);
+  --color-destructive: var(--si-destructive);
+  --color-destructive-foreground: var(--si-destructive-fg);
+  --color-border: var(--si-border);
+  --color-input: var(--si-input);
+  --color-ring: var(--si-ring);
+  --color-sidebar: var(--si-sidebar);
+  --color-sidebar-border: var(--si-sidebar-border);
+  --color-chart-1: var(--si-chart-1);
+  --color-chart-2: var(--si-chart-2);
+  --color-chart-3: var(--si-chart-3);
+  --color-chart-4: var(--si-chart-4);
+  --color-chart-5: var(--si-chart-5);
+  --color-chart-6: var(--si-chart-6);
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+/* ═══ Base ═══ */
+
+body {
+  margin: 0;
+  background: var(--si-bg);
+  color: var(--si-fg);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.011em;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+/* ═══ Scrollbar ═══ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--si-border) transparent;
+}
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--si-border); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { opacity: 0.8; }
+
+/* ═══ Card — clean, elevated in light; glowing in dark ═══ */
+.card-premium {
+  position: relative;
+  background: var(--si-card);
+  border: 1px solid var(--si-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--si-card-shadow);
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+}
+.card-premium:hover {
+  box-shadow: var(--si-card-shadow-hover);
+}
+
+/* Dark mode: add gradient bg and glow on hover */
+:root.dark .card-premium {
+  background: linear-gradient(145deg, rgba(12, 18, 34, 0.9) 0%, rgba(8, 12, 24, 0.95) 100%);
+}
+:root.dark .card-premium:hover {
+  border-color: rgba(94, 106, 210, 0.2);
+}
+
+/* ═══ Glass — for sidebar in dark mode ═══ */
+.glass {
+  background: rgba(12, 18, 34, 0.7);
+  backdrop-filter: blur(20px) saturate(1.3);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* ═══ Gradient text ═══ */
+.text-gradient {
+  background: linear-gradient(135deg, var(--si-fg), var(--si-muted-fg));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ═══ Ambient glow (dark mode only) ═══ */
+:root.dark .ambient-glow::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 50% at 10% 30%, rgba(94, 106, 210, 0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 85% 15%, rgba(139, 92, 246, 0.025) 0%, transparent 55%),
+    radial-gradient(ellipse 40% 30% at 50% 85%, rgba(6, 182, 212, 0.02) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Light mode: subtle warm gradient */
+:root:not(.dark) .ambient-glow::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 50% at 20% 20%, rgba(249, 115, 22, 0.02) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 80% 80%, rgba(37, 99, 235, 0.015) 0%, transparent 55%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ═══ Animations ═══ */
+@keyframes enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.animate-enter {
+  animation: enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-fade {
+  animation: fade-in 0.3s ease both;
+}
+
+.stagger-1 { animation-delay: 0ms; }
+.stagger-2 { animation-delay: 60ms; }
+.stagger-3 { animation-delay: 120ms; }
+.stagger-4 { animation-delay: 180ms; }
+.stagger-5 { animation-delay: 240ms; }
+
+/* ═══ Expand / Collapse ═══ */
+@keyframes expand-in {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 500px; }
+}
+.animate-expand {
+  animation: expand-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  overflow: hidden;
+}
+
+/* ═══ Skeleton ═══ */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--si-muted) 25%, var(--si-secondary) 50%, var(--si-muted) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+  border-radius: var(--radius-md);
+}
+
+/* ═══ Tabular / mono numbers ═══ */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+/* ═══ Focus ring ═══ */
+*:focus-visible {
+  outline: 2px solid var(--si-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ═══ Reduced motion ═══ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ═══ Print ═══ */
+@media print {
+  /* Hide everything except the briefing */
+  body { background: white !important; color: #0f172a !important; }
+  #root > *:not(:has(.print-briefing)) { display: none !important; }
+  .no-print { display: none !important; }
+  .print-briefing {
+    position: static !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+  .print-briefing * { color-adjust: exact; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @page { margin: 0.6in 0.5in; size: letter; }
+}
+
+/* ═══ Date input styling ═══ */
+input[type="date"] {
+  color-scheme: inherit;
+  position: relative;
+}
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}

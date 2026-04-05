@@ -1,0 +1,75 @@
+# Travel Sales Agents — Authoritative whitelist
+# One name per line, matching Salesforce Owner.Name exactly (case-insensitive).
+# Source: Book1.xlsx (AAA WCNY Travel agent roster)
+#
+# To update: edit this file and restart the backend.
+# Lines starting with # are ignored. Blank lines are ignored.
+#
+# NOTE: No clean Salesforce field (Profile, Title, Role) uniquely identifies
+# sales agents vs non-sales staff. This list is manually maintained.
+# Nickname mappings applied: Theodore→Ted, Taylor→Tay, Fairbanks-Bloom→Bloom.
+
+Amy Bardeen
+Amy Paprocki
+Andrea College
+Anne Popeck
+Ashley Gielow
+Bethany Heidle
+Bethany Steves
+Carla Borgese
+Carmen Tang
+Catherine McCarthy
+Cheryl Bailey
+Emma Johnson
+Eric Hawk
+Grace Vesper
+Jacqueline Nieman
+Jacqueline Stephens
+Jason Ekberg
+Jayne Kaiser
+Jenell Montanez
+Jennie Todd
+Jennifer Dudek
+Jessica Winiasz
+Jill Stevens
+Joanna Voigt
+Joyce Foglia Kellner
+Karen Lindenberg
+Katie Gruenauer
+Kelly Gonseth-Harrienger
+Kimberly Greene
+Kristin Myer
+LINDA ALEXANDER
+Lisa Asito
+Luci Wind
+Lydia Burger
+Mamie Cimato
+Mary McIntosh
+Maureen Bulman
+McKenzie O'Malley Crawford
+Meghan Sheehan
+Melanie Perla
+Micaela Joseph
+Michelle Szlapak
+Patricia Costanzo
+Penny Kellner
+Renee Pilley
+Robin Mitchell
+Robin Smith
+Stacy Immordino
+Stephanie Fiordeliso
+Tasha Duffany
+Taylor Zidar
+Tomera Cobado
+Tracy Anzalone
+Tynan Granger
+# Nickname mappings (SF name differs from Excel)
+Tay Duerr
+Ted Tomasello
+Kevin Bloom
+# Not currently active in SF Travel data but on the roster:
+# Alexis Williams
+# Cheryl Spence
+# Kristen Mayer
+# Kristi Luckette
+# Regina Sullivan
