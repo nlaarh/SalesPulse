@@ -500,7 +500,7 @@ export type IssueSeverity = 'low' | 'medium' | 'high'
 export async function updateIssue(
   number: number,
   pin: string,
-  opts: { status?: IssueStatus; severity?: IssueSeverity }
+  opts: { status?: IssueStatus; severity?: IssueSeverity; title?: string; body?: string }
 ) {
   const { data } = await api.patch(`/api/issues/${number}`, { pin, ...opts })
   return data as { ok: boolean; state: string; status?: string; severity?: string; labels: string[] }

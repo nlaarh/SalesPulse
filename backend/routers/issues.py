@@ -255,16 +255,19 @@ def get_issue(issue_number: int):
     labels = [l["name"] for l in iss.get("labels", [])]
     sev    = next((s for s in ("high", "medium", "low") if s in labels), "medium")
     status = next((l.split(":", 1)[1] for l in labels if l.startswith("status:")), "backlog")
+    # Always fetch comments (count may lag)
+    cr = _req.get(f"{_GH_BASE}/issues/{issue_number}/comments", headers=_GH_HEADERS(), timeout=10)
     comments = []
-    if iss.get("comments", 0) > 0:
-        cr = _req.get(f"{_GH_BASE}/issues/{issue_number}/comments", headers=_GH_HEADERS(), timeout=10)
-        if cr.status_code == 200:
-            comments = [{"id": c["id"], "body": c["body"], "user": c["user"]["login"],
-                         "created_at": c["created_at"]} for c in cr.json()]
-    return {"number": iss["number"], "title": iss["title"], "body": iss.get("body", ""),
-            "severity": sev, "status": status, "state": iss["state"],
-            "created_at": iss["created_at"], "updated_at": iss.get("updated_at"),
-            "url": iss["html_url"], "labels": labels, "comments": comments}
+    if cr.status_code == 200:
+        comments = [{"id": c["id"], "body": c["body"], "user": c["user"]["login"],
+                     "created_at": c["created_at"]} for c in cr.json()]
+    issue_obj = {"number": iss["number"], "title": iss["title"], "body": iss.get("body", ""),
+                 "severity": sev, "status": status, "state": iss["state"],
+                 "created_at": iss["created_at"], "updated_at": iss.get("updated_at"),
+                 "html_url": iss["html_url"], "labels": labels, "comments": len(comments),
+                 "reporter": next((l.split("Reporter: ")[1].split("\n")[0] for l in [iss.get("body","")]
+                                   if "Reporter: " in l), None)}
+    return {"issue": issue_obj, "comments": comments}
 
 
 # ── POST /api/issues/{n}/comments ────────────────────────────────────────────
@@ -305,6 +308,8 @@ def update_issue(issue_number: int, body: dict, request: Request):
         raise HTTPException(501, "GitHub not configured")
     new_status   = body.get("status")
     new_severity = body.get("severity")
+    new_title    = (body.get("title") or "").strip()
+    new_body     = (body.get("body") or "").strip()
     if new_status and new_status not in _STATUSES:
         raise HTTPException(400, f"Invalid status. Must be one of: {', '.join(_STATUSES)}")
     if new_severity and new_severity not in ("low", "medium", "high"):
@@ -316,6 +321,11 @@ def update_issue(issue_number: int, body: dict, request: Request):
     current_labels = [l["name"] for l in current.get("labels", [])]
     payload = {}
     labels = list(current_labels)
+
+    if new_title:
+        payload["title"] = new_title
+    if new_body:
+        payload["body"] = new_body
 
     if new_status:
         labels = [l for l in labels if not l.startswith("status:")]
@@ -341,24 +351,53 @@ def update_issue(issue_number: int, body: dict, request: Request):
         raise HTTPException(r.status_code, "Failed to update issue")
     iss = r.json()
 
-    # Bot comment when issue is resolved/closed
-    if new_status in ("released", "closed"):
-        fix_comment = (
-            f"## 🤖 SalesPulse Bot\n\n"
-            f"✅ **This issue has been resolved and closed.**\n\n"
-            f"The fix has been deployed to production. If you continue to experience this problem, "
-            f"please open a new report using the **Report a Bug** button.\n\n"
-            f"Thank you for helping improve SalesPulse!"
-        )
-        _gh_post_comment(issue_number, fix_comment)
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-    # Email reporter on any status change
+    # Post a bot comment for every status change (with timestamp)
+    if new_status:
+        status_labels = {
+            "backlog":       "📋 moved to **Backlog**",
+            "acknowledged":  "👀 **Acknowledged** — we've seen your report",
+            "investigating": "🔍 **Investigating** — looking into the root cause",
+            "in-progress":   "🛠️ **In Progress** — actively working on a fix",
+            "released":      "✅ **Released / Fixed** — the fix has been deployed",
+            "closed":        "✅ **Closed** — this issue has been resolved",
+            "cancelled":     "🚫 **Won't Fix** — this issue has been closed as not planned",
+        }
+        status_note = status_labels.get(new_status, f"updated to **{new_status}**")
+        bot_comment = (
+            f"## 🤖 SalesPulse Bot\n\n"
+            f"Status {status_note}.\n\n"
+            f"*Updated: {now_str}*"
+        )
+        if new_status in ("released", "closed"):
+            bot_comment = (
+                f"## 🤖 SalesPulse Bot\n\n"
+                f"✅ **This issue has been resolved and closed.**\n\n"
+                f"The fix has been deployed to production. If you continue to experience this problem, "
+                f"please open a new report using the **Report a Bug** button.\n\n"
+                f"*Resolved: {now_str}*\n\n"
+                f"Thank you for helping improve SalesPulse!"
+            )
+        _gh_post_comment(issue_number, bot_comment)
+
+    # Post a bot comment for description/title edits
+    if new_title or new_body:
+        edit_comment = (
+            f"## 🤖 SalesPulse Bot\n\n"
+            f"📝 Issue updated by admin.\n"
+            + (f"- Title changed to: *{new_title}*\n" if new_title else "")
+            + (f"- Description updated\n" if new_body else "")
+            + f"\n*Edited: {now_str}*"
+        )
+        _gh_post_comment(issue_number, edit_comment)
+
+    # Email reporter on status change
     reporter_email = _extract_email(current.get("body", ""))
-    status_msg = new_status or new_severity
-    if reporter_email and status_msg:
+    if reporter_email and new_status:
         if new_status in ("released", "closed"):
             email_body = (
-                f"Great news! Your reported issue #{issue_number} has been **resolved** and deployed to production.\n\n"
+                f"Great news! Your reported issue #{issue_number} has been resolved and deployed to production.\n\n"
                 f"Title: {current.get('title', '')}\n\nView: {iss.get('html_url', '')}\n\n"
                 f"Thank you for the report!\n\n— SalesPulse Bot 🤖"
             )
@@ -366,9 +405,9 @@ def update_issue(issue_number: int, body: dict, request: Request):
             email_body = (
                 f"Your issue #{issue_number} has been updated.\n\n"
                 f"Title: {current.get('title', '')}\n"
-                + (f"Status: {new_status.upper()}\n" if new_status else "")
-                + (f"Severity: {new_severity.upper()}\n" if new_severity else "")
-                + f"\nView: {iss.get('html_url', '')}\n\n— SalesPulse Bot 🤖"
+                f"Status: {new_status.upper()}\n"
+                f"Updated: {now_str}\n\n"
+                f"View: {iss.get('html_url', '')}\n\n— SalesPulse Bot 🤖"
             )
         _send_email(reporter_email, f"SalesPulse — Issue #{issue_number} updated", email_body)
 

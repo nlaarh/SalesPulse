@@ -8,10 +8,11 @@ import React, { useState, useEffect, useCallback } from 'react'
 import {
   Bug, RefreshCw, Loader2, ChevronDown, ChevronUp, MessageSquare,
   CheckCircle2, Circle, ExternalLink, Lock, AlertTriangle, Info, Zap, Bot, Send,
+  Pencil, Plus, X, Calendar, Clock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
-  fetchIssues, fetchIssue, addIssueComment, updateIssue,
+  fetchIssues, fetchIssue, addIssueComment, updateIssue, submitIssue,
 } from '@/lib/api'
 import type { GithubIssue, IssueComment, IssueStatus, IssueSeverity } from '@/lib/api'
 
@@ -56,6 +57,13 @@ function timeAgo(iso: string) {
   return `${Math.floor(d / 86400)}d ago`
 }
 
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
 /** Detect if a comment was posted by SalesPulse Bot */
 function isBotComment(c: IssueComment) {
   return c.user === 'github-actions[bot]'
@@ -82,6 +90,9 @@ function IssueRow({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => v
   const [statusLoading, setStatusLoading] = useState(false)
   const [localSeverity, setLocalSeverity] = useState<string>(getSeverityKey(issue))
   const [localStatus, setLocalStatus]     = useState<IssueStatus>(getStatusKey(issue))
+  const [editMode, setEditMode] = useState(false)
+  const [editTitle, setEditTitle] = useState(issue.title)
+  const [editBody, setEditBody]   = useState('')
 
   const sev = SEVERITY_MAP[localSeverity] ?? SEVERITY_MAP['medium']
   const verdict = issue.triage_verdict ? VERDICT_MAP[issue.triage_verdict] : null
@@ -92,12 +103,13 @@ function IssueRow({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => v
     try {
       const d = await fetchIssue(issue.number)
       setDetail({ body: d.issue.body, comments: d.comments })
+      if (!editBody) setEditBody(d.issue.body)
     } catch {
       /* ignore */
     } finally {
       setLoading(false)
     }
-  }, [detail, issue.number])
+  }, [detail, issue.number, editBody])
 
   const toggle = () => {
     setOpen(v => !v)
@@ -110,7 +122,8 @@ function IssueRow({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => v
     try {
       await addIssueComment(issue.number, comment.trim(), commenterName.trim() || 'Admin')
       setComment('')
-      await loadDetail(true)
+      // Small delay to let GitHub process the comment
+      setTimeout(() => loadDetail(true), 800)
     } catch {
       /* ignore */
     } finally {
@@ -118,7 +131,7 @@ function IssueRow({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => v
     }
   }
 
-  const handleUpdate = async (opts: { status?: IssueStatus; severity?: IssueSeverity }) => {
+  const handleUpdate = async (opts: { status?: IssueStatus; severity?: IssueSeverity; title?: string; body?: string }) => {
     if (!pin.trim()) { setPinError('PIN required'); return }
     setStatusLoading(true)
     setPinError('')
@@ -126,11 +139,10 @@ function IssueRow({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => v
       const res = await updateIssue(issue.number, pin.trim(), opts)
       if (opts.severity) setLocalSeverity(opts.severity)
       if (opts.status)   setLocalStatus(opts.status)
-      // Reload comments if a bot fix comment was posted
-      if (opts.status === 'released' || opts.status === 'closed') {
-        setTimeout(() => loadDetail(true), 1500)
-        onRefresh()
-      }
+      if (opts.title)    setEditTitle(opts.title)
+      // Always reload comments after any change (bot posts a comment)
+      setTimeout(() => loadDetail(true), 1500)
+      if (opts.status === 'released' || opts.status === 'closed') onRefresh()
       return res
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error'
@@ -140,24 +152,34 @@ function IssueRow({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => v
     }
   }
 
+  const handleEdit = async () => {
+    await handleUpdate({ title: editTitle, body: editBody })
+    setEditMode(false)
+  }
+
   return (
     <div className={cn(
       'rounded-xl border bg-card transition-all',
       issue.state === 'closed' ? 'border-border/40 opacity-70' : 'border-border',
     )}>
       {/* Header row */}
-      <button className="w-full px-4 py-3.5 text-left" onClick={toggle}>
+      <div className="w-full px-4 py-3.5">
         <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-2.5 min-w-0">
+          <button className="flex items-start gap-2.5 min-w-0 flex-1 text-left" onClick={toggle}>
             {issue.state === 'closed'
               ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
               : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />}
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-foreground truncate">{issue.title}</p>
+              <p className="text-sm font-semibold text-foreground truncate">
+                {editMode ? editTitle : issue.title}
+              </p>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                <span className="text-[10px] text-muted-foreground">
-                  #{issue.number} · {timeAgo(issue.created_at)}
+                <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <Calendar className="h-2.5 w-2.5" />
+                  {formatDate(issue.created_at)}
                 </span>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="text-[10px] text-muted-foreground">#{issue.number}</span>
                 {issue.reporter && (
                   <span className="text-[10px] text-muted-foreground">· by {issue.reporter}</span>
                 )}
@@ -168,7 +190,7 @@ function IssueRow({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => v
                 )}
               </div>
             </div>
-          </div>
+          </button>
           <div className="flex shrink-0 items-center gap-2">
             {/* Severity badge */}
             <span className={cn('rounded border px-2 py-0.5 text-[10px] font-semibold', sev.cls)}>
@@ -191,11 +213,20 @@ function IssueRow({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => v
                 <MessageSquare className="h-3 w-3" />{issue.comments}
               </span>
             )}
-            {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                  : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+            {/* Edit icon */}
+            <button
+              onClick={e => { e.stopPropagation(); setEditMode(v => !v); if (!open) { setOpen(true); loadDetail() } }}
+              className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition"
+              title="Edit issue">
+              {editMode ? <X className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+            </button>
+            <button onClick={toggle}>
+              {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                    : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+            </button>
           </div>
         </div>
-      </button>
+      </div>
 
       {/* Expanded */}
       {open && (
@@ -204,10 +235,45 @@ function IssueRow({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => v
 
           {detail && (
             <>
-              {/* Body */}
-              <div className="rounded-lg bg-muted/30 px-3 py-3 text-xs text-foreground whitespace-pre-wrap leading-relaxed">
-                {detail.body}
-              </div>
+              {/* Body — normal view or edit mode */}
+              {editMode ? (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50">Edit Issue</p>
+                  <input
+                    value={editTitle}
+                    onChange={e => setEditTitle(e.target.value)}
+                    placeholder="Title"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/40" />
+                  <textarea
+                    value={editBody}
+                    onChange={e => setEditBody(e.target.value)}
+                    rows={6}
+                    placeholder="Description…"
+                    className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40" />
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <Lock className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                      <input type="password" value={pin} onChange={e => { setPin(e.target.value); setPinError('') }}
+                        placeholder="Admin PIN"
+                        className="w-28 rounded-lg border border-border bg-background pl-7 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40" />
+                    </div>
+                    <button onClick={handleEdit} disabled={statusLoading || !editTitle.trim()}
+                      className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                      {statusLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Pencil className="h-3 w-3" />}
+                      Save Changes
+                    </button>
+                    <button onClick={() => setEditMode(false)}
+                      className="rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:text-foreground">
+                      Cancel
+                    </button>
+                  </div>
+                  {pinError && <p className="text-[10px] text-rose-500">{pinError}</p>}
+                </div>
+              ) : (
+                <div className="rounded-lg bg-muted/30 px-3 py-3 text-xs text-foreground whitespace-pre-wrap leading-relaxed">
+                  {detail.body}
+                </div>
+              )}
 
               {/* Comments */}
               {detail.comments.length > 0 && (
@@ -353,6 +419,15 @@ export default function Issues() {
   const [issues, setIssues] = useState<GithubIssue[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showNew, setShowNew] = useState(false)
+  const [newTitle, setNewTitle] = useState('')
+  const [newDesc, setNewDesc] = useState('')
+  const [newSev, setNewSev] = useState<'low' | 'medium' | 'high'>('medium')
+  const [newPage, setNewPage] = useState('')
+  const [newName, setNewName] = useState(localStorage.getItem('sp_reporter_name') || '')
+  const [newEmail, setNewEmail] = useState('')
+  const [submittingNew, setSubmittingNew] = useState(false)
+  const [newError, setNewError] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -368,6 +443,23 @@ export default function Issues() {
   }, [state])
 
   useEffect(() => { load() }, [load])
+
+  const handleNewIssue = async () => {
+    if (!newTitle.trim() || !newDesc.trim()) { setNewError('Title and description are required'); return }
+    setSubmittingNew(true)
+    setNewError('')
+    try {
+      localStorage.setItem('sp_reporter_name', newName)
+      await submitIssue({ description: `${newTitle}\n\n${newDesc}`, severity: newSev, page: newPage, reporter: newName || 'Admin', email: newEmail })
+      setShowNew(false)
+      setNewTitle(''); setNewDesc(''); setNewPage(''); setNewEmail('')
+      setTimeout(() => load(), 1000)
+    } catch {
+      setNewError('Failed to submit. Please try again.')
+    } finally {
+      setSubmittingNew(false)
+    }
+  }
 
   const openCount   = issues.filter(i => i.state === 'open').length
   const closedCount = issues.filter(i => i.state === 'closed').length
@@ -402,6 +494,12 @@ export default function Issues() {
             className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background transition hover:bg-secondary disabled:opacity-50">
             <RefreshCw className={cn('h-3.5 w-3.5 text-muted-foreground', loading && 'animate-spin')} />
           </button>
+          {/* New Issue button */}
+          <button onClick={() => setShowNew(true)}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90">
+            <Plus className="h-3.5 w-3.5" />
+            New Issue
+          </button>
         </div>
       </div>
 
@@ -413,6 +511,74 @@ export default function Issues() {
           auto-triaged within seconds. Confirmed bugs trigger an email to <span className="font-semibold">nlaaroubi@nyaaa.com</span>.
         </p>
       </div>
+
+      {/* New Issue Modal */}
+      {showNew && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-border bg-card shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div className="flex items-center gap-2">
+                <Bug className="h-4 w-4 text-primary" />
+                <h2 className="text-sm font-bold text-foreground">New Issue</h2>
+              </div>
+              <button onClick={() => setShowNew(false)} className="rounded p-1 text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-3 p-5">
+              <input value={newTitle} onChange={e => setNewTitle(e.target.value)}
+                placeholder="Issue title *"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40" />
+              <textarea value={newDesc} onChange={e => setNewDesc(e.target.value)} rows={4}
+                placeholder="Describe the issue in detail… *"
+                className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40" />
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-medium text-muted-foreground">Severity</label>
+                  <select value={newSev} onChange={e => setNewSev(e.target.value as typeof newSev)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40">
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-medium text-muted-foreground">Page / Area</label>
+                  <input value={newPage} onChange={e => setNewPage(e.target.value)}
+                    placeholder="e.g. Dashboard"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-medium text-muted-foreground">Your Name</label>
+                  <input value={newName} onChange={e => { setNewName(e.target.value); localStorage.setItem('sp_reporter_name', e.target.value) }}
+                    placeholder="Name"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-medium text-muted-foreground">Email (for updates)</label>
+                  <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40" />
+                </div>
+              </div>
+              {newError && <p className="text-xs text-rose-500">{newError}</p>}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
+              <button onClick={() => setShowNew(false)}
+                className="rounded-lg border border-border px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground">
+                Cancel
+              </button>
+              <button onClick={handleNewIssue} disabled={submittingNew || !newTitle.trim() || !newDesc.trim()}
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                {submittingNew ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                Submit Issue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       {loading && issues.length === 0 && (
