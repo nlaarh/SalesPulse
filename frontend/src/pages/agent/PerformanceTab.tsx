@@ -294,14 +294,14 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
             onClick={() => {
               const months = profile.months.filter(m => m.month <= currentMonth || m.prior_commission > 0)
               const rows = months.map((m: AgentMonthData) => ({
-                Month: m.label,
-                [`${profile.current_year} Commission`]: m.commission,
-                [`${profile.prior_year} Commission`]: m.prior_commission,
+                Month: m.label ?? '',
+                [`${profile.current_year} Commission`]: m.commission ?? 0,
+                [`${profile.prior_year} Commission`]: m.prior_commission ?? 0,
                 ...(profile.has_separate_bookings ? {
-                  [`${profile.current_year} Bookings`]: m.revenue,
-                  [`${profile.prior_year} Bookings`]: m.prior_revenue,
+                  [`${profile.current_year} Bookings`]: m.revenue ?? 0,
+                  [`${profile.prior_year} Bookings`]: m.prior_revenue ?? 0,
                 } : {}),
-                Deals: m.deals,
+                Deals: m.deals ?? 0,
               }))
               exportToExcel(rows, `Agent_Monthly_Breakdown_${new Date().toISOString().slice(0,10)}`)
             }}

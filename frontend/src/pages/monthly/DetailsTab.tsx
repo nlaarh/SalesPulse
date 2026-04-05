@@ -39,10 +39,10 @@ export default function DetailsTab({
       const row: Record<string, unknown> = { Advisor: agent.name }
       monthColumns.forEach(m => {
         const cell = monthMap.get(m)
-        row[fmtMonth(m)] = cell ? fmtCell(cell, metric) : '—'
+        row[fmtMonth(m)] = cell ? (cell[metric] ?? 0) : 0
       })
-      row['Total'] = fmtCell({ [metric]: (agent.totals?.[metric] ?? 0) } as any, metric)
-      if (hasTargets) row['Target'] = targetMap!.get(agent.name) ?? '—'
+      row['Total'] = agent.totals?.[metric] ?? 0
+      if (hasTargets) row['Target'] = targetMap!.get(agent.name) ?? 0
       return row
     })
     exportToExcel(rows, `Monthly_Report_${metric}_${new Date().toISOString().slice(0,10)}`)

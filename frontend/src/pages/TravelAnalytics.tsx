@@ -233,10 +233,10 @@ function DetailsTab({ dests, selectedDest, setSelectedDest, destTrend, c }: {
           </div>
           <button
             onClick={() => exportToExcel(dests.map((d: any) => ({
-              Destination: d.destination,
-              Revenue: d.revenue,
-              'Avg Booking': d.avg_booking ?? '',
-              'YoY %': d.yoy_growth_pct != null ? `${d.yoy_growth_pct.toFixed(1)}%` : '',
+              Destination: d.destination ?? '',
+              Revenue: d.revenue ?? 0,
+              'Avg Booking': d.avg_booking ?? 0,
+              'YoY %': d.yoy_growth_pct ?? 0,
             })), `Travel_Destinations_${new Date().toISOString().slice(0,10)}`)}
             className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition">
             <Download className="h-3.5 w-3.5" />Export

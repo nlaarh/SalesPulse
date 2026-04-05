@@ -101,13 +101,13 @@ function LeaderboardFull({ leaders, onSelect, targetMap }: {
               const rows = sorted.map((a, i) => ({
                 Rank: i + 1,
                 Advisor: a.name,
-                Commission: a.commission,
-                Bookings: a.bookings,
-                Deals: a.deals,
-                'Win %': `${(a.win_rate * 100).toFixed(1)}%`,
-                'Avg Deal': a.avg_deal_size,
-                Pipeline: a.pipeline_value,
-                ...(hasTargets ? { Target: targetMap!.get(a.name) ?? '' } : {}),
+                Commission: a.commission ?? 0,
+                Bookings: a.bookings ?? 0,
+                Deals: a.deals ?? 0,
+                'Win Rate': (a.win_rate ?? 0) * 100,
+                'Avg Deal': a.avg_deal_size ?? 0,
+                Pipeline: a.pipeline_value ?? 0,
+                ...(hasTargets ? { Target: targetMap!.get(a.name) ?? 0 } : {}),
               }))
               exportToExcel(rows, `Advisor_Leaderboard_${new Date().toISOString().slice(0,10)}`)
             }}
