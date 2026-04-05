@@ -15,14 +15,14 @@ CONFIG_DIR = Path.home() / '.salesinsight'
 CONFIG_FILE = CONFIG_DIR / 'ai_config.json'
 
 SUPPORTED_PROVIDERS = {
-    'openai':    {'label': 'OpenAI',           'models': ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo']},
-    'azure':     {'label': 'Azure OpenAI',     'models': ['gpt-4o', 'gpt-4-turbo', 'gpt-35-turbo']},
-    'anthropic': {'label': 'Anthropic Claude', 'models': ['claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307']},
+    'openai':    {'label': 'OpenAI',          'models': ['gpt-4.1-mini', 'gpt-4.1', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini']},
+    'azure':     {'label': 'Azure OpenAI',    'models': ['gpt-4.1-mini', 'gpt-4.1', 'gpt-4o', 'gpt-4o-mini']},
+    'anthropic': {'label': 'Anthropic Claude', 'models': ['claude-sonnet-4-5-20250514', 'claude-haiku-4-5-20251001', 'claude-3-5-sonnet-20241022']},
 }
 
 DEFAULT_CONFIG = {
     'provider': 'openai',
-    'model':    'gpt-4o-mini',
+    'model':    'gpt-4.1-mini',
     'api_key':  '',         # masked on read
     'base_url': '',         # for Azure OpenAI or custom endpoints
 }
