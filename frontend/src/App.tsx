@@ -20,6 +20,7 @@ const TopOpportunities = lazy(() => import('@/pages/TopOpportunities'))
 const AgentDashboard = lazy(() => import('@/pages/AgentDashboard'))
 const Help = lazy(() => import('@/pages/Help'))
 const Settings = lazy(() => import('@/pages/Settings'))
+const IssuesPage = lazy(() => import('@/pages/Issues'))
 
 /* ── React Query client ──────────────────────────────────────────────────── */
 
@@ -65,6 +66,7 @@ export default function App() {
                   <Route path="leads" element={<Suspense fallback={LazyFallback}><LeadFunnel /></Suspense>} />
                   <Route path="help" element={<Suspense fallback={LazyFallback}><Help /></Suspense>} />
                   <Route path="settings" element={<Suspense fallback={LazyFallback}><Settings /></Suspense>} />
+                  <Route path="issues" element={<Suspense fallback={LazyFallback}><IssuesPage /></Suspense>} />
                 </Route>
               </Route>
             </Routes>

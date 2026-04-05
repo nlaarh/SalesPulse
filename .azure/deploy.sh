@@ -74,6 +74,7 @@ if [ -f "$ENV_FILE" ]; then
     --name "$APP_NAME" \
     --resource-group "$RG" \
     --settings \
+      SF_TOKEN_URL="$(grep -m1 '^SF_TOKEN_URL=' "$ENV_FILE" | cut -d= -f2-)" \
       SF_USERNAME="$(grep -m1 '^SF_USERNAME=' "$ENV_FILE" | cut -d= -f2-)" \
       SF_PASSWORD="$(grep -m1 '^SF_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)" \
       SF_SECURITY_TOKEN="$(grep -m1 '^SF_SECURITY_TOKEN=' "$ENV_FILE" | cut -d= -f2-)" \

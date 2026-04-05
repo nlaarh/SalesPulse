@@ -13,6 +13,7 @@ import {
 import ManagerBriefing from '@/components/ManagerBriefing'
 import TargetProgressBar from '@/components/TargetProgressBar'
 import { Tip, TIPS } from '@/components/MetricTip'
+import AgentReportActions from '@/components/AgentReportActions'
 import PerformanceTab from './agent/PerformanceTab'
 import OpportunitiesTab from './agent/OpportunitiesTab'
 import SummaryTab from './agent/SummaryTab'
@@ -232,12 +233,21 @@ export default function AgentDashboard() {
               &middot; {profile.team.total_agents} advisors in division
             </p>
           </div>
-          <button
-            onClick={() => setShowBriefing(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-secondary/50 px-3 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          >
-            <FileText className="h-3.5 w-3.5" /> 1:1 Prep Sheet
-          </button>
+          <div className="flex items-center gap-2">
+            <AgentReportActions
+              profile={profile}
+              startDate={startDate ?? undefined}
+              endDate={endDate ?? undefined}
+              line={line}
+              period={period}
+            />
+            <button
+              onClick={() => setShowBriefing(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-secondary/50 px-3 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <FileText className="h-3.5 w-3.5" /> 1:1 Prep Sheet
+            </button>
+          </div>
         </div>
       </div>
 

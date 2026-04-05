@@ -6,11 +6,13 @@ import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
 import {
   Users, GitBranch, Plane, Megaphone, Table2, Target,
-  ChevronDown, Sun, Moon, Calendar,
-  ArrowRight, X, HelpCircle, Settings, LogOut,
+  ChevronDown, Sun, Moon, Calendar, Command,
+  ArrowRight, X, HelpCircle, Settings, LogOut, Bug,
 } from 'lucide-react'
 import SalesPulseLogo from '@/components/SalesPulseLogo'
-import { useState, useRef, useEffect } from 'react'
+import CommandPalette from '@/components/CommandPalette'
+import ReportIssue from '@/components/ReportIssue'
+import { useState, useRef, useEffect, useCallback } from 'react'
 
 const NAV_DASHBOARD = [
   { to: '/dashboard', label: 'Sales Performance', icon: Users, desc: 'Revenue, pipeline & team' },
@@ -168,6 +170,21 @@ export default function Layout() {
   const { isDark, toggle } = useTheme()
   const { user, logout, isAdmin } = useAuth()
 
+  // ── Command Palette ──
+  const [cmdOpen, setCmdOpen] = useState(false)
+  const openPalette = useCallback(() => setCmdOpen(true), [])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setCmdOpen(o => !o)
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+
   // Role-based line lock
   const lineLocked = user?.role === 'travel_manager' || user?.role === 'travel_director' || user?.role === 'insurance_manager'
   const effectiveLine = (user?.role === 'travel_manager' || user?.role === 'travel_director') ? 'Travel'
@@ -223,11 +240,31 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen overflow-hidden">
+      {/* ── Command Palette ── */}
+      <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
+
+      {/* ── Floating Bug Report Button ── */}
+      <ReportIssue />
+
       {/* ── Sidebar ── */}
       <aside className="flex w-[240px] flex-col border-r border-sidebar-border bg-sidebar">
         {/* Brand */}
         <div className="flex h-[56px] items-center px-5">
           <SalesPulseLogo size={28} showText />
+        </div>
+
+        {/* ⌘K Search trigger */}
+        <div className="px-3 pb-2">
+          <button
+            onClick={openPalette}
+            className="flex w-full items-center gap-2 rounded-lg border border-border/60 bg-secondary/30 px-3 py-2 text-left text-[12px] text-muted-foreground/60 transition-colors hover:bg-secondary/60 hover:text-foreground"
+          >
+            <Command className="h-3.5 w-3.5 shrink-0" />
+            <span className="flex-1">Quick search…</span>
+            <kbd className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground/40">
+              ⌘K
+            </kbd>
+          </button>
         </div>
 
         {/* Nav */}
@@ -341,8 +378,37 @@ export default function Layout() {
             </NavLink>
           ))}
 
-          {/* Settings — admin only */}
+          {/* Settings + Issues — admin only */}
           {isAdmin && (
+            <>
+            <NavLink
+              to="/issues"
+              className={({ isActive }) => cn(
+                'group relative flex items-center gap-3 rounded-lg px-2.5 py-2',
+                'text-[13px] font-medium transition-all duration-200',
+                isActive
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+              )}
+            >
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <div className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-primary" />
+                  )}
+                  <Bug className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2 : 1.5} />
+                  <div className="flex flex-col">
+                    <span>Issues</span>
+                    <span className={cn(
+                      'text-[10px] font-normal leading-tight',
+                      isActive ? 'text-primary/60' : 'text-muted-foreground/40',
+                    )}>
+                      Bug reports & triage
+                    </span>
+                  </div>
+                </>
+              )}
+            </NavLink>
             <NavLink
               to="/settings"
               className={({ isActive }) => cn(
@@ -371,6 +437,7 @@ export default function Layout() {
                 </>
               )}
             </NavLink>
+            </>
           )}
         </nav>
 
@@ -522,8 +589,17 @@ export default function Layout() {
 
       {/* ── Main ── */}
       <main className="ambient-glow relative flex-1 overflow-y-auto bg-background">
-        {/* Top-right theme toggle */}
-        <div className="sticky top-0 z-20 flex justify-end px-8 pt-4 pb-0">
+        {/* Top-right controls */}
+        <div className="sticky top-0 z-20 flex items-center justify-end gap-2 px-8 pt-4 pb-0">
+          {/* ⌘K hint badge */}
+          <button
+            onClick={openPalette}
+            className="flex items-center gap-1.5 rounded-full border border-border bg-card/80 px-3 py-1.5 text-[11px] font-medium text-muted-foreground/50 backdrop-blur-sm transition-all hover:bg-secondary hover:text-foreground shadow-sm"
+            title="Open command palette (⌘K)"
+          >
+            <Command className="h-3 w-3" />
+            <span className="hidden sm:inline">⌘K</span>
+          </button>
           <button
             onClick={toggle}
             title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}

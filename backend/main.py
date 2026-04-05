@@ -36,7 +36,7 @@ init_db()
 
 # ── Register routers ─────────────────────────────────────────────────────────
 
-from routers import sales_advisor, sales_pipeline, sales_travel, sales_leads, sales_performance, sales_opportunities, sales_agent_profile, sales_narrative, users, activity_logs, advisor_targets, advisor_targets_monthly
+from routers import sales_advisor, sales_pipeline, sales_travel, sales_leads, sales_performance, sales_opportunities, sales_agent_profile, sales_narrative, users, activity_logs, advisor_targets, advisor_targets_monthly, email_report, issues
 
 app.include_router(sales_advisor.router)
 app.include_router(sales_pipeline.router)
@@ -50,6 +50,8 @@ app.include_router(users.router)
 app.include_router(activity_logs.router)
 app.include_router(advisor_targets.router)
 app.include_router(advisor_targets_monthly.router)
+app.include_router(email_report.router)
+app.include_router(issues.router)
 
 
 # ── Health check ─────────────────────────────────────────────────────────────

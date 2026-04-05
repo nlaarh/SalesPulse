@@ -422,3 +422,78 @@ export async function saveMonthlyTargets(year: number, updates: { advisor_target
   const { data } = await api.put('/api/admin/targets/monthly', { year, updates })
   return data as { status: string; count: number }
 }
+
+export async function emailAgentReport(
+  agentName: string,
+  to: string,
+  line = 'Travel',
+  period = 12,
+  startDate?: string,
+  endDate?: string,
+) {
+  const { data } = await api.post('/api/advisor/email', {
+    to,
+    agent_name: agentName,
+    line,
+    period,
+    start_date: startDate ?? null,
+    end_date: endDate ?? null,
+  })
+  return data as { status: string; to: string }
+}
+
+/* ── Issues / Bug Reporting ─────────────────────────────────────────────── */
+
+export interface GithubIssue {
+  number: number
+  title: string
+  body: string
+  state: string
+  labels: string[]
+  created_at: string
+  html_url: string
+  reporter?: string
+  reporter_email?: string
+  severity?: string
+  page?: string
+  triage_verdict?: string
+  comments: number
+}
+
+export interface IssueComment {
+  id: number
+  body: string
+  created_at: string
+  user: string
+}
+
+export async function submitIssue(payload: {
+  description: string
+  severity: 'low' | 'medium' | 'high'
+  page: string
+  reporter: string
+  email: string
+}) {
+  const { data } = await api.post('/api/issues', payload)
+  return data as { issue_number: number; url: string; status: string }
+}
+
+export async function fetchIssues(state: 'open' | 'closed' | 'all' = 'open') {
+  const { data } = await api.get('/api/issues', { params: { state } })
+  return data as GithubIssue[]
+}
+
+export async function fetchIssue(number: number) {
+  const { data } = await api.get(`/api/issues/${number}`)
+  return data as { issue: GithubIssue; comments: IssueComment[] }
+}
+
+export async function addIssueComment(number: number, comment: string, name: string) {
+  const { data } = await api.post(`/api/issues/${number}/comments`, { comment, name })
+  return data as { status: string }
+}
+
+export async function updateIssue(number: number, status: 'close' | 'reopen', pin: string) {
+  const { data } = await api.patch(`/api/issues/${number}`, { status, pin })
+  return data as { status: string }
+}
