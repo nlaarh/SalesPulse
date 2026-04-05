@@ -157,16 +157,41 @@ def sf_query_all(query: str) -> list:
     return result.get('records', [])
 
 
+class SFQueryError(Exception):
+    """Raised when one or more Salesforce queries fail, to prevent caching bad data."""
+    pass
+
+
 def sf_parallel(**queries) -> dict:
-    """Run multiple SOQL queries in parallel. Returns {name: records_list}."""
+    """Run multiple SOQL queries in parallel. Returns {name: records_list}.
+    Raises SFQueryError if any query fails so callers (via cached_query) don't cache zeros.
+    """
     results = {}
+    errors = []
+
+    def _run(name: str, q: str):
+        result = sf_query(q, paginate=True)
+        if 'error' in result:
+            log.error(f"Parallel query '{name}' SF error: {result['error'][:200]}")
+            return name, None  # None = SF error (distinct from empty [])
+        return name, result.get('records', [])
+
     with ThreadPoolExecutor(max_workers=min(len(queries), 5)) as pool:
-        futures = {pool.submit(sf_query_all, q): name for name, q in queries.items()}
+        futures = {pool.submit(_run, name, q): name for name, q in queries.items()}
         for future in futures:
             name = futures[future]
             try:
-                results[name] = future.result(timeout=120)
+                _, res = future.result(timeout=120)
+                if res is None:
+                    errors.append(name)
+                    results[name] = []
+                else:
+                    results[name] = res
             except Exception as e:
-                log.error(f"Parallel query '{name}' failed: {e}")
+                log.error(f"Parallel query '{name}' exception: {e}")
+                errors.append(name)
                 results[name] = []
+
+    if errors:
+        raise SFQueryError(f"SF queries failed (not caching): {errors}")
     return results

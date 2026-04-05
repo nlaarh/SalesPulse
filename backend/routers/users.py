@@ -181,13 +181,26 @@ def reset_admin(body: ResetAdminRequest, db: Session = Depends(get_db)):
 
 @router.post('/api/admin/cache-reset')
 def cache_reset(admin: User = Depends(require_admin)):
-    """Force-reload the owner map and agent lists from Salesforce."""
-    import shared
+    """Force-reload the owner map/agent lists AND flush the full L1+L2 data cache."""
+    import shared, cache
+    # Flush L1 in-memory data cache
+    with cache._lock:
+        l1_count = len(cache._store)
+        cache._store.clear()
+    # Flush L2 disk cache
+    l2_count = 0
+    if cache._CACHE_DIR.exists():
+        for f in cache._CACHE_DIR.glob('*.json'):
+            f.unlink(missing_ok=True)
+            l2_count += 1
+    # Reload owner map
     shared._OWNER_MAP = None
     shared._TRAVEL_AGENTS = None
     shared._INSURANCE_AGENTS = None
     owner_map = shared.get_owner_map(force_refresh=True)
     return {
         'ok': True,
+        'flushed_l1': l1_count,
+        'flushed_l2': l2_count,
         'owner_map_size': len(owner_map),
     }

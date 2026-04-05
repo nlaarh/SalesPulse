@@ -5,12 +5,13 @@ import { cn } from '@/lib/utils'
 import {
   UserPlus, Pencil, Trash2,
   X, Shield, Eye, Plane, Umbrella, Crown,
-  AlertCircle, Check, Users, ScrollText, Target, Zap,
+  AlertCircle, Check, Users, ScrollText, Target, Zap, Database,
 } from 'lucide-react'
 import axios from 'axios'
 import ActivityLogsTable from '@/components/ActivityLogsTable'
 import TargetsTab from '@/pages/settings/TargetsTab'
 import AIConfigTab from '@/pages/settings/AIConfigTab'
+import { flushCache } from '@/lib/api'
 
 type SettingsTab = 'users' | 'logs' | 'targets' | 'ai'
 
@@ -418,6 +419,38 @@ export default function Settings() {
         </div>
       )}
       </>}
+
+      {/* Danger Zone — Cache Flush */}
+      <div className="card-premium overflow-hidden border-destructive/20">
+        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+          <div className="flex items-center gap-2">
+            <Database className="h-4 w-4 text-amber-500" />
+            <h3 className="text-sm font-semibold">Data Cache</h3>
+          </div>
+        </div>
+        <div className="flex items-center justify-between px-5 py-4">
+          <div>
+            <p className="text-[13px] font-medium">Flush All Cached Data</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Forces a fresh Salesforce reload on next page visit. Use if data looks stale or shows 0.
+            </p>
+          </div>
+          <button
+            onClick={async () => {
+              try {
+                const r = await flushCache()
+                setSuccess(`Cache flushed — ${r.flushed_l1} memory + ${r.flushed_l2} disk entries cleared`)
+                setTimeout(() => setSuccess(''), 5000)
+              } catch {
+                setError('Cache flush failed — check permissions')
+                setTimeout(() => setError(''), 5000)
+              }
+            }}
+            className="ml-6 shrink-0 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-[12px] font-semibold text-amber-600 hover:bg-amber-500/20 transition">
+            Flush Cache
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

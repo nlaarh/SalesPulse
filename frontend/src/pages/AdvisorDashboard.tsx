@@ -54,6 +54,8 @@ export default function AdvisorDashboard() {
   const [leadSources, setLeadSources] = useState<{ source: string; count: number }[]>([])
   const [closeSpeed, setCloseSpeed] = useState<CloseSpeed | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
   const [tab, setTab] = useState<Tab>('overview')
   const [targetMap, setTargetMap] = useState<Map<string, number>>(new Map())
   const [achievement, setAchievement] = useState<AchievementResponse | null>(null)
@@ -72,6 +74,7 @@ export default function AdvisorDashboard() {
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setLoadError(false)
     Promise.all([
       fetchAdvisorSummary(line, period, startDate, endDate),
       fetchAdvisorLeaderboard(line, period, startDate, endDate),
@@ -91,8 +94,10 @@ export default function AdvisorDashboard() {
       setSlipping(sl.deals ?? [])
       setLeadSources(lv.by_source ?? [])
       setCloseSpeed(cs)
-    }).catch(console.error)
-      .finally(() => { if (!cancelled) setLoading(false) })
+    }).catch((err) => {
+      console.error(err)
+      if (!cancelled) setLoadError(true)
+    }).finally(() => { if (!cancelled) setLoading(false) })
     // Load targets in parallel (non-blocking)
     fetchTargets()
       .then((td) => {
@@ -112,10 +117,27 @@ export default function AdvisorDashboard() {
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [line, period, startDate, endDate])
+  }, [line, period, startDate, endDate, retryCount])
 
   if (loading) {
     return <div className="flex h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary/50" /></div>
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex h-[60vh] flex-col items-center justify-center gap-3 text-center">
+        <div className="rounded-full bg-destructive/10 p-4">
+          <Loader2 className="h-6 w-6 text-destructive" />
+        </div>
+        <p className="text-sm font-semibold text-foreground">Salesforce data unavailable</p>
+        <p className="text-[12px] text-muted-foreground">This may be a temporary issue. Please try again.</p>
+        <button
+          onClick={() => setRetryCount(c => c + 1)}
+          className="mt-1 rounded-lg bg-primary px-4 py-2 text-[12px] font-semibold text-primary-foreground hover:opacity-90">
+          Retry
+        </button>
+      </div>
+    )
   }
 
   // Use period-matched YoY from summary (apple-to-apple), not calendar YTD

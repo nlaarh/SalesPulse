@@ -505,3 +505,8 @@ export async function updateIssue(
   const { data } = await api.patch(`/api/issues/${number}`, { pin, ...opts })
   return data as { ok: boolean; state: string; status?: string; severity?: string; labels: string[] }
 }
+
+export async function flushCache() {
+  const { data } = await api.post('/api/admin/cache-reset')
+  return data as { ok: boolean; flushed_l1: number; flushed_l2: number; owner_map_size: number }
+}
