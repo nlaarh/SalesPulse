@@ -32,7 +32,7 @@ function renderSegments(text: string): ReactNode[] {
   const parts = text.split(/\*\*(.*?)\*\*/)
   return parts.map((part, i) =>
     i % 2 === 1
-      ? <strong key={i} className="font-bold text-white">{part}</strong>
+      ? <strong key={i} className="font-bold text-foreground">{part}</strong>
       : part
   )
 }

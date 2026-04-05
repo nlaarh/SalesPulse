@@ -8,7 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import {
   Bug, RefreshCw, Loader2, ChevronDown, ChevronUp, MessageSquare,
   CheckCircle2, Circle, ExternalLink, Lock, AlertTriangle, Info, Zap, Bot, Send,
-  Pencil, Plus, X, Calendar, Clock,
+  Pencil, Plus, X, Calendar,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
