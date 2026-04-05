@@ -1,3 +1,0 @@
-import{c as e,s as t}from"./utils-DlTqx1Il.js";e();var n=t();function r({text:e}){return e?(0,n.jsx)(`div`,{className:`space-y-3`,children:e.split(`
-
-`).map((e,t)=>(0,n.jsx)(`p`,{className:`text-[13px] leading-7 text-foreground/85`,children:i(e)},t))}):null}function i(e){return e.split(/\*\*(.*?)\*\*/).map((e,t)=>t%2==1?(0,n.jsx)(`strong`,{className:`font-bold text-white`,children:e},t):e)}export{r as t};

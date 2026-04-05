@@ -166,6 +166,7 @@ def advisor_leaderboard(
         )
 
         owner_map = get_owner_map()
+        advisors = []
 
         # Build lookup maps using OwnerId
         closed_map = {r['OwnerId']: r['cnt'] for r in data['closed']}
