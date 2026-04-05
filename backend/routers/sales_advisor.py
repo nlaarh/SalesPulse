@@ -291,7 +291,7 @@ def advisor_yoy(line: str = "Travel"):
         yoy_pct = round((current_total - prior_total) / prior_total * 100, 1) if prior_total > 0 else 0
 
         # Same-period (YTD) comparison: only months up to current month
-        current_month = date.today().month
+        current_month = today.month
         ytd_current = sum(m['current_revenue'] for m in months if m['month'] <= current_month)
         ytd_prior = sum(m['prior_revenue'] for m in months if m['month'] <= current_month)
         ytd_yoy_pct = round((ytd_current - ytd_prior) / ytd_prior * 100, 1) if ytd_prior > 0 else 0
