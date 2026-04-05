@@ -2,6 +2,10 @@
 # SalesPulse Azure Deployment Script — First-Time Setup
 # Usage: .azure/deploy.sh [app-name]
 #
+# Production URL: https://salespulse-nyaaa.azurewebsites.net/
+# GitHub Repo:    https://github.com/nlaarh/SalesPulse
+# CI/CD:          Push to main → GitHub Actions auto-deploy
+#
 # Prerequisites:
 #   - Azure CLI installed (brew install azure-cli)
 #   - Logged in (az login)

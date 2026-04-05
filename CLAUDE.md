@@ -22,6 +22,13 @@ Before implementing any feature, query, metric, or business logic:
 - Business logic is clarified by the user
 - A fix reveals a rule that should be documented (e.g., "Invoice stage = Travel only")
 
+## Deployment
+- **Production**: https://salespulse-nyaaa.azurewebsites.net/
+- **CI/CD**: GitHub Actions — push to `main` triggers deploy
+- **Repo**: https://github.com/nlaarh/SalesPulse
+- **Azure**: App Service `salespulse-nyaaa` in RG `rg-nlaaroubi-sbx-eus2-001` (East US 2)
+- **DB seeding**: On fresh deploy (empty users table), `init_db()` seeds all default users automatically. Existing DB is never touched.
+
 ## Tech Stack
 - **Backend**: FastAPI + Python 3 (port 8000)
 - **Frontend**: React 19 + Vite 6 + TypeScript + Tailwind CSS v4 + Recharts 2
