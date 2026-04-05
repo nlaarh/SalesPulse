@@ -143,3 +143,37 @@ def delete_user(user_id: int, request: Request, admin: User = Depends(require_ad
     log_activity(db, action='user_deleted', category='user_mgmt', user=admin, detail=f'Deleted {email}', ip=ip)
     log.info(f'User deleted: {email} by {admin.email}')
     return {'ok': True}
+
+
+# ── Emergency superadmin reset (ADMIN_PIN protected, no auth required) ────────
+
+class ResetAdminRequest(BaseModel):
+    pin: str
+
+@router.post('/api/admin/reset-admin')
+def reset_admin(body: ResetAdminRequest, db: Session = Depends(get_db)):
+    """Reset superadmin password to seed value. Protected by ADMIN_PIN env var."""
+    import os, bcrypt
+    from database import SEED_USERS
+
+    pin = os.getenv('ADMIN_PIN', '')
+    if not pin or body.pin != pin:
+        raise HTTPException(status_code=403, detail='Invalid PIN')
+
+    seed = next((s for s in SEED_USERS if s['role'] == 'superadmin'), None)
+    if not seed:
+        raise HTTPException(status_code=500, detail='No superadmin seed found')
+
+    user = db.query(User).filter(User.email == seed['email']).first()
+    hashed = bcrypt.hashpw(seed['password'].encode(), bcrypt.gensalt()).decode()
+    if user:
+        user.password_hash = hashed
+        user.is_active = True
+        user.role = 'superadmin'
+        log.info(f'Superadmin reset via PIN: {user.email}')
+    else:
+        db.add(User(email=seed['email'], name=seed['name'],
+                    password_hash=hashed, role='superadmin', is_active=True))
+        log.info(f'Superadmin created via PIN: {seed["email"]}')
+    db.commit()
+    return {'ok': True, 'email': seed['email']}

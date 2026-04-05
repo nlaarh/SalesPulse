@@ -55,34 +55,38 @@ SEED_USERS = [
 
 
 def init_db():
-    """Create tables (idempotent) + seed users if not exists."""
+    """Create tables (idempotent) + seed/upsert users."""
     from models import User
     import bcrypt
 
-    # checkfirst=True is default but we also guard with try/except for concurrent workers
     try:
         Base.metadata.create_all(bind=engine, checkfirst=True)
     except Exception as e:
-        # Harmless if another worker already created the tables
         log.warning(f'create_all warning (likely race with another worker): {e}')
     log.info(f'Database initialized at {DB_PATH}')
 
     db = SessionLocal()
     try:
-        if db.query(User).count() > 0:
-            log.info('Users table not empty — skipping seed.')
-            return
-
+        existing_count = db.query(User).count()
         for seed in SEED_USERS:
+            user = db.query(User).filter(User.email == seed['email']).first()
             hashed = bcrypt.hashpw(seed['password'].encode(), bcrypt.gensalt()).decode()
-            db.add(User(
-                email=seed['email'],
-                name=seed['name'],
-                password_hash=hashed,
-                role=seed['role'],
-                is_active=True,
-            ))
-            log.info(f'Seed user created: {seed["email"]} ({seed["role"]})')
+            if user is None:
+                db.add(User(
+                    email=seed['email'],
+                    name=seed['name'],
+                    password_hash=hashed,
+                    role=seed['role'],
+                    is_active=True,
+                ))
+                log.info(f'Seed user created: {seed["email"]} ({seed["role"]})')
+            else:
+                # Always sync superadmin credentials; sync others only on fresh DB
+                if seed['role'] == 'superadmin' or existing_count == 0:
+                    user.password_hash = hashed
+                    user.role = seed['role']
+                    user.is_active = True
+                    log.info(f'Seed user synced: {seed["email"]} ({seed["role"]})')
         db.commit()
     finally:
         db.close()
