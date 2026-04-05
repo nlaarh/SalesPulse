@@ -51,8 +51,11 @@ def _save(cfg: dict):
 
 
 def get_ai_config() -> dict:
-    """Returns the current config with the real API key (for internal use)."""
+    """Returns the current config. Always falls back to OPENAI_API_KEY env var if no key saved."""
     cfg = _load()
+    # If config file has no key, fall back to env var (Azure App Settings)
+    if not cfg.get('api_key'):
+        cfg['api_key'] = os.getenv('OPENAI_API_KEY', '')
     # Sync to env so existing code (sales_narrative.py etc.) picks it up
     if cfg.get('api_key'):
         os.environ['OPENAI_API_KEY'] = cfg['api_key']
@@ -76,13 +79,14 @@ class AIConfigUpdate(BaseModel):
 
 @router.get('/api/admin/ai-config')
 def read_config(admin: User = Depends(require_admin)):
-    cfg = _load()
+    cfg = get_ai_config()  # use get_ai_config so env fallback is applied
+    key = cfg.get('api_key', '')
     return {
         'provider':   cfg.get('provider', 'openai'),
         'model':      cfg.get('model', 'gpt-4o-mini'),
         'base_url':   cfg.get('base_url', ''),
-        'has_key':    bool(cfg.get('api_key')),
-        'key_preview': ('••••' + cfg['api_key'][-4:]) if cfg.get('api_key') else '',
+        'has_key':    bool(key),
+        'key_preview': ('••••' + key[-4:]) if key else '',
         'providers':  SUPPORTED_PROVIDERS,
     }
 

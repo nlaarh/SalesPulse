@@ -319,11 +319,11 @@ def narrative(
     # Check cache first
     cached = cache.get(key)
     if cached is not None:
-        return {"narrative": cached, "cached": True}
+        return {"narrative": cached, "cached": True, "ai_generated": True}
 
     # Generate fresh
     text = _generate(page, line, period, start_date=start_date, end_date=end_date)
     if text:
         cache.put(key, text, 3600)        # L1: 1 hour
         cache.disk_put(key, text, 43200)   # L2: 12 hours
-    return {"narrative": text, "cached": False}
+    return {"narrative": text, "cached": False, "ai_generated": text is not None}

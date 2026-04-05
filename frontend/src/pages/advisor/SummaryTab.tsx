@@ -70,13 +70,15 @@ export default function SummaryTab({
 }: SummaryTabProps) {
   const { line: ctxLine, period, startDate, endDate } = useSales()
   const [aiNarrative, setAiNarrative] = useState<string | null>(null)
+  const [aiGenerated, setAiGenerated] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
 
   useEffect(() => {
     setAiLoading(true)
     setAiNarrative(null)
+    setAiGenerated(false)
     fetchNarrative('advisor', ctxLine, period, startDate, endDate)
-      .then(r => { if (r.narrative) setAiNarrative(r.narrative) })
+      .then(r => { if (r.narrative) { setAiNarrative(r.narrative); setAiGenerated(true) } })
       .catch(() => {})
       .finally(() => setAiLoading(false))
   }, [ctxLine, period, startDate, endDate])
@@ -192,7 +194,7 @@ export default function SummaryTab({
             </div>
           )}
         </div>
-        <RichNarrative text={aiNarrative ?? narrative} />
+        <RichNarrative text={aiNarrative ?? narrative} aiGenerated={aiGenerated} />
         {aiLoading && <p className="text-[10px] text-primary/50 animate-pulse mt-1">AI analyzing...</p>}
       </div>
 

@@ -16,7 +16,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       const saved = localStorage.getItem('si-theme')
       if (saved === 'dark' || saved === 'light') return saved
     }
-    return 'light'
+    return 'dark'
   })
 
   useEffect(() => {

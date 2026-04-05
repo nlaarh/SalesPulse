@@ -4,31 +4,31 @@
 /* ═══ Dual Theme Variables ═══ */
 
 :root {
-  /* ── Light Mode (default) ── */
-  --si-bg: #F8FAFC;
+  /* ── Light Mode — improved readability ── */
+  --si-bg: #EEF2F7;
   --si-fg: #0F172A;
-  --si-card: #FFFFFF;
+  --si-card: #F8FAFC;
   --si-card-fg: #0F172A;
-  --si-popover: #FFFFFF;
+  --si-popover: #F8FAFC;
   --si-popover-fg: #0F172A;
   --si-primary: #F97316;
   --si-primary-fg: #FFFFFF;
   --si-primary-soft: rgba(249, 115, 22, 0.08);
-  --si-secondary: #F1F5F9;
-  --si-secondary-fg: #334155;
-  --si-muted: #F1F5F9;
-  --si-muted-fg: #64748B;
+  --si-secondary: #E2E8F0;
+  --si-secondary-fg: #1E293B;
+  --si-muted: #E2E8F0;
+  --si-muted-fg: #475569;
   --si-accent: #F97316;
   --si-accent-fg: #FFFFFF;
   --si-destructive: #EF4444;
   --si-destructive-fg: #FFFFFF;
-  --si-border: #E2E8F0;
-  --si-input: #E2E8F0;
+  --si-border: #CBD5E1;
+  --si-input: #CBD5E1;
   --si-ring: #F97316;
-  --si-sidebar: #FFFFFF;
-  --si-sidebar-border: #E2E8F0;
-  --si-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --si-card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --si-sidebar: #E8EEF6;
+  --si-sidebar-border: #CBD5E1;
+  --si-card-shadow: 0 1px 4px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --si-card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.06);
   --si-success: #16A34A;
   --si-warning: #D97706;
   --si-chart-1: #F97316;
@@ -37,10 +37,10 @@
   --si-chart-4: #DB2777;
   --si-chart-5: #7C3AED;
   --si-chart-6: #0891B2;
-  --si-grid: rgba(0, 0, 0, 0.04);
-  --si-tick: #94A3B8;
-  --si-tooltip-bg: #FFFFFF;
-  --si-tooltip-border: #E2E8F0;
+  --si-grid: rgba(0, 0, 0, 0.06);
+  --si-tick: #64748B;
+  --si-tooltip-bg: #F8FAFC;
+  --si-tooltip-border: #CBD5E1;
   color-scheme: light;
 }
 

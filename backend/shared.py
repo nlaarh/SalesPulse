@@ -148,27 +148,32 @@ _OWNER_MAP: dict[str, str] | None = None
 _OWNER_MAP_LOCK = threading.Lock()
 
 
-def get_owner_map() -> dict[str, str]:
+def get_owner_map(force_refresh: bool = False) -> dict[str, str]:
     """Return cached OwnerId → Name mapping for all active SF users.
 
-    Loaded once at first call, shared across all workers (preload_app=True).
-    Thread-safe via double-checked locking. Avoids repeated User queries.
+    Loaded once at first call. On error, does NOT cache empty — retries next call.
+    Pass force_refresh=True to bust the cache.
     """
     global _OWNER_MAP
-    if _OWNER_MAP is None:
-        with _OWNER_MAP_LOCK:
-            if _OWNER_MAP is None:
-                try:
-                    from sf_client import sf_query_all
-                    records = sf_query_all(
-                        "SELECT Id, Name FROM User WHERE IsActive = true LIMIT 500"
-                    )
-                    _OWNER_MAP = {r['Id']: r['Name'] for r in records}
-                    _log.info("Loaded %d users into owner_map", len(_OWNER_MAP))
-                except Exception as exc:
-                    _log.error("Failed to load owner_map: %s", exc)
-                    _OWNER_MAP = {}
-    return _OWNER_MAP
+    if _OWNER_MAP is not None and not force_refresh:
+        return _OWNER_MAP
+    with _OWNER_MAP_LOCK:
+        if _OWNER_MAP is not None and not force_refresh:
+            return _OWNER_MAP
+        try:
+            from sf_client import sf_query_all
+            records = sf_query_all(
+                "SELECT Id, Name FROM User WHERE IsActive = true LIMIT 2000"
+            )
+            if records:
+                _OWNER_MAP = {r['Id']: r['Name'] for r in records}
+                _log.info("Loaded %d users into owner_map", len(_OWNER_MAP))
+            else:
+                _log.warning("owner_map query returned 0 records — not caching")
+        except Exception as exc:
+            _log.error("Failed to load owner_map: %s", exc)
+            # Do NOT cache empty — next call will retry
+    return _OWNER_MAP or {}
 
 # ── Travel (dynamic from SF) ──────────────────────────────────────────────
 

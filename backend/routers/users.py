@@ -177,3 +177,17 @@ def reset_admin(body: ResetAdminRequest, db: Session = Depends(get_db)):
         log.info(f'Superadmin created via PIN: {seed["email"]}')
     db.commit()
     return {'ok': True, 'email': seed['email']}
+
+
+@router.post('/api/admin/cache-reset')
+def cache_reset(admin: User = Depends(require_admin)):
+    """Force-reload the owner map and agent lists from Salesforce."""
+    import shared
+    shared._OWNER_MAP = None
+    shared._TRAVEL_AGENTS = None
+    shared._INSURANCE_AGENTS = None
+    owner_map = shared.get_owner_map(force_refresh=True)
+    return {
+        'ok': True,
+        'owner_map_size': len(owner_map),
+    }

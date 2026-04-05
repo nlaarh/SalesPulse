@@ -254,7 +254,7 @@ export async function fetchNarrative(
     params: withDates({ page, line, period }, startDate, endDate),
     timeout: 30000,
   })
-  return data as { narrative: string | null; cached: boolean }
+  return data as { narrative: string | null; cached: boolean; ai_generated: boolean }
 }
 
 // ── Activity Logs ─────────────────────────────────────────────────────────
