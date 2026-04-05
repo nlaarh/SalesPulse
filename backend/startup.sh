@@ -31,12 +31,7 @@ import main; print(f'  main.py OK - app={main.app}')
 print('All imports passed.')
 " 2>&1
 
-echo "Starting gunicorn on port $PORT..."
+echo "Starting gunicorn..."
 exec gunicorn main:app \
-    --workers 3 \
-    --worker-class uvicorn.workers.UvicornWorker \
-    --bind "0.0.0.0:$PORT" \
-    --timeout 120 \
-    --preload \
-    --access-logfile - \
-    --error-logfile -
+    --config gunicorn_conf.py \
+    --bind "0.0.0.0:$PORT"

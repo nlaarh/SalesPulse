@@ -3,22 +3,22 @@
 import logging
 from datetime import date
 from typing import Optional
+from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Query
 from sf_client import sf_query_all, sf_parallel
 import cache
-from shared import WON_STAGES, resolve_dates as _resolve_dates
+from shared import WON_STAGES, resolve_dates as _resolve_dates, OPP_RT_TRAVEL_ID
 
 router = APIRouter()
 log = logging.getLogger('sales.travel')
 
 
 def _prev_dates(sd: str, ed: str):
-    """Compute prior-period comparison dates (same length, shifted back)."""
-    from dateutil.relativedelta import relativedelta
+    """Compute prior-period comparison dates (same duration, shifted back)."""
     start = date.fromisoformat(sd)
-    end = date.fromisoformat(ed)
+    end   = date.fromisoformat(ed)
     delta = relativedelta(end, start)
-    prev_end = start - relativedelta(days=1)
+    prev_end   = start - relativedelta(days=1)
     prev_start = prev_end - delta
     return prev_start.isoformat(), prev_end.isoformat()
 
@@ -39,7 +39,7 @@ def travel_destinations(
             current=f"""
                 SELECT Destination_Region__c dest, COUNT(Id) cnt, SUM(Amount) rev
                 FROM Opportunity
-                WHERE RecordType.Name = 'Travel' AND {WON_STAGES}
+                WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}' AND {WON_STAGES}
                   AND CloseDate >= {sd} AND CloseDate <= {ed}
                   AND Destination_Region__c != null AND Amount != null
                 GROUP BY Destination_Region__c
@@ -48,7 +48,7 @@ def travel_destinations(
             previous=f"""
                 SELECT Destination_Region__c dest, COUNT(Id) cnt, SUM(Amount) rev
                 FROM Opportunity
-                WHERE RecordType.Name = 'Travel' AND {WON_STAGES}
+                WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}' AND {WON_STAGES}
                   AND CloseDate >= {psd} AND CloseDate <= {ped}
                   AND Destination_Region__c != null AND Amount != null
                 GROUP BY Destination_Region__c
@@ -95,7 +95,7 @@ def travel_seasonal(
             SELECT CALENDAR_YEAR(CloseDate) yr, CALENDAR_MONTH(CloseDate) mo,
                    Destination_Region__c dest, COUNT(Id) cnt, SUM(Amount) rev
             FROM Opportunity
-            WHERE RecordType.Name = 'Travel' AND {WON_STAGES}
+            WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}' AND {WON_STAGES}
               AND CloseDate >= {sd} AND CloseDate <= {ed}
               AND Destination_Region__c != null AND Amount != null
             GROUP BY CALENDAR_YEAR(CloseDate), CALENDAR_MONTH(CloseDate), Destination_Region__c
@@ -129,7 +129,7 @@ def travel_party_size(
         records = sf_query_all(f"""
             SELECT Number_Traveling__c size, COUNT(Id) cnt, SUM(Amount) rev, AVG(Amount) avg_rev
             FROM Opportunity
-            WHERE RecordType.Name = 'Travel' AND {WON_STAGES}
+            WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}' AND {WON_STAGES}
               AND CloseDate >= {sd} AND CloseDate <= {ed}
               AND Number_Traveling__c != null AND Amount != null
             GROUP BY Number_Traveling__c
@@ -164,7 +164,7 @@ def destination_trend(
             SELECT CALENDAR_YEAR(CloseDate) yr, CALENDAR_MONTH(CloseDate) mo,
                    COUNT(Id) cnt, SUM(Amount) rev
             FROM Opportunity
-            WHERE RecordType.Name = 'Travel' AND {WON_STAGES}
+            WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}' AND {WON_STAGES}
               AND Destination_Region__c = '{dest}'
               AND CloseDate >= {sd} AND CloseDate <= {ed}
               AND Amount != null

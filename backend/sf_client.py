@@ -64,7 +64,9 @@ def _base():
 
 _rate_lock = threading.Lock()
 _call_times = []
-_RATE_LIMIT = 60
+# 20 calls/min per worker — 3 workers × 20 = 60 total, matching SF org limit.
+# Prevents one worker from consuming the full quota and starving others.
+_RATE_LIMIT = 20
 _RATE_WINDOW = 60
 
 

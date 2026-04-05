@@ -4,7 +4,7 @@ GET /api/sales/narrative?page=advisor&line=Travel&period=12[&start_date=...&end_
 Returns { "narrative": "AI text with **bold** markers", "cached": true/false }
 """
 
-import os, logging, time
+import os, logging, time, threading
 from typing import Optional
 from fastapi import APIRouter, Query
 import cache
@@ -16,25 +16,28 @@ log = logging.getLogger('sales.narrative')
 VALID_PAGES = {'advisor', 'pipeline', 'top-opps', 'travel', 'monthly'}
 
 
-# ── OpenAI client (lazy init) ────────────────────────────────────────────────
+# ── OpenAI client (lazy init, thread-safe) ───────────────────────────────────
 
 _client = None
+_client_lock = threading.Lock()
 
 
 def _get_client():
     global _client
     if _client is not None:
         return _client
-    api_key = os.getenv('OPENAI_API_KEY')
-    if not api_key:
-        return None
-    try:
-        from openai import OpenAI
-        _client = OpenAI(api_key=api_key)
-        return _client
-    except Exception as e:
-        log.warning(f"OpenAI init failed: {e}")
-        return None
+    with _client_lock:
+        if _client is not None:   # double-check after acquiring lock
+            return _client
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            return None
+        try:
+            from openai import OpenAI
+            _client = OpenAI(api_key=api_key)
+        except Exception as e:
+            log.warning(f"OpenAI init failed: {e}")
+    return _client
 
 
 # ── System prompts per page ───────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 
 import os, logging
 from pathlib import Path
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 log = logging.getLogger('salesinsight.db')
@@ -11,7 +11,25 @@ DB_DIR = Path.home() / '.salesinsight'
 DB_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DB_DIR / 'salesinsight.db'
 
-engine = create_engine(f'sqlite:///{DB_PATH}', connect_args={'check_same_thread': False})
+engine = create_engine(
+    f'sqlite:///{DB_PATH}',
+    connect_args={'check_same_thread': False},
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
+)
+
+@event.listens_for(engine, 'connect')
+def _set_sqlite_pragmas(dbapi_conn, _):
+    """WAL mode + performance pragmas. Called once per new connection."""
+    cur = dbapi_conn.cursor()
+    cur.execute('PRAGMA journal_mode=WAL')       # concurrent readers + one writer
+    cur.execute('PRAGMA synchronous=NORMAL')      # safe + faster than FULL
+    cur.execute('PRAGMA cache_size=-65536')       # 64 MB page cache
+    cur.execute('PRAGMA temp_store=MEMORY')       # temp tables in RAM
+    cur.execute('PRAGMA mmap_size=268435456')     # 256 MB memory-mapped I/O
+    cur.close()
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 class Base(DeclarativeBase):
