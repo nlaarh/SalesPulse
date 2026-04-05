@@ -455,6 +455,7 @@ export interface GithubIssue {
   reporter?: string
   reporter_email?: string
   severity?: string
+  status?: string
   page?: string
   triage_verdict?: string
   comments: number
@@ -493,7 +494,14 @@ export async function addIssueComment(number: number, comment: string, name: str
   return data as { status: string }
 }
 
-export async function updateIssue(number: number, status: 'close' | 'reopen', pin: string) {
-  const { data } = await api.patch(`/api/issues/${number}`, { status, pin })
-  return data as { status: string }
+export type IssueStatus = 'backlog' | 'acknowledged' | 'investigating' | 'in-progress' | 'released' | 'closed' | 'cancelled'
+export type IssueSeverity = 'low' | 'medium' | 'high'
+
+export async function updateIssue(
+  number: number,
+  pin: string,
+  opts: { status?: IssueStatus; severity?: IssueSeverity }
+) {
+  const { data } = await api.patch(`/api/issues/${number}`, { pin, ...opts })
+  return data as { ok: boolean; state: string; status?: string; severity?: string; labels: string[] }
 }

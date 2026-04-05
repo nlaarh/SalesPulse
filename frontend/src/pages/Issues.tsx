@@ -1,21 +1,21 @@
 /**
  * Issues — Admin bug tracker page.
  * Lists GitHub Issues created via the in-app Report-a-Bug modal.
- * Features: view body + comments, add comment, change status (PIN-protected), AI triage.
+ * Features: view body + comments, add comment, status dropdown, severity dropdown (PIN-protected), AI triage.
  */
 
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   Bug, RefreshCw, Loader2, ChevronDown, ChevronUp, MessageSquare,
-  CheckCircle2, Circle, ExternalLink, Lock, AlertTriangle, Info, Zap,
+  CheckCircle2, Circle, ExternalLink, Lock, AlertTriangle, Info, Zap, Bot, Send,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   fetchIssues, fetchIssue, addIssueComment, updateIssue,
 } from '@/lib/api'
-import type { GithubIssue, IssueComment } from '@/lib/api'
+import type { GithubIssue, IssueComment, IssueStatus, IssueSeverity } from '@/lib/api'
 
-/* ── Helpers ────────────────────────────────────────────────────────────── */
+/* ── Constants ─────────────────────────────────────────────────────────── */
 
 const SEVERITY_MAP: Record<string, { label: string; cls: string }> = {
   high:   { label: 'High',   cls: 'bg-rose-500/20 text-rose-500 border-rose-500/30' },
@@ -23,15 +23,29 @@ const SEVERITY_MAP: Record<string, { label: string; cls: string }> = {
   low:    { label: 'Low',    cls: 'bg-emerald-500/20 text-emerald-500 border-emerald-500/30' },
 }
 
+const STATUS_OPTIONS: { value: IssueStatus; label: string; cls: string }[] = [
+  { value: 'backlog',      label: 'Backlog',       cls: 'text-slate-400' },
+  { value: 'acknowledged', label: 'Acknowledged',  cls: 'text-blue-400' },
+  { value: 'investigating',label: 'Investigating',  cls: 'text-violet-400' },
+  { value: 'in-progress',  label: 'In Progress',   cls: 'text-amber-400' },
+  { value: 'released',     label: 'Released / Fixed', cls: 'text-emerald-400' },
+  { value: 'closed',       label: 'Closed',        cls: 'text-slate-400' },
+  { value: 'cancelled',    label: 'Won\'t Fix',    cls: 'text-rose-400' },
+]
+
 const VERDICT_MAP: Record<string, { label: string; icon: React.ReactElement; cls: string }> = {
   bug:     { label: 'Confirmed Bug', icon: <AlertTriangle className="h-3 w-3" />, cls: 'text-rose-500' },
   not_bug: { label: 'Not a Bug',     icon: <CheckCircle2 className="h-3 w-3" />,  cls: 'text-emerald-500' },
   unclear: { label: 'Needs Clarity', icon: <Info className="h-3 w-3" />,           cls: 'text-amber-500' },
 }
 
-function getSeverity(issue: GithubIssue) {
-  const sev = issue.severity || issue.labels.find(l => ['high','medium','low'].includes(l))
-  return sev && SEVERITY_MAP[sev] ? SEVERITY_MAP[sev] : SEVERITY_MAP['medium']
+function getSeverityKey(issue: GithubIssue): string {
+  return issue.severity || issue.labels.find(l => ['high','medium','low'].includes(l)) || 'medium'
+}
+
+function getStatusKey(issue: GithubIssue): IssueStatus {
+  const s = issue.status || issue.labels.find(l => l.startsWith('status:'))?.split(':')[1]
+  return (s as IssueStatus) || 'backlog'
 }
 
 function timeAgo(iso: string) {
@@ -40,6 +54,16 @@ function timeAgo(iso: string) {
   if (d < 3600) return `${Math.floor(d / 60)}m ago`
   if (d < 86400) return `${Math.floor(d / 3600)}h ago`
   return `${Math.floor(d / 86400)}d ago`
+}
+
+/** Detect if a comment was posted by SalesPulse Bot */
+function isBotComment(c: IssueComment) {
+  return c.user === 'github-actions[bot]'
+    || c.user.toLowerCase().includes('bot')
+    || c.body.startsWith('## 🤖 SalesPulse Bot')
+    || c.body.includes('— **SalesPulse Bot**')
+    || c.body.includes('— SalesPulse Bot')
+    || c.body.includes('— SalesPulse AI Bot')
 }
 
 /* ── Issue Row (expandable) ─────────────────────────────────────────────── */
@@ -56,12 +80,14 @@ function IssueRow({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => v
   const [pin, setPin] = useState('')
   const [pinError, setPinError] = useState('')
   const [statusLoading, setStatusLoading] = useState(false)
+  const [localSeverity, setLocalSeverity] = useState<string>(getSeverityKey(issue))
+  const [localStatus, setLocalStatus]     = useState<IssueStatus>(getStatusKey(issue))
 
-  const sev = getSeverity(issue)
+  const sev = SEVERITY_MAP[localSeverity] ?? SEVERITY_MAP['medium']
   const verdict = issue.triage_verdict ? VERDICT_MAP[issue.triage_verdict] : null
 
-  const loadDetail = useCallback(async () => {
-    if (detail) return
+  const loadDetail = useCallback(async (force = false) => {
+    if (detail && !force) return
     setLoading(true)
     try {
       const d = await fetchIssue(issue.number)
@@ -84,8 +110,7 @@ function IssueRow({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => v
     try {
       await addIssueComment(issue.number, comment.trim(), commenterName.trim() || 'Admin')
       setComment('')
-      const d = await fetchIssue(issue.number)
-      setDetail({ body: d.issue.body, comments: d.comments })
+      await loadDetail(true)
     } catch {
       /* ignore */
     } finally {
@@ -93,16 +118,23 @@ function IssueRow({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => v
     }
   }
 
-  const handleStatus = async (action: 'close' | 'reopen') => {
+  const handleUpdate = async (opts: { status?: IssueStatus; severity?: IssueSeverity }) => {
     if (!pin.trim()) { setPinError('PIN required'); return }
     setStatusLoading(true)
     setPinError('')
     try {
-      await updateIssue(issue.number, action, pin.trim())
-      onRefresh()
+      const res = await updateIssue(issue.number, pin.trim(), opts)
+      if (opts.severity) setLocalSeverity(opts.severity)
+      if (opts.status)   setLocalStatus(opts.status)
+      // Reload comments if a bot fix comment was posted
+      if (opts.status === 'released' || opts.status === 'closed') {
+        setTimeout(() => loadDetail(true), 1500)
+        onRefresh()
+      }
+      return res
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error'
-      setPinError(msg.includes('401') ? 'Invalid PIN' : 'Failed')
+      setPinError(msg.includes('403') || msg.includes('401') ? 'Invalid PIN' : 'Update failed')
     } finally {
       setStatusLoading(false)
     }
@@ -138,9 +170,17 @@ function IssueRow({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => v
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {/* Severity badge */}
             <span className={cn('rounded border px-2 py-0.5 text-[10px] font-semibold', sev.cls)}>
               {sev.label}
             </span>
+            {/* Status badge */}
+            {(() => {
+              const s = STATUS_OPTIONS.find(o => o.value === localStatus)
+              return s ? (
+                <span className={cn('text-[10px] font-semibold', s.cls)}>{s.label}</span>
+              ) : null
+            })()}
             {verdict && (
               <span className={cn('flex items-center gap-1 text-[10px] font-semibold', verdict.cls)}>
                 {verdict.icon}{verdict.label}
@@ -173,17 +213,41 @@ function IssueRow({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => v
               {detail.comments.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50">
-                    Comments
+                    Comments ({detail.comments.length})
                   </p>
-                  {detail.comments.map(c => (
-                    <div key={c.id} className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
-                      <div className="mb-1 flex items-center justify-between">
-                        <span className="text-[10px] font-semibold text-foreground">{c.user}</span>
-                        <span className="text-[10px] text-muted-foreground">{timeAgo(c.created_at)}</span>
+                  {detail.comments.map(c => {
+                    const isBot = isBotComment(c)
+                    return (
+                      <div key={c.id} className={cn(
+                        'rounded-lg border px-3 py-2.5',
+                        isBot
+                          ? 'border-violet-500/20 bg-violet-500/5'
+                          : 'border-border bg-muted/20',
+                      )}>
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            {isBot && <Bot className="h-3.5 w-3.5 text-violet-400" />}
+                            <span className={cn(
+                              'text-[10px] font-bold',
+                              isBot ? 'text-violet-400' : 'text-foreground',
+                            )}>
+                              {isBot ? '🤖 SalesPulse Bot' : c.user}
+                            </span>
+                            {isBot && (
+                              <span className="rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-violet-400 border border-violet-500/20">
+                                BOT
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-muted-foreground">{timeAgo(c.created_at)}</span>
+                        </div>
+                        <p className="text-xs text-foreground/80 whitespace-pre-wrap leading-relaxed">
+                          {/* Strip the ## 🤖 SalesPulse Bot header line for cleaner display */}
+                          {c.body.replace(/^##\s*🤖\s*SalesPulse Bot\s*\n+/, '')}
+                        </p>
                       </div>
-                      <p className="text-xs text-foreground/80 whitespace-pre-wrap">{c.body}</p>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 
@@ -198,44 +262,80 @@ function IssueRow({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => v
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40" />
                 <textarea value={comment} onChange={e => setComment(e.target.value)}
                   placeholder="Write a comment…" rows={3}
+                  onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleComment() }}
                   className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40" />
                 <button onClick={handleComment} disabled={submitting || !comment.trim()}
                   className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50">
-                  {submitting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                  {submitting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                   Post Comment
                 </button>
               </div>
 
-              {/* Status control */}
-              <div className="space-y-2 border-t border-border pt-3">
+              {/* Admin Actions */}
+              <div className="space-y-3 border-t border-border pt-3">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50">
                   Admin Actions
                 </p>
+
+                {/* PIN field */}
                 <div className="flex items-center gap-2">
                   <div className="relative">
                     <Lock className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
                     <input type="password" value={pin} onChange={e => { setPin(e.target.value); setPinError('') }}
-                      placeholder="PIN"
-                      className="w-24 rounded-lg border border-border bg-background pl-7 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40" />
+                      placeholder="Admin PIN"
+                      className="w-28 rounded-lg border border-border bg-background pl-7 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40" />
                   </div>
-                  {issue.state === 'open' ? (
-                    <button onClick={() => handleStatus('close')} disabled={statusLoading}
-                      className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-500 hover:bg-emerald-500/20 disabled:opacity-50">
-                      {statusLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
-                      Close Issue
-                    </button>
-                  ) : (
-                    <button onClick={() => handleStatus('reopen')} disabled={statusLoading}
-                      className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-50">
-                      {statusLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Circle className="h-3 w-3" />}
-                      Reopen
-                    </button>
-                  )}
                   <a href={issue.html_url} target="_blank" rel="noreferrer"
                     className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground">
                     GitHub <ExternalLink className="h-3 w-3" />
                   </a>
                 </div>
+
+                {/* Status + Severity dropdowns */}
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Status */}
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium">Status</p>
+                    <div className="flex gap-1.5">
+                      <select
+                        value={localStatus}
+                        onChange={e => setLocalStatus(e.target.value as IssueStatus)}
+                        className="flex-1 rounded-lg border border-border bg-background px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40">
+                        {STATUS_OPTIONS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => handleUpdate({ status: localStatus })}
+                        disabled={statusLoading}
+                        className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs font-semibold transition hover:bg-secondary/80 disabled:opacity-50">
+                        {statusLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Apply'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Severity */}
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium">Severity</p>
+                    <div className="flex gap-1.5">
+                      <select
+                        value={localSeverity}
+                        onChange={e => setLocalSeverity(e.target.value)}
+                        className="flex-1 rounded-lg border border-border bg-background px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40">
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                      </select>
+                      <button
+                        onClick={() => handleUpdate({ severity: localSeverity as IssueSeverity })}
+                        disabled={statusLoading}
+                        className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs font-semibold transition hover:bg-secondary/80 disabled:opacity-50">
+                        {statusLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Apply'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 {pinError && <p className="text-[10px] text-rose-500">{pinError}</p>}
               </div>
             </>
