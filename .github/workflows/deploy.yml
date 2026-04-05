@@ -1,0 +1,103 @@
+name: Deploy to Azure App Service
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: salespulse-nyaaa
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.13'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Build React frontend
+      working-directory: frontend
+      run: |
+        npm ci
+        npm run build
+
+    - name: Copy frontend build to backend/static
+      run: |
+        rm -rf backend/static
+        cp -r frontend/dist backend/static
+
+    - name: Create deployment package
+      working-directory: backend
+      run: |
+        # Package Python source + static assets
+        # Azure Oryx installs requirements.txt server-side
+        zip -r ../deploy.zip \
+          *.py \
+          routers/ \
+          startup.sh \
+          requirements.txt \
+          static/
+        echo "Package size: $(du -h ../deploy.zip | cut -f1)"
+        echo "Python files:"
+        unzip -l ../deploy.zip | grep "\.py$" | awk '{print $4}'
+
+    - name: Deploy to Azure via Kudu ZIP Deploy
+      env:
+        DEPLOY_USER: ${{ secrets.AZURE_DEPLOY_USER }}
+        DEPLOY_PASS: ${{ secrets.AZURE_DEPLOY_PASS }}
+      run: |
+        echo "Deploying to ${{ env.AZURE_WEBAPP_NAME }}..."
+
+        # Write temp netrc for auth
+        echo "machine ${{ env.AZURE_WEBAPP_NAME }}.scm.azurewebsites.net" > /tmp/.netrc
+        echo "login ${DEPLOY_USER}" >> /tmp/.netrc
+        echo "password ${DEPLOY_PASS}" >> /tmp/.netrc
+        chmod 600 /tmp/.netrc
+
+        RESPONSE=$(curl -s -w "\n%{http_code}" \
+          -X POST \
+          "https://${{ env.AZURE_WEBAPP_NAME }}.scm.azurewebsites.net/api/zipdeploy?isAsync=true" \
+          --netrc-file /tmp/.netrc \
+          --data-binary @deploy.zip \
+          -H "Content-Type: application/octet-stream" \
+          --max-time 300)
+
+        rm -f /tmp/.netrc
+
+        HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+        BODY=$(echo "$RESPONSE" | sed '$d')
+
+        echo "HTTP Status: $HTTP_CODE"
+        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+          echo "Deployment accepted — Oryx will build on server."
+        else
+          echo "Deployment FAILED"
+          echo "$BODY"
+          exit 1
+        fi
+
+    - name: Wait for Oryx build + verify health
+      run: |
+        echo "Waiting 180s for Oryx build and app startup..."
+        sleep 180
+
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+          --max-time 15 \
+          "https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/api/health")
+
+        echo "Health check: HTTP $STATUS"
+        if [ "$STATUS" = "200" ] || [ "$STATUS" = "401" ] || [ "$STATUS" = "302" ]; then
+          echo "App is live at https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+        else
+          echo "Warning: app returned $STATUS — Oryx build may still be running"
+        fi

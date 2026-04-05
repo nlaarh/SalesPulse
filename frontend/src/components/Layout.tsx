@@ -169,8 +169,8 @@ export default function Layout() {
   const { user, logout, isAdmin } = useAuth()
 
   // Role-based line lock
-  const lineLocked = user?.role === 'travel_manager' || user?.role === 'insurance_manager'
-  const effectiveLine = user?.role === 'travel_manager' ? 'Travel'
+  const lineLocked = user?.role === 'travel_manager' || user?.role === 'travel_director' || user?.role === 'insurance_manager'
+  const effectiveLine = (user?.role === 'travel_manager' || user?.role === 'travel_director') ? 'Travel'
     : user?.role === 'insurance_manager' ? 'Insurance'
     : line
   const [showCustom, setShowCustom] = useState(false)
@@ -179,7 +179,7 @@ export default function Layout() {
 
   // Force line for role-locked users
   useEffect(() => {
-    if (user?.role === 'travel_manager' && line !== 'Travel') setLine('Travel')
+    if ((user?.role === 'travel_manager' || user?.role === 'travel_director') && line !== 'Travel') setLine('Travel')
     if (user?.role === 'insurance_manager' && line !== 'Insurance') setLine('Insurance')
   }, [user?.role, line, setLine])
 

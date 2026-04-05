@@ -18,6 +18,7 @@ const ROLES: { value: UserRole; label: string; icon: typeof Shield; desc: string
   { value: 'admin', label: 'Admin', icon: Shield, desc: 'Full access + settings' },
   { value: 'officer', label: 'Officer', icon: Eye, desc: 'All data, no settings' },
   { value: 'travel_manager', label: 'Travel Manager', icon: Plane, desc: 'Travel data only' },
+  { value: 'travel_director', label: 'Travel Director', icon: Plane, desc: 'Travel data only (director)' },
   { value: 'insurance_manager', label: 'Insurance Manager', icon: Umbrella, desc: 'Insurance data only' },
 ]
 
@@ -27,6 +28,7 @@ function getRoleColor(role: string) {
     case 'admin': return 'text-primary bg-primary/10'
     case 'officer': return 'text-blue-400 bg-blue-400/10'
     case 'travel_manager': return 'text-sky-400 bg-sky-400/10'
+    case 'travel_director': return 'text-sky-500 bg-sky-500/10'
     case 'insurance_manager': return 'text-emerald-400 bg-emerald-400/10'
     default: return 'text-muted-foreground bg-muted'
   }

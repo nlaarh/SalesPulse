@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Index
 from database import Base
 
-VALID_ROLES = ('superadmin', 'admin', 'officer', 'travel_manager', 'insurance_manager')
+VALID_ROLES = ('superadmin', 'admin', 'officer', 'travel_manager', 'travel_director', 'insurance_manager')
 
 class User(Base):
     __tablename__ = 'users'

@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
 import axios from 'axios'
 
-export type UserRole = 'superadmin' | 'admin' | 'officer' | 'travel_manager' | 'insurance_manager'
+export type UserRole = 'superadmin' | 'admin' | 'officer' | 'travel_manager' | 'travel_director' | 'insurance_manager'
 
 export interface AppUser {
   id: number

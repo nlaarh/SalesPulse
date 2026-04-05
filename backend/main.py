@@ -18,7 +18,12 @@ app = FastAPI(title="SalesInsight", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "https://salespulse-nyaaa.azurewebsites.net",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,7 +36,7 @@ init_db()
 
 # ── Register routers ─────────────────────────────────────────────────────────
 
-from routers import sales_advisor, sales_pipeline, sales_travel, sales_leads, sales_performance, sales_opportunities, sales_agent_profile, sales_narrative, users, activity_logs, advisor_targets, advisor_targets_monthly
+from routers import sales_advisor, sales_pipeline, sales_travel, sales_leads, sales_performance, sales_opportunities, sales_agent_profile, sales_narrative, agent_brief, users, activity_logs, advisor_targets, advisor_targets_monthly
 
 app.include_router(sales_advisor.router)
 app.include_router(sales_pipeline.router)
@@ -41,6 +46,7 @@ app.include_router(sales_performance.router)
 app.include_router(sales_opportunities.router)
 app.include_router(sales_agent_profile.router)
 app.include_router(sales_narrative.router)
+app.include_router(agent_brief.router)
 app.include_router(users.router)
 app.include_router(activity_logs.router)
 app.include_router(advisor_targets.router)
