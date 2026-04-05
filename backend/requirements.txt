@@ -8,6 +8,9 @@ pydantic==2.10.3
 PyJWT==2.10.1
 bcrypt==4.2.1
 sqlalchemy==2.0.36
+python-dateutil==2.9.0
+openai==1.58.1
+openpyxl==3.1.5
 
 # Test
 pytest>=8
