@@ -2,13 +2,14 @@ import { useChartColors, tooltipStyle } from '@/lib/chart-theme'
 import { formatCurrency, cn } from '@/lib/utils'
 import { Tip, TIPS } from '@/components/MetricTip'
 import type { AgentMonthData } from '@/lib/types'
-import { BarChart3 } from 'lucide-react'
+import { BarChart3, Download } from 'lucide-react'
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar,
   PieChart, Pie, Cell, ReferenceLine,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts'
 import type { AgentProfile } from '../AgentDashboard'
+import { exportToExcel } from '@/lib/exportExcel'
 
 /* ── Props ──────────────────────────────────────────────────────────────── */
 
@@ -289,6 +290,24 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
         <div className="mb-3 flex items-center gap-2">
           <BarChart3 className="h-4 w-4 text-muted-foreground/60" />
           <h3 className="text-sm font-semibold">Monthly Breakdown</h3>
+          <button
+            onClick={() => {
+              const months = profile.months.filter(m => m.month <= currentMonth || m.prior_commission > 0)
+              const rows = months.map((m: AgentMonthData) => ({
+                Month: m.label,
+                [`${profile.current_year} Commission`]: m.commission,
+                [`${profile.prior_year} Commission`]: m.prior_commission,
+                ...(profile.has_separate_bookings ? {
+                  [`${profile.current_year} Bookings`]: m.revenue,
+                  [`${profile.prior_year} Bookings`]: m.prior_revenue,
+                } : {}),
+                Deals: m.deals,
+              }))
+              exportToExcel(rows, `Agent_Monthly_Breakdown_${new Date().toISOString().slice(0,10)}`)
+            }}
+            className="ml-auto flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition">
+            <Download className="h-3.5 w-3.5" />Export
+          </button>
         </div>
         <div className="-mx-6 overflow-x-auto">
           <table className="w-full">

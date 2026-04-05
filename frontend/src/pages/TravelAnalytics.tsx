@@ -11,12 +11,13 @@ import KPICard from '@/components/KPICard'
 import RichNarrative from '@/components/RichNarrative'
 import {
   MapPin, TrendingUp, Users, Loader2,
-  BarChart3, Table2, Sparkles, DollarSign, Globe,
+  BarChart3, Table2, Sparkles, DollarSign, Globe, Download,
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, AreaChart, Area,
 } from 'recharts'
+import { exportToExcel } from '@/lib/exportExcel'
 
 type Tab = 'charts' | 'details' | 'summary'
 
@@ -225,9 +226,21 @@ function DetailsTab({ dests, selectedDest, setSelectedDest, destTrend, c }: {
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <div className="card-premium animate-enter overflow-hidden">
-        <div className="border-b border-border px-6 py-4">
-          <h2 className="text-sm font-semibold tracking-tight">Destination Revenue</h2>
-          <span className="text-[11px] text-muted-foreground">Click a row to view trend</span>
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <div>
+            <h2 className="text-sm font-semibold tracking-tight">Destination Revenue</h2>
+            <span className="text-[11px] text-muted-foreground">Click a row to view trend</span>
+          </div>
+          <button
+            onClick={() => exportToExcel(dests.map((d: any) => ({
+              Destination: d.destination,
+              Revenue: d.revenue,
+              'Avg Booking': d.avg_booking ?? '',
+              'YoY %': d.yoy_growth_pct != null ? `${d.yoy_growth_pct.toFixed(1)}%` : '',
+            })), `Travel_Destinations_${new Date().toISOString().slice(0,10)}`)}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition">
+            <Download className="h-3.5 w-3.5" />Export
+          </button>
         </div>
         <div className="max-h-[500px] overflow-y-auto">
           <table className="w-full">

@@ -1,6 +1,7 @@
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
 import { Tip, TIPS } from '@/components/MetricTip'
-import { Layers, AlertTriangle } from 'lucide-react'
+import { Layers, AlertTriangle, Download } from 'lucide-react'
+import { exportToExcel } from '@/lib/exportExcel'
 
 /* ── Props ────────────────────────────────────────────────────────────────── */
 
@@ -16,9 +17,25 @@ export default function DetailsTab({ stages, slipping }: DetailsTabProps) {
     <div className="space-y-6">
       {/* Pipeline by Stage Table */}
       <div className="card-premium animate-enter overflow-hidden">
-        <div className="flex items-center gap-2 border-b border-border px-6 py-4">
-          <Layers className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold tracking-tight">Pipeline by Stage<Tip text={TIPS.pipelineByStage} /></h2>
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold tracking-tight">Pipeline by Stage<Tip text={TIPS.pipelineByStage} /></h2>
+          </div>
+          <button
+            onClick={() => {
+              const total = (stages?.stages ?? []).reduce((s: number, r: any) => s + r.amount, 0)
+              exportToExcel((stages?.stages ?? []).map((s: any) => ({
+                Stage: s.stage,
+                'Forecast Category': s.forecast_category || '',
+                Deals: s.count,
+                Value: s.amount,
+                '% of Pipeline': total > 0 ? `${(s.amount / total * 100).toFixed(1)}%` : '—',
+              })), `Pipeline_by_Stage_${new Date().toISOString().slice(0,10)}`)
+            }}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition">
+            <Download className="h-3.5 w-3.5" />Export
+          </button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -63,9 +80,21 @@ export default function DetailsTab({ stages, slipping }: DetailsTabProps) {
           <div className="flex items-center gap-2 border-b border-border px-6 py-4">
             <AlertTriangle className="h-4 w-4 text-amber-500" />
             <h2 className="text-sm font-semibold tracking-tight">Past-Due Deals<Tip text={TIPS.pastDue} /></h2>
-            <span className="ml-auto text-[11px] text-muted-foreground">
+            <span className="ml-2 text-[11px] text-muted-foreground">
               Open deals past their close date &middot; Top {Math.min(slipping.deals.length, 15)} of {slipping.count}
             </span>
+            <button
+              onClick={() => exportToExcel(slipping.deals.map((d: any) => ({
+                Advisor: d.owner_name,
+                Opportunity: d.name,
+                Stage: d.stage,
+                Amount: d.amount,
+                'Close Date': d.close_date,
+                'Days Past Due': d.days_past_due ?? '',
+              })), `Past_Due_Deals_${new Date().toISOString().slice(0,10)}`)}
+              className="ml-auto flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition">
+              <Download className="h-3.5 w-3.5" />Export
+            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">

@@ -12,11 +12,12 @@ import { Tip, TIPS } from '@/components/MetricTip'
 import AtRiskDeals from './AtRiskDeals'
 import type { Advisor, ChartColors } from './types'
 import type { SlippingDeal } from '@/lib/types'
-import { Users, ArrowUpDown, ChevronRight } from 'lucide-react'
+import { Users, ArrowUpDown, ChevronRight, Download } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
 } from 'recharts'
+import { exportToExcel } from '@/lib/exportExcel'
 
 /* ── Props ────────────────────────────────────────────────────────────────── */
 
@@ -93,7 +94,28 @@ function LeaderboardFull({ leaders, onSelect, targetMap }: {
           <Users className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-semibold">Advisor Leaderboard</h3>
         </div>
-        <span className="text-[11px] text-muted-foreground">{leaders.length} advisors</span>
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] text-muted-foreground">{leaders.length} advisors</span>
+          <button
+            onClick={() => {
+              const rows = sorted.map((a, i) => ({
+                Rank: i + 1,
+                Advisor: a.name,
+                Commission: a.commission,
+                Bookings: a.bookings,
+                Deals: a.deals,
+                'Win %': `${(a.win_rate * 100).toFixed(1)}%`,
+                'Avg Deal': a.avg_deal_size,
+                Pipeline: a.pipeline_value,
+                ...(hasTargets ? { Target: targetMap!.get(a.name) ?? '' } : {}),
+              }))
+              exportToExcel(rows, `Advisor_Leaderboard_${new Date().toISOString().slice(0,10)}`)
+            }}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition">
+            <Download className="h-3.5 w-3.5" />
+            Export
+          </button>
+        </div>
       </div>
 
       <div className="overflow-x-auto">

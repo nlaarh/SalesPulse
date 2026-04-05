@@ -1,4 +1,4 @@
-import{c as e,s as t}from"./utils-DD841dd7.js";import{Pn as n}from"./BarChart-CCqcHkwl.js";e();var r=t();function i({text:e,aiGenerated:t}){return e?(0,r.jsxs)(`div`,{className:`space-y-3`,children:[t&&(0,r.jsx)(`div`,{className:`flex items-center gap-1.5 mb-1`,children:(0,r.jsxs)(`span`,{className:`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium
+import{c as e,s as t}from"./utils-DD841dd7.js";import{Pn as n}from"./BarChart-D2EpX0r6.js";e();var r=t();function i({text:e,aiGenerated:t}){return e?(0,r.jsxs)(`div`,{className:`space-y-3`,children:[t&&(0,r.jsx)(`div`,{className:`flex items-center gap-1.5 mb-1`,children:(0,r.jsxs)(`span`,{className:`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium
             bg-violet-500/10 text-violet-400 border border-violet-500/20`,children:[(0,r.jsx)(n,{className:`w-3 h-3`}),`AI Generated`]})}),e.split(`
 
 `).map((e,t)=>(0,r.jsx)(`p`,{className:`text-[13px] leading-7 text-foreground/85`,children:a(e)},t))]}):null}function a(e){return e.split(/\*\*(.*?)\*\*/).map((e,t)=>t%2==1?(0,r.jsx)(`strong`,{className:`font-bold text-foreground`,children:e},t):e)}export{i as t};

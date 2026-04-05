@@ -1,9 +1,10 @@
 import { Link } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { fmtMonth } from '@/lib/formatters'
-import { ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, ChevronUp, Download } from 'lucide-react'
 import type { AgentReport, Metric, SortField } from './types'
 import { fmtCell } from './types'
+import { exportToExcel } from '@/lib/exportExcel'
 
 /* ── Props ────────────────────────────────────────────────────────────────── */
 
@@ -32,8 +33,30 @@ export default function DetailsTab({
   const isRevenueMetric = metric === 'commission' || metric === 'sales'
   const displayed = showAll ? sorted : sorted.slice(0, 25)
 
+  const handleExport = () => {
+    const rows = sorted.map(agent => {
+      const monthMap = new Map(agent.months.map(m => [m.month, m]))
+      const row: Record<string, unknown> = { Advisor: agent.name }
+      monthColumns.forEach(m => {
+        const cell = monthMap.get(m)
+        row[fmtMonth(m)] = cell ? fmtCell(cell, metric) : '—'
+      })
+      row['Total'] = fmtCell({ [metric]: (agent.totals?.[metric] ?? 0) } as any, metric)
+      if (hasTargets) row['Target'] = targetMap!.get(agent.name) ?? '—'
+      return row
+    })
+    exportToExcel(rows, `Monthly_Report_${metric}_${new Date().toISOString().slice(0,10)}`)
+  }
+
   return (
     <div className="card-premium animate-enter overflow-hidden">
+      <div className="flex items-center justify-end px-4 py-2 border-b border-border">
+        <button onClick={handleExport}
+          className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition">
+          <Download className="h-3.5 w-3.5" />
+          Export to Excel
+        </button>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
