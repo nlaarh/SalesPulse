@@ -27,30 +27,44 @@ def get_db():
         db.close()
 
 
+SEED_USERS = [
+    {'email': 'nlaaroubi@nyaaa.com', 'name': 'Nour Laaroubi', 'password': '***REDACTED***', 'role': 'superadmin'},
+    {'email': 'swas@nyaaa.com', 'name': 'S. Was', 'password': '***REDACTED***', 'role': 'officer'},
+    {'email': 'clawrence@nyaaa.com', 'name': 'C. Lawrence', 'password': '***REDACTED***', 'role': 'officer'},
+    {'email': 'akelly@nyaaa.com', 'name': 'A. Kelly', 'password': '***REDACTED***', 'role': 'travel_manager'},
+    {'email': 'jnicotra@nyaaa.com', 'name': 'J. Nicotra', 'password': '***REDACTED***', 'role': 'travel_director'},
+]
+
+
 def init_db():
-    """Create tables + seed superadmin if not exists."""
+    """Create tables (idempotent) + seed users if not exists."""
     from models import User
     import bcrypt
 
-    Base.metadata.create_all(bind=engine)
+    # checkfirst=True is default but we also guard with try/except for concurrent workers
+    try:
+        Base.metadata.create_all(bind=engine, checkfirst=True)
+    except Exception as e:
+        # Harmless if another worker already created the tables
+        log.warning(f'create_all warning (likely race with another worker): {e}')
     log.info(f'Database initialized at {DB_PATH}')
 
     db = SessionLocal()
     try:
-        existing = db.query(User).filter(User.email == 'nlaaroubi@nyaaa.com').first()
-        if not existing:
-            hashed = bcrypt.hashpw('***REDACTED***'.encode(), bcrypt.gensalt()).decode()
-            seed = User(
-                email='nlaaroubi@nyaaa.com',
-                name='Nour Laaroubi',
+        if db.query(User).count() > 0:
+            log.info('Users table not empty — skipping seed.')
+            return
+
+        for seed in SEED_USERS:
+            hashed = bcrypt.hashpw(seed['password'].encode(), bcrypt.gensalt()).decode()
+            db.add(User(
+                email=seed['email'],
+                name=seed['name'],
                 password_hash=hashed,
-                role='superadmin',
+                role=seed['role'],
                 is_active=True,
-            )
-            db.add(seed)
-            db.commit()
-            log.info('Seed superadmin user created: nlaaroubi@nyaaa.com')
-        else:
-            log.info('Seed user already exists, skipping.')
+            ))
+            log.info(f'Seed user created: {seed["email"]} ({seed["role"]})')
+        db.commit()
     finally:
         db.close()
