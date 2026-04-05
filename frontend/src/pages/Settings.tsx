@@ -5,13 +5,14 @@ import { cn } from '@/lib/utils'
 import {
   UserPlus, Pencil, Trash2,
   X, Shield, Eye, Plane, Umbrella, Crown,
-  AlertCircle, Check, Users, ScrollText, Target,
+  AlertCircle, Check, Users, ScrollText, Target, Zap,
 } from 'lucide-react'
 import axios from 'axios'
 import ActivityLogsTable from '@/components/ActivityLogsTable'
 import TargetsTab from '@/pages/settings/TargetsTab'
+import AIConfigTab from '@/pages/settings/AIConfigTab'
 
-type SettingsTab = 'users' | 'logs' | 'targets'
+type SettingsTab = 'users' | 'logs' | 'targets' | 'ai'
 
 const ROLES: { value: UserRole; label: string; icon: typeof Shield; desc: string }[] = [
   { value: 'superadmin', label: 'Super Admin', icon: Crown, desc: 'Full access + settings' },
@@ -179,6 +180,7 @@ export default function Settings() {
           { key: 'users' as SettingsTab, label: 'Users', icon: Users },
           { key: 'targets' as SettingsTab, label: 'Advisor Targets', icon: Target },
           { key: 'logs' as SettingsTab, label: 'Activity Logs', icon: ScrollText },
+          { key: 'ai' as SettingsTab, label: 'AI & Integrations', icon: Zap },
         ]).map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -201,6 +203,9 @@ export default function Settings() {
 
       {/* Tab content: Advisor Targets */}
       {tab === 'targets' && <TargetsTab />}
+
+      {/* Tab content: AI & Integrations */}
+      {tab === 'ai' && <AIConfigTab />}
 
       {/* Tab content: Users */}
       {tab === 'users' && <>

@@ -29,12 +29,21 @@ def _get_client():
     with _client_lock:
         if _client is not None:   # double-check after acquiring lock
             return _client
-        api_key = os.getenv('OPENAI_API_KEY')
+        try:
+            from routers.ai_config import get_ai_config
+            cfg = get_ai_config()
+            api_key = cfg.get('api_key') or os.getenv('OPENAI_API_KEY')
+        except Exception:
+            api_key = os.getenv('OPENAI_API_KEY')
+            cfg = {}
         if not api_key:
             return None
         try:
             from openai import OpenAI
-            _client = OpenAI(api_key=api_key)
+            kwargs: dict = {'api_key': api_key}
+            if cfg.get('base_url'):
+                kwargs['base_url'] = cfg['base_url']
+            _client = OpenAI(**kwargs)
         except Exception as e:
             log.warning(f"OpenAI init failed: {e}")
     return _client
@@ -267,8 +276,13 @@ def _generate(page: str, line: str, period: int, **kw) -> str | None:
 
     try:
         t0 = time.time()
+        try:
+            from routers.ai_config import get_ai_config
+            _model = get_ai_config().get('model', 'gpt-4o-mini')
+        except Exception:
+            _model = os.getenv('AI_MODEL', 'gpt-4o-mini')
         resp = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=_model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": data_context},
