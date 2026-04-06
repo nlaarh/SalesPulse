@@ -65,10 +65,19 @@ function isBotComment(c: IssueComment) {
 
 /* ── Issue Card ─────────────────────────────────────────────────────────── */
 
+/** Strip the GitHub metadata header from issue body — show only user's description */
+function extractDescription(body: string): string {
+  if (!body) return ''
+  // Body format: **Reporter:** ...\n**Email:** ...\n...\n\n---\n\nUser description
+  const parts = body.split(/\n---\n/)
+  return (parts.length > 1 ? parts.slice(1).join('\n---\n').trim() : body.trim())
+}
+
 function IssueCard({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => void }) {
   const [open, setOpen]               = useState(false)
   const [detail, setDetail]           = useState<{ body: string; comments: IssueComment[] } | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
+  const [detailError, setDetailError] = useState(false)
   const [comment, setComment]         = useState('')
   const [commenterName, setCommenterName] = useState(localStorage.getItem('sp_reporter_name') || '')
   const [posting, setPosting]         = useState(false)
@@ -78,27 +87,31 @@ function IssueCard({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => 
 
   const verdict = issue.triage_verdict ? VERDICT_MAP[issue.triage_verdict] : null
   const sevOpt  = SEVERITY_OPTIONS.find(s => s.value === localSev) ?? SEVERITY_OPTIONS[1]
-  const statOpt = STATUS_OPTIONS.find(s => s.value === localStatus) ?? STATUS_OPTIONS[0]
 
   const loadDetail = useCallback(async (force = false) => {
     if (detail && !force) return
     setLoadingDetail(true)
+    setDetailError(false)
     try {
       const d = await fetchIssue(issue.number)
       setDetail({ body: d.issue.body, comments: d.comments })
-    } catch { /* ignore */ }
-    finally { setLoadingDetail(false) }
+    } catch {
+      setDetailError(true)
+    } finally {
+      setLoadingDetail(false)
+    }
   }, [detail, issue.number])
 
   const toggle = () => {
-    setOpen(v => !v)
-    if (!open) loadDetail()
+    const next = !open
+    setOpen(next)
+    if (next) loadDetail()
   }
 
   const applyUpdate = async (opts: { status?: IssueStatus; severity?: IssueSeverity }) => {
     setSaving(true)
     try {
-      await updateIssue(issue.number, '', opts)          // PIN removed — empty string accepted
+      await updateIssue(issue.number, '', opts)
       if (opts.severity) setLocalSev(opts.severity)
       if (opts.status)   setLocalStatus(opts.status)
       if (open) setTimeout(() => loadDetail(true), 1200)
@@ -123,17 +136,20 @@ function IssueCard({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => 
       'rounded-xl border bg-card transition-all',
       issue.state === 'closed' ? 'border-border/40 opacity-60' : 'border-border',
     )}>
-      {/* ── Card header ── */}
-      <div className="flex items-start gap-3 px-4 py-3.5">
+      {/* ── Card header — entire row is clickable for expand ── */}
+      <div
+        onClick={toggle}
+        className="flex cursor-pointer items-start gap-3 px-4 py-3.5 hover:bg-muted/20 transition-colors rounded-xl"
+      >
         {/* State icon */}
-        <button onClick={toggle} className="mt-0.5 shrink-0">
+        <div className="mt-0.5 shrink-0">
           {issue.state === 'closed'
             ? <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
             : <Circle       className="h-4.5 w-4.5 text-primary" />}
-        </button>
+        </div>
 
         {/* Title + meta */}
-        <button onClick={toggle} className="min-w-0 flex-1 text-left">
+        <div className="min-w-0 flex-1 text-left">
           <p className="text-[14px] font-semibold text-foreground leading-snug">
             {issue.title}
           </p>
@@ -156,16 +172,16 @@ function IssueCard({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => 
               </span>
             )}
           </div>
-        </button>
+        </div>
 
-        {/* Severity select */}
-        <div className="relative shrink-0">
+        {/* Severity select — stop propagation so it doesn't toggle expand */}
+        <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
           <select
             value={localSev}
             onChange={e => applyUpdate({ severity: e.target.value as IssueSeverity })}
             disabled={saving}
             className={cn(
-              'cursor-pointer appearance-none rounded-full border px-2.5 py-1 text-[12px] font-semibold transition-colors focus:outline-none',
+              'cursor-pointer rounded-full border px-2.5 py-1 text-[12px] font-semibold transition-colors focus:outline-none',
               sevOpt.cls,
             )}
           >
@@ -177,13 +193,13 @@ function IssueCard({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => 
           </select>
         </div>
 
-        {/* Status select */}
-        <div className="relative shrink-0">
+        {/* Status select — stop propagation so it doesn't toggle expand */}
+        <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
           <select
             value={localStatus}
             onChange={e => applyUpdate({ status: e.target.value as IssueStatus })}
             disabled={saving}
-            className="cursor-pointer appearance-none rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[12px] font-semibold text-foreground transition-colors hover:bg-muted focus:outline-none disabled:opacity-50"
+            className="cursor-pointer rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[12px] font-semibold text-foreground transition-colors hover:bg-muted focus:outline-none disabled:opacity-50"
           >
             {STATUS_OPTIONS.map(s => (
               <option key={s.value} value={s.value}>{s.label}</option>
@@ -191,9 +207,9 @@ function IssueCard({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => 
           </select>
         </div>
 
-        {/* GitHub link */}
+        {/* GitHub link — stop propagation */}
         <a
-          href={issue.html_url || issue.url}
+          href={issue.html_url}
           target="_blank"
           rel="noreferrer"
           onClick={e => e.stopPropagation()}
@@ -204,9 +220,9 @@ function IssueCard({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => 
         </a>
 
         {/* Expand toggle */}
-        <button onClick={toggle} className="shrink-0 text-muted-foreground">
+        <div className="shrink-0 text-muted-foreground">
           {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </button>
+        </div>
       </div>
 
       {/* ── Expanded body ── */}
@@ -214,19 +230,28 @@ function IssueCard({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => 
         <div className="border-t border-border px-4 pb-5 pt-4 space-y-5">
           {loadingDetail && (
             <div className="flex justify-center py-4">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
+          )}
+
+          {detailError && (
+            <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-[13px] text-rose-500">
+              Failed to load issue details. Please try again.
+            </p>
           )}
 
           {detail && (
             <>
-              {/* Description */}
+              {/* Description — strip GitHub metadata header, show only user text */}
               <div>
                 <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                   Description
                 </p>
                 <div className="rounded-lg bg-muted/30 px-4 py-3">
-                  <Markdown compact>{detail.body || '_No description_'}</Markdown>
+                  {extractDescription(detail.body)
+                    ? <Markdown compact>{extractDescription(detail.body)}</Markdown>
+                    : <p className="text-[13px] italic text-muted-foreground">No description</p>
+                  }
                 </div>
               </div>
 
@@ -244,7 +269,7 @@ function IssueCard({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => 
                           'rounded-lg border px-4 py-3',
                           isBot ? 'border-violet-500/20 bg-violet-500/5' : 'border-border bg-muted/20',
                         )}>
-                          <div className="mb-1.5 flex items-center justify-between">
+                          <div className="mb-2 flex items-center justify-between">
                             <div className="flex items-center gap-1.5">
                               {isBot && <Bot className="h-3.5 w-3.5 text-violet-400" />}
                               <span className={cn('text-[12px] font-semibold',
