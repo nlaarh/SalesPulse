@@ -48,7 +48,6 @@ interface OppDetail {
 
 /* ── Pipeline stage order ─────────────────────────────────────────────────── */
 
-const TRAVEL_STAGES = ['New', 'Qualifying/Research', 'Quote', 'Booked', 'Invoice', 'Closed Won']
 const LOST_STAGES = ['Closed Lost', 'Dead']
 
 function buildStageFlow(history: StageHistory[], currentStage: string): {
@@ -212,7 +211,7 @@ function TimelineCard({ item, isLast }: { item: TimelineItem; isLast: boolean })
     sub = e.owner || ''
   }
 
-  const desc = ((item.data as Record<string, unknown>).description as string | null) || ''
+  const desc = ((item.data as unknown as Record<string, unknown>).description as string | null) || ''
 
   return (
     <div className="flex gap-3">
