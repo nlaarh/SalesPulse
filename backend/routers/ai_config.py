@@ -101,7 +101,13 @@ def update_config(body: AIConfigUpdate, admin: User = Depends(require_admin)):
     if body.model is not None:
         cfg['model'] = body.model
     if body.api_key is not None:
-        cfg['api_key'] = body.api_key
+        # Strip common accidental prefixes (e.g. user pasted "openai sk-..." or "Bearer sk-...")
+        key = body.api_key.strip()
+        for prefix in ('openai ', 'anthropic ', 'Bearer ', 'bearer '):
+            if key.lower().startswith(prefix.lower()):
+                key = key[len(prefix):].strip()
+                break
+        cfg['api_key'] = key
     if body.base_url is not None:
         cfg['base_url'] = body.base_url
     _save(cfg)

@@ -177,7 +177,7 @@ export default function AIConfigTab() {
               type={showKey ? 'text' : 'password'}
               value={apiKey}
               onChange={e => setApiKey(e.target.value)}
-              placeholder={config?.has_key ? 'Enter new key to replace…' : 'sk-…'}
+              placeholder={config?.has_key ? 'Enter new key to replace…' : 'sk-proj-… (key only, no prefix)'}
               className="w-full rounded-lg border border-border bg-background px-3 py-2.5 pr-10 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40"
             />
             <button onClick={() => setShowKey(v => !v)}
