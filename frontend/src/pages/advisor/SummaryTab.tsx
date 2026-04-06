@@ -213,12 +213,12 @@ export default function SummaryTab({
             <div key={card.label} className="card-premium relative overflow-hidden p-4">
               <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
               <div className="flex items-start justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/60">{card.label}<Tip text={card.tip} /></span>
-                <Icon className="h-4 w-4 text-muted-foreground/30" />
+                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{card.label}<Tip text={card.tip} /></span>
+                <Icon className="h-4 w-4 text-muted-foreground/50" />
               </div>
               <p className="mt-2 tabular-nums text-[24px] font-bold leading-none tracking-tight">{card.value}</p>
-              <span className={cn('mt-2 block text-[11px] font-semibold', statusColor)}>{card.status}</span>
-              <span className="mt-0.5 block text-[10px] text-muted-foreground/50">{card.detail}</span>
+              <span className={cn('mt-2 block text-[12px] font-semibold', statusColor)}>{card.status}</span>
+              <span className="mt-0.5 block text-[12px] font-medium text-muted-foreground">{card.detail}</span>
             </div>
           )
         })}
@@ -251,15 +251,15 @@ export default function SummaryTab({
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className={cn('truncate text-[12px] font-semibold', onSelectAdvisor && 'text-primary')}>{a.name}</p>
-                      <p className="text-[10px] text-muted-foreground">
+                      <p className="text-[12px] font-medium text-muted-foreground">
                         {formatNumber(a.deals)} deals &middot; {formatPct(a.win_rate)} win rate
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="tabular-nums text-[13px] font-bold">{formatCurrency(a.bookings, true)}</p>
-                      <p className="text-[10px] text-muted-foreground">{share.toFixed(0)}% of total</p>
+                      <p className="text-[12px] font-medium text-muted-foreground">{share.toFixed(0)}% of total</p>
                     </div>
-                    {onSelectAdvisor && <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/30" />}
+                    {onSelectAdvisor && <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />}
                   </div>
                 )
               })}
@@ -301,11 +301,11 @@ export default function SummaryTab({
             {actions.map((item, i) => (
               <div key={i} className="flex items-start gap-3 rounded-lg border border-border/30 bg-secondary/10 px-4 py-3">
                 <div className="flex shrink-0 flex-col items-center gap-1">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">
                     {i + 1}
                   </span>
                   <span className={cn(
-                    'rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide',
+                    'rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
                     item.priority === 'high'   ? 'bg-rose-500/10 text-rose-500'
                       : item.priority === 'medium' ? 'bg-amber-500/10 text-amber-500'
                       : 'bg-secondary text-muted-foreground',
@@ -314,8 +314,8 @@ export default function SummaryTab({
                   </span>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground/50">{item.label}</p>
-                  <p className="mt-0.5 text-[12px] leading-relaxed text-foreground/80">{item.action}</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                  <p className="mt-0.5 text-[13px] leading-relaxed text-foreground">{item.action}</p>
                 </div>
               </div>
             ))}

@@ -95,7 +95,7 @@ function LeaderboardFull({ leaders, onSelect, targetMap }: {
           <h3 className="text-sm font-semibold">Advisor Leaderboard</h3>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[11px] text-muted-foreground">{leaders.length} advisors</span>
+      <span className="text-[12px] text-muted-foreground">{leaders.length} advisors</span>
           <button
             onClick={() => {
               const rows = sorted.map((a, i) => ({
@@ -122,13 +122,13 @@ function LeaderboardFull({ leaders, onSelect, targetMap }: {
         <table className="w-full">
           <thead>
             <tr className="border-b border-border bg-secondary/20">
-              <th className="w-10 px-3 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">#</th>
-              <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Advisor</th>
+              <th className="w-10 px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">#</th>
+              <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Advisor</th>
               {COLS.map((col) => (
                 <th
                   key={col.key}
                   onClick={() => toggleSort(col.key)}
-                  className="cursor-pointer whitespace-nowrap px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60 hover:text-foreground"
+                  className="cursor-pointer whitespace-nowrap px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground"
                 >
                   <div className="flex items-center justify-end gap-1">
                     {col.label}
@@ -137,7 +137,7 @@ function LeaderboardFull({ leaders, onSelect, targetMap }: {
                 </th>
               ))}
               {hasTargets && (
-                <th className="whitespace-nowrap px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">
+                <th className="whitespace-nowrap px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                   vs Target
                 </th>
               )}
@@ -157,11 +157,11 @@ function LeaderboardFull({ leaders, onSelect, targetMap }: {
               >
                 <td className="px-3 py-2.5 text-center">
                   <span className={cn(
-                    'inline-flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold',
+                    'inline-flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold',
                     a.rank === 1 && 'bg-amber-500/15 text-amber-500',
                     a.rank === 2 && 'bg-slate-400/15 text-slate-400',
                     a.rank === 3 && 'bg-orange-600/15 text-orange-500',
-                    a.rank > 3 && 'text-muted-foreground/50',
+                    a.rank > 3 && 'text-muted-foreground',
                   )}>
                     {a.rank}
                   </span>
@@ -179,7 +179,7 @@ function LeaderboardFull({ leaders, onSelect, targetMap }: {
                 ))}
                 {hasTargets && <TargetCell name={a.name} bookings={a.bookings} targetMap={targetMap!} />}
                 <td className="pr-3 py-2.5">
-                  <ChevronRight className="h-3 w-3 text-muted-foreground/30 transition-colors group-hover:text-primary" />
+                  <ChevronRight className="h-3 w-3 text-muted-foreground/50 transition-colors group-hover:text-primary" />
                 </td>
               </tr>
             ))}
@@ -257,7 +257,7 @@ function TargetCell({ name, bookings, targetMap }: {
   name: string; bookings: number; targetMap: Map<string, number>
 }) {
   const t = targetMap.get(name.toLowerCase())
-  if (!t) return <td className="px-3 py-2.5 text-right text-[11px] text-muted-foreground/30">—</td>
+  if (!t) return <td className="px-3 py-2.5 text-right text-[12px] text-muted-foreground">—</td>
   const pct = t > 0 ? (bookings / t) * 100 : 0
   return (
     <td className="px-3 py-2.5 text-right">

@@ -88,7 +88,7 @@ function ActivityCell({ icon: Icon, label, value, color, bg, onClick, tip }: {
       </div>
       <div>
         <p className="tabular-nums text-[20px] font-bold leading-none">{value}</p>
-        <p className="mt-0.5 flex items-center text-[10px] font-medium text-muted-foreground">{label}{tip && <Tip text={tip} />}</p>
+        <p className="mt-0.5 flex items-center text-[12px] font-medium text-muted-foreground">{label}{tip && <Tip text={tip} />}</p>
       </div>
     </div>
   )
@@ -166,7 +166,7 @@ export default function OverviewTab({
         <div className="card-premium p-5">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-semibold">Revenue vs Prior Year<Tip text={TIPS.salesOverview} /></h3>
-            <span className="rounded-full border border-border bg-secondary/40 px-2.5 py-0.5 text-[11px] text-muted-foreground">
+            <span className="rounded-full border border-border bg-secondary/40 px-2.5 py-0.5 text-[12px] text-muted-foreground">
               {yoy ? `${yoy.current_year} vs ${yoy.prior_year}` : 'Last 12 Months'}
             </span>
           </div>
@@ -174,24 +174,24 @@ export default function OverviewTab({
           {/* Headline metrics */}
           <div className="mb-5 flex items-start gap-10">
             <div>
-              <p className="text-[11px] text-muted-foreground">Total Revenue</p>
+              <p className="text-[12px] font-medium text-muted-foreground">Total Revenue</p>
               <p className="mt-0.5 tabular-nums text-[22px] font-bold leading-none">
                 {formatCurrency(billedValue, true)}
               </p>
               <div className="mt-1.5 flex items-center gap-2">
                 <DeltaPill value={billedPct} />
-                <span className="text-[10px] text-muted-foreground/50">
+                <span className="text-[12px] font-medium text-muted-foreground">
                   Last year: {formatCurrency(billedPrev, true)}
                 </span>
               </div>
             </div>
             {!isInsurance && (
               <div>
-                <p className="text-[11px] text-muted-foreground">Commission Earned</p>
+                <p className="text-[12px] font-medium text-muted-foreground">Commission Earned</p>
                 <p className="mt-0.5 tabular-nums text-[22px] font-bold leading-none">
                   {formatCurrency(commValue, true)}
                 </p>
-                <p className="mt-1.5 text-[10px] text-muted-foreground/50">
+                <p className="mt-1.5 text-[12px] font-medium text-muted-foreground">
                   Lags 2-3 months
                 </p>
               </div>
@@ -200,11 +200,11 @@ export default function OverviewTab({
               <div className="ml-auto flex flex-col items-end gap-1.5 self-end pb-0.5">
                 <div className="flex items-center gap-1.5">
                   <span className="h-2.5 w-2.5 rounded-sm bg-primary/70" />
-                  <span className="text-[10px] text-muted-foreground">{yoy.current_year}</span>
+                  <span className="text-[12px] font-medium text-muted-foreground">{yoy.current_year}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="h-2.5 w-2.5 rounded-sm bg-muted-foreground/25" />
-                  <span className="text-[10px] text-muted-foreground">{yoy.prior_year}</span>
+                  <span className="text-[12px] font-medium text-muted-foreground">{yoy.prior_year}</span>
                 </div>
               </div>
             )}
@@ -258,9 +258,9 @@ export default function OverviewTab({
           {/* Pipeline Coverage */}
           <div onClick={() => nav('/pipeline')} className="mt-3 cursor-pointer rounded-xl border border-border/40 bg-secondary/20 p-3.5 transition-colors hover:bg-secondary/30">
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-[11px] font-medium text-muted-foreground">Pipeline Coverage<Tip text={TIPS.pipelineCoverage} /></span>
+              <span className="text-[12px] font-medium text-muted-foreground">Pipeline Coverage<Tip text={TIPS.pipelineCoverage} /></span>
               <span className={cn(
-                'rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                'rounded-full px-2 py-0.5 text-[12px] font-semibold',
                 pipelineCoverage >= 2 ? 'bg-emerald-500/10 text-emerald-500'
                   : pipelineCoverage >= 1 ? 'bg-amber-500/10 text-amber-500'
                   : 'bg-rose-500/10 text-rose-500',
@@ -280,7 +280,7 @@ export default function OverviewTab({
                     style={{ width: `${coveragePct}%` }}
                   />
                 </div>
-                <p className="mt-1 text-[10px] text-muted-foreground">
+                <p className="mt-1 text-[12px] font-medium text-muted-foreground">
                   {formatNumber(summary.pipeline_count)} open opportunities
                 </p>
               </div>
@@ -297,18 +297,18 @@ export default function OverviewTab({
               <Users className="h-4 w-4 text-primary" />
               <h3 className="text-sm font-semibold">Top Advisors</h3>
             </div>
-            <span className="text-[11px] text-muted-foreground">{leaders.length} advisors total</span>
+            <span className="text-[12px] font-medium text-muted-foreground">{leaders.length} advisors total</span>
           </div>
 
           <table className="w-full">
             <thead>
               <tr className="border-b border-border bg-secondary/20">
-                <th className="w-10 px-4 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">#</th>
-                <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">Advisor</th>
-                <th className="px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">Revenue</th>
-                <th className="px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">Deals</th>
-                <th className="px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">Win %</th>
-                <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">Pipeline</th>
+                <th className="w-10 px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">#</th>
+                <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Advisor</th>
+                <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Revenue</th>
+                <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Deals</th>
+                <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Win %</th>
+                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Pipeline</th>
                 <th className="w-6" />
               </tr>
             </thead>
@@ -324,11 +324,11 @@ export default function OverviewTab({
                 >
                   <td className="px-4 py-2.5 text-center">
                     <span className={cn(
-                      'inline-flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold',
+                      'inline-flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold',
                       a.rank === 1 && 'bg-amber-500/15 text-amber-500',
                       a.rank === 2 && 'bg-slate-400/15 text-slate-400',
                       a.rank === 3 && 'bg-orange-600/15 text-orange-500',
-                      a.rank > 3 && 'text-muted-foreground/50',
+                      a.rank > 3 && 'text-muted-foreground',
                     )}>
                       {a.rank}
                     </span>
@@ -337,20 +337,20 @@ export default function OverviewTab({
                   <td className="px-3 py-2.5 text-right tabular-nums text-[12px] font-semibold">
                     {a.commission > 0 ? formatCurrency(a.commission, true) : formatCurrency(a.bookings, true)}
                   </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-[11px] text-muted-foreground">
+                  <td className="px-3 py-2.5 text-right tabular-nums text-[12px] text-muted-foreground">
                     {formatNumber(a.deals)}
                   </td>
                   <td className={cn(
-                    'px-3 py-2.5 text-right tabular-nums text-[11px] font-semibold',
+                    'px-3 py-2.5 text-right tabular-nums text-[12px] font-semibold',
                     a.win_rate >= 55 ? 'text-emerald-500' : a.win_rate < 35 ? 'text-rose-500' : 'text-muted-foreground',
                   )}>
                     {formatPct(a.win_rate)}
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-[11px] text-muted-foreground">
+                  <td className="px-4 py-2.5 text-right tabular-nums text-[12px] text-muted-foreground">
                     {formatCurrency(a.pipeline_value, true)}
                   </td>
                   <td className="pr-3 py-2.5">
-                    <ChevronRight className="h-3 w-3 text-muted-foreground/20 transition-colors group-hover:text-primary" />
+                    <ChevronRight className="h-3 w-3 text-muted-foreground/50 transition-colors group-hover:text-primary" />
                   </td>
                 </tr>
               ))}
@@ -400,8 +400,8 @@ export default function OverviewTab({
                 >
                   <div className="mt-0.5">{ICON[ins.type]}</div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-semibold leading-tight">{ins.title}</p>
-                    <p className="mt-0.5 line-clamp-2 text-[10px] leading-relaxed text-muted-foreground">
+                    <p className="text-[12px] font-semibold leading-tight">{ins.title}</p>
+                    <p className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">
                       {ins.text}
                     </p>
                   </div>

@@ -124,11 +124,11 @@ function StagePipeline({ history, currentStage }: { history: StageHistory[]; cur
 
   return (
     <div className="card-premium px-5 py-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           Deal Journey
         </h3>
-        <span className="text-[11px] text-muted-foreground">{flow.length} stages · {history.length} history events</span>
+        <span className="text-[13px] text-muted-foreground">{flow.length} stages · {history.length} history events</span>
       </div>
 
       <div className="relative flex items-start gap-0">
@@ -147,13 +147,13 @@ function StagePipeline({ history, currentStage }: { history: StageHistory[]; cur
                 )} />
                 {/* Node */}
                 <div className={cn(
-                  'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 text-[10px] font-bold transition-all',
+                  'flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 text-[12px] font-bold transition-all',
                   isCurrent && !isLost ? 'border-primary bg-primary text-primary-foreground shadow-lg shadow-primary/30' :
                   isLost && isCurrent ? 'border-rose-500 bg-rose-500 text-white' :
                   isPast ? 'border-primary/40 bg-primary/10 text-primary' :
                   'border-border/40 bg-secondary/40 text-muted-foreground'
                 )}>
-                  {isPast ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
+                  {isPast ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
                 </div>
                 {/* Right connector */}
                 <div className={cn(
@@ -162,24 +162,24 @@ function StagePipeline({ history, currentStage }: { history: StageHistory[]; cur
                 )} />
               </div>
               {/* Label + time */}
-              <div className="mt-1.5 px-1 text-center w-full">
+              <div className="mt-2 px-1 text-center w-full">
                 <p className={cn(
-                  'text-[10px] font-semibold truncate',
-                  isCurrent ? 'text-foreground' : isPast ? 'text-primary/70' : 'text-muted-foreground/50'
+                  'text-[12px] font-semibold truncate',
+                  isCurrent ? 'text-foreground' : isPast ? 'text-primary' : 'text-muted-foreground'
                 )}>
                   {s.stage}
                 </p>
                 {s.daysInStage !== null && (
                   <p className={cn(
-                    'text-[9px]',
-                    isCurrent ? 'text-amber-500 font-semibold' : 'text-muted-foreground/40'
+                    'text-[11px] font-medium',
+                    isCurrent ? 'text-amber-500 font-semibold' : 'text-muted-foreground'
                   )}>
                     {s.daysInStage === 0 ? '<1d' : `${s.daysInStage}d`}
                     {isCurrent ? ' so far' : ''}
                   </p>
                 )}
                 {s.entered && (
-                  <p className="text-[9px] text-muted-foreground/30">{fmtDate(s.entered, true)}</p>
+                  <p className="text-[11px] text-muted-foreground">{fmtDate(s.entered, true)}</p>
                 )}
               </div>
             </div>
@@ -228,11 +228,11 @@ function TimelineCard({ item, isLast }: { item: TimelineItem; isLast: boolean })
         </div>
         {!isLast && <div className="mt-1 w-px flex-1 bg-border/30 min-h-[20px]" />}
       </div>
-      <div className={cn('min-w-0', !isLast && 'pb-4')}>
-        <p className="text-[10px] text-muted-foreground/60">{fmtDate(item.date)}</p>
-        <p className="mt-0.5 text-[12px] font-semibold leading-snug">{headline}</p>
-        {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
-        {desc && <p className="mt-0.5 text-[11px] text-muted-foreground/60 line-clamp-2">{desc}</p>}
+      <div className={cn('min-w-0', !isLast && 'pb-5')}>
+        <p className="text-[12px] font-medium text-muted-foreground">{fmtDate(item.date)}</p>
+        <p className="mt-0.5 text-[14px] font-semibold leading-snug">{headline}</p>
+        {sub && <p className="text-[13px] text-muted-foreground">{sub}</p>}
+        {desc && <p className="mt-0.5 text-[13px] text-muted-foreground line-clamp-2">{desc}</p>}
       </div>
     </div>
   )
@@ -310,7 +310,7 @@ export default function OpportunityDetail() {
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className={cn(
-              'rounded-full border px-2.5 py-0.5 text-[11px] font-semibold',
+              'rounded-full border px-3 py-1 text-[13px] font-semibold',
               isWon ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-500' :
               isLost ? 'border-rose-500/20 bg-rose-500/10 text-rose-500' :
               'border-primary/20 bg-primary/10 text-primary'
@@ -318,29 +318,29 @@ export default function OpportunityDetail() {
               {detail.stage}
             </span>
             {isOverdue && !isWon && !isLost && (
-              <span className="flex items-center gap-1 rounded-full border border-rose-500/20 bg-rose-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-rose-500">
-                <AlertTriangle className="h-3 w-3" />
+              <span className="flex items-center gap-1 rounded-full border border-rose-500/20 bg-rose-500/10 px-3 py-1 text-[13px] font-semibold text-rose-500">
+                <AlertTriangle className="h-3.5 w-3.5" />
                 {daysOverdue}d overdue
               </span>
             )}
             {detail.push_count > 0 && (
-              <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-500">
+              <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-[13px] font-semibold text-amber-500">
                 Pushed {detail.push_count}×
               </span>
             )}
           </div>
-          <h1 className="mt-1 text-xl font-bold tracking-tight leading-snug">{detail.name}</h1>
-          <p className="mt-0.5 text-[12px] text-muted-foreground">
+          <h1 className="mt-1 text-[22px] font-bold tracking-tight leading-snug">{detail.name}</h1>
+          <p className="mt-1 text-[14px] text-muted-foreground">
             <span className="flex items-center gap-1 inline-flex">
-              <User className="h-3 w-3 shrink-0" />{detail.owner}
+              <User className="h-3.5 w-3.5 shrink-0" />{detail.owner}
             </span>
-            {detail.account && <> · <Building2 className="h-3 w-3 shrink-0 inline" /> {detail.account}</>}
+            {detail.account && <> · <Building2 className="h-3.5 w-3.5 shrink-0 inline" /> {detail.account}</>}
           </p>
         </div>
         <div className="shrink-0 text-right">
           <p className="text-2xl font-bold tabular-nums">{formatCurrency(detail.amount, true)}</p>
-          <p className="text-[11px] text-muted-foreground">{detail.probability}% probability</p>
-          <p className={cn('text-[11px] font-semibold', scoreColor(detail.score))}>
+          <p className="text-[14px] font-medium text-muted-foreground">{detail.probability}% probability</p>
+          <p className={cn('text-[14px] font-semibold', scoreColor(detail.score))}>
             Health: {detail.score}/100
           </p>
         </div>
@@ -353,7 +353,7 @@ export default function OpportunityDetail() {
       <div className="grid grid-cols-3 gap-3">
         {/* Deal Details */}
         <div className="card-premium p-4 space-y-0">
-          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">Deal Details</h3>
+          <h3 className="mb-3 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Deal Details</h3>
           {[
             ['Close Date', <span className={cn(isOverdue && !isWon ? 'text-rose-500' : '')}>
               {fmtDate(detail.close_date)}{daysOverdue !== null && isOverdue && !isWon ? ` (${daysOverdue}d ago)` : ''}
@@ -367,46 +367,46 @@ export default function OpportunityDetail() {
             ['Created', fmtDate(detail.created_date)],
             ['Last Activity', detail.last_activity ? `${fmtDate(detail.last_activity)} (${daysSince(detail.last_activity)}d ago)` : null],
           ].map(([label, value]) => value ? (
-            <div key={label as string} className="flex items-start justify-between gap-2 border-b border-border/20 py-1.5 last:border-0">
-              <span className="text-[11px] text-muted-foreground shrink-0">{label}</span>
-              <span className="text-[11px] font-medium text-right">{value}</span>
+            <div key={label as string} className="flex items-start justify-between gap-2 border-b border-border/30 py-2 last:border-0">
+              <span className="text-[13px] font-medium text-muted-foreground shrink-0">{label}</span>
+              <span className="text-[13px] font-semibold text-right">{value}</span>
             </div>
           ) : null)}
         </div>
 
         {/* AI Analysis */}
         <div className="card-premium p-4">
-          <h3 className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
+          <h3 className="mb-3 flex items-center gap-1.5 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             <Sparkles className="h-3.5 w-3.5 text-primary" />
             AI Analysis
           </h3>
           {detail.ai_analysis ? (
-            <p className="text-[13px] leading-relaxed text-foreground/80">{detail.ai_analysis}</p>
+            <p className="text-[14px] leading-relaxed text-foreground">{detail.ai_analysis}</p>
           ) : (
-            <p className="text-[12px] text-muted-foreground italic">Configure an AI provider in Settings to enable deal analysis.</p>
+            <p className="text-[13px] text-muted-foreground italic">Configure an AI provider in Settings to enable deal analysis.</p>
           )}
           {detail.score_reasons.length > 0 && (
             <div className="mt-4">
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/50">Score Factors</p>
+              <p className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">Score Factors</p>
               {detail.score_reasons.map((r, i) => (
-                <div key={i} className="flex items-start gap-1.5 py-0.5">
-                  <ChevronRight className="mt-0.5 h-3 w-3 shrink-0 text-primary/50" />
-                  <span className="text-[11px] text-muted-foreground">{r}</span>
+                <div key={i} className="flex items-start gap-1.5 py-1">
+                  <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                  <span className="text-[13px] text-muted-foreground">{r}</span>
                 </div>
               ))}
             </div>
           )}
           {detail.description && (
-            <div className="mt-3 rounded-lg bg-secondary/30 p-2.5">
-              <p className="text-[10px] font-semibold uppercase text-muted-foreground/50 mb-1">Notes</p>
-              <p className="text-[11px] text-muted-foreground line-clamp-4">{detail.description}</p>
+            <div className="mt-3 rounded-lg bg-secondary/30 p-3">
+              <p className="text-[12px] font-semibold uppercase text-muted-foreground mb-1.5">Notes</p>
+              <p className="text-[13px] text-muted-foreground line-clamp-4">{detail.description}</p>
             </div>
           )}
         </div>
 
         {/* Activity Stats */}
         <div className="card-premium p-4">
-          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">Activity Summary</h3>
+          <h3 className="mb-3 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Activity Summary</h3>
           <div className="grid grid-cols-2 gap-2 mb-4">
             {[
               ['Tasks', detail.timeline.filter(t => t.kind === 'task').length, 'text-amber-500'],
@@ -414,9 +414,9 @@ export default function OpportunityDetail() {
               ['Stage Changes', detail.timeline.filter(t => t.kind === 'stage').length, 'text-primary'],
               ['Push-backs', detail.push_count, detail.push_count > 0 ? 'text-rose-500' : ''],
             ].map(([label, val, color]) => (
-              <div key={label as string} className="rounded-lg bg-secondary/40 p-2.5 text-center">
+              <div key={label as string} className="rounded-lg bg-secondary/40 p-3 text-center">
                 <p className={cn('text-xl font-bold tabular-nums', color as string)}>{val as number}</p>
-                <p className="text-[10px] text-muted-foreground">{label as string}</p>
+                <p className="text-[12px] font-medium text-muted-foreground">{label as string}</p>
               </div>
             ))}
           </div>
@@ -426,11 +426,11 @@ export default function OpportunityDetail() {
             if (openTasks.length === 0) return null
             return (
               <div>
-                <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground/50">Open Tasks</p>
+                <p className="mb-2 text-[12px] font-semibold uppercase text-muted-foreground">Open Tasks</p>
                 {openTasks.slice(0, 5).map((t, i) => (
-                  <div key={i} className="flex items-center gap-1.5 py-0.5">
-                    <CheckSquare className="h-3 w-3 shrink-0 text-amber-500/70" />
-                    <span className="text-[11px] truncate">{t.subject}</span>
+                  <div key={i} className="flex items-center gap-1.5 py-1">
+                    <CheckSquare className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                    <span className="text-[13px]">{t.subject}</span>
                   </div>
                 ))}
               </div>
@@ -444,7 +444,7 @@ export default function OpportunityDetail() {
         <div className="mb-4 flex items-center gap-2">
           <Clock className="h-4 w-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold">Activity Timeline</h3>
-          <span className="ml-auto text-[11px] text-muted-foreground">{detail.timeline.length} events</span>
+          <span className="ml-auto text-[13px] font-medium text-muted-foreground">{detail.timeline.length} events</span>
         </div>
         {detail.timeline.length === 0 ? (
           <p className="text-[12px] text-muted-foreground italic">No timeline events recorded.</p>

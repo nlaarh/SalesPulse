@@ -171,12 +171,22 @@ def agent_profile(
                 WHERE {ow} AND {lf} AND CALENDAR_YEAR(CreatedDate) = {cy}
                 GROUP BY CALENDAR_MONTH(CreatedDate)
             """,
-            # Agent: top open opportunities (all stages, including without amount)
+            # Agent: early-stage open opportunities (Qualifying, Quote, New, etc.) — always show all
+            early_opps=f"""
+                SELECT Id, Name, Amount, StageName, Probability, ForecastCategory,
+                       CloseDate, LastActivityDate, PushCount
+                FROM Opportunity
+                WHERE {ow} AND IsClosed = false AND {lf}
+                  AND StageName NOT IN ('Invoice','Booked','Closed Won')
+                ORDER BY Amount DESC NULLS LAST LIMIT 100
+            """,
+            # Agent: Invoice/Booked open opportunities — top by amount
             top_opps=f"""
                 SELECT Id, Name, Amount, StageName, Probability, ForecastCategory,
                        CloseDate, LastActivityDate, PushCount
                 FROM Opportunity
                 WHERE {ow} AND IsClosed = false AND {lf}
+                  AND StageName IN ('Invoice','Booked')
                 ORDER BY Amount DESC NULLS LAST LIMIT 50
             """,
             # Agent: recently won opportunities
@@ -292,10 +302,10 @@ def agent_profile(
 
         # ── Top opportunities with scoring ───────────────────────────────
         from routers.sales_opportunities import _score_opportunity
-        top_list = []
-        for r in data['top_opps']:
+
+        def _build_opp(r: dict) -> dict:
             sc = _score_opportunity(r, today)
-            top_list.append({
+            return {
                 'id': r.get('Id', ''), 'name': r.get('Name', ''),
                 'amount': r.get('Amount', 0) or 0, 'stage': r.get('StageName', ''),
                 'probability': r.get('Probability', 0) or 0,
@@ -304,8 +314,18 @@ def agent_profile(
                 'last_activity': r.get('LastActivityDate', ''),
                 'push_count': r.get('PushCount', 0) or 0,
                 'score': sc['score'], 'reasons': sc['reasons'],
-            })
-        top_list.sort(key=lambda x: -x['score'])
+            }
+
+        # Early-stage deals (Qualifying, Quote, New, etc.) always shown first
+        early_list = [_build_opp(r) for r in data.get('early_opps', [])]
+        early_list.sort(key=lambda x: -x['score'])
+
+        # Invoice/Booked fill remaining slots (up to 50 total)
+        remaining = max(0, 50 - len(early_list))
+        late_list = [_build_opp(r) for r in data.get('top_opps', [])[:remaining]]
+        late_list.sort(key=lambda x: -x['score'])
+
+        top_list = early_list + late_list
 
         # ── Recently won opportunities ────────────────────────────────────
         won_list = []
