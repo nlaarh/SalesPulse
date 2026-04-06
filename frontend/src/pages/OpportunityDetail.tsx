@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { fetchOpportunityDetail } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -13,7 +13,7 @@ import {
   ArrowLeft, User, Building2,
   AlertTriangle, CheckCircle2, Clock,
   Sparkles, GitBranch, CheckSquare, CalendarDays, Loader2,
-  ChevronRight, RefreshCw,
+  ChevronRight, RefreshCw, CreditCard, Shield, ChevronRight as Arrow,
 } from 'lucide-react'
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
@@ -39,8 +39,12 @@ interface OppDetail {
   close_date: string; probability: number; forecast_category: string
   push_count: number; description: string; created_date: string
   last_activity: string; last_stage_change: string
-  owner: string; account: string; record_type: string
-  type: string; lead_source: string
+  owner: string; account: string; account_id: string
+  account_member_status: string | null; account_member_since: string | null
+  account_coverage: string | null; account_mpi: number | null
+  record_type: string; type: string; lead_source: string
+  commission: number | null; destination: string | null
+  trip_id: string | null; num_traveling: number | null
   score: number; score_reasons: string[]
   history: StageHistory[]; tasks: TaskItem[]; events: EventItem[]
   timeline: TimelineItem[]; ai_analysis: string
@@ -327,8 +331,28 @@ export default function OpportunityDetail() {
             <span className="flex items-center gap-1 inline-flex">
               <User className="h-3.5 w-3.5 shrink-0" />{detail.owner}
             </span>
-            {detail.account && <> · <Building2 className="h-3.5 w-3.5 shrink-0 inline" /> {detail.account}</>}
           </p>
+          {/* Customer mini-card — clickable link to 360 profile */}
+          {detail.account && detail.account_id && (
+            <Link to={`/customer/${detail.account_id}`}
+              className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 hover:bg-muted/60 hover:border-primary/30 transition-all group">
+              <Building2 className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary shrink-0" />
+              <div className="text-left">
+                <p className="text-[13px] font-semibold text-foreground group-hover:text-primary leading-tight">{detail.account}</p>
+                <p className="text-[11px] text-muted-foreground leading-tight flex items-center gap-2 mt-0.5">
+                  {detail.account_member_status === 'A'
+                    ? <span className="text-emerald-500">● Active member</span>
+                    : detail.account_member_status
+                    ? <span className="text-muted-foreground">● {detail.account_member_status}</span>
+                    : null}
+                  {detail.account_coverage && <span>{detail.account_coverage}</span>}
+                  {detail.account_member_since && <span>since {new Date(detail.account_member_since).getFullYear()}</span>}
+                  {detail.account_mpi != null && <span>MPI {detail.account_mpi}</span>}
+                </p>
+              </div>
+              <Arrow className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary ml-auto shrink-0" />
+            </Link>
+          )}
         </div>
         <div className="shrink-0 text-right">
           <p className="text-2xl font-bold tabular-nums">{formatCurrency(detail.amount, true)}</p>
@@ -352,10 +376,16 @@ export default function OpportunityDetail() {
               {fmtDate(detail.close_date)}{daysOverdue !== null && isOverdue && !isWon ? ` (${daysOverdue}d ago)` : ''}
             </span>],
             ['Owner', detail.owner],
-            ['Account', detail.account],
+            ['Account', detail.account_id
+              ? <Link to={`/customer/${detail.account_id}`} className="text-primary hover:underline">{detail.account}</Link>
+              : detail.account],
             ['Record Type', detail.record_type],
             ['Type', detail.type],
             ['Lead Source', detail.lead_source],
+            ['Destination', detail.destination],
+            ['Trip ID', detail.trip_id],
+            ['# Travelers', detail.num_traveling],
+            ['Commission', detail.commission ? formatCurrency(detail.commission, true) : null],
             ['Forecast', detail.forecast_category],
             ['Created', fmtDate(detail.created_date)],
             ['Last Activity', detail.last_activity ? `${fmtDate(detail.last_activity)} (${daysSince(detail.last_activity)}d ago)` : null],

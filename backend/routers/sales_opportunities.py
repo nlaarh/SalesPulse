@@ -368,8 +368,12 @@ def opportunity_detail(opp_id: str):
             SELECT Id, Name, StageName, Amount, CloseDate, Probability,
                    ForecastCategory, PushCount, Description,
                    CreatedDate, LastActivityDate, LastStageChangeDate,
-                   Owner.Name, Account.Name, RecordType.Name,
-                   Type, LeadSource
+                   Owner.Name, AccountId, Account.Name,
+                   Account.Member_Status__c, Account.Account_Member_Since__c,
+                   Account.ImportantActiveMemCoverage__c, Account.MPI__c,
+                   RecordType.Name, Type, LeadSource,
+                   Earned_Commission_Amount__c, Destination_Region__c,
+                   Axis_Trip_ID__c, Number_Traveling__c
             FROM Opportunity
             WHERE Id = '{opp_id}'
             LIMIT 1
@@ -424,10 +428,19 @@ def opportunity_detail(opp_id: str):
             'last_activity': opp.get('LastActivityDate', ''),
             'last_stage_change': opp.get('LastStageChangeDate', ''),
             'owner': (opp.get('Owner') or {}).get('Name', ''),
+            'account_id': opp.get('AccountId', ''),
             'account': (opp.get('Account') or {}).get('Name', ''),
+            'account_member_status': (opp.get('Account') or {}).get('Member_Status__c'),
+            'account_member_since': (opp.get('Account') or {}).get('Account_Member_Since__c'),
+            'account_coverage': (opp.get('Account') or {}).get('ImportantActiveMemCoverage__c'),
+            'account_mpi': (opp.get('Account') or {}).get('MPI__c'),
             'record_type': (opp.get('RecordType') or {}).get('Name', ''),
             'type': opp.get('Type', ''),
             'lead_source': opp.get('LeadSource', ''),
+            'commission': opp.get('Earned_Commission_Amount__c'),
+            'destination': opp.get('Destination_Region__c'),
+            'trip_id': opp.get('Axis_Trip_ID__c'),
+            'num_traveling': opp.get('Number_Traveling__c'),
             'score': score_info['score'],
             'score_reasons': score_info['reasons'],
             'history': [
