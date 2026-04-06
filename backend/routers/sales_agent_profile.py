@@ -171,14 +171,22 @@ def agent_profile(
                 WHERE {ow} AND {lf} AND CALENDAR_YEAR(CreatedDate) = {cy}
                 GROUP BY CALENDAR_MONTH(CreatedDate)
             """,
-            # Agent: top open opportunities
+            # Agent: top open opportunities (all stages, including without amount)
             top_opps=f"""
                 SELECT Id, Name, Amount, StageName, Probability, ForecastCategory,
                        CloseDate, LastActivityDate, PushCount
                 FROM Opportunity
-                WHERE {ow} AND IsClosed = false AND {lf} AND Amount != null
-                  AND CloseDate <= NEXT_N_MONTHS:12
-                ORDER BY Amount DESC LIMIT 10
+                WHERE {ow} AND IsClosed = false AND {lf}
+                ORDER BY Amount DESC NULLS LAST LIMIT 50
+            """,
+            # Agent: recently won opportunities
+            recent_won=f"""
+                SELECT Id, Name, Amount, StageName, CloseDate, Probability,
+                       Earned_Commission_Amount__c
+                FROM Opportunity
+                WHERE {ow} AND {WON_STAGES} AND {lf}
+                  AND CloseDate >= {sd} AND CloseDate <= {ed} AND Amount != null
+                ORDER BY CloseDate DESC LIMIT 20
             """,
             # Agent: risk — pushed deals
             pushed=f"""
@@ -298,6 +306,17 @@ def agent_profile(
                 'score': sc['score'], 'reasons': sc['reasons'],
             })
         top_list.sort(key=lambda x: -x['score'])
+
+        # ── Recently won opportunities ────────────────────────────────────
+        won_list = []
+        for r in data.get('recent_won', []):
+            won_list.append({
+                'id': r.get('Id', ''), 'name': r.get('Name', ''),
+                'amount': r.get('Amount', 0) or 0, 'stage': r.get('StageName', ''),
+                'probability': r.get('Probability', 0) or 0,
+                'close_date': r.get('CloseDate', ''),
+                'commission': r.get('Earned_Commission_Amount__c', 0) or 0,
+            })
 
         pushed_cnt = _val(data['pushed'], 'cnt')
         pushed_val = _val(data['pushed'], 'rev')
@@ -468,6 +487,7 @@ def agent_profile(
             },
             'months': months,
             'top_opportunities': top_list,
+            'won_opportunities': won_list,
             'team': {
                 'avg_revenue': t_avg_rev, 'avg_commission': t_avg_comm,
                 'win_rate': t_wr,

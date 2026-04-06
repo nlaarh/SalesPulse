@@ -181,7 +181,7 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
                   style={{ width: `${Math.min(s.coverage / 3 * 100, 100)}%` }}
                 />
               </div>
-              <span className="mt-0.5 block text-[10px] text-muted-foreground/60">Target: 2.0x</span>
+              <span className="mt-1 block text-[12px] font-medium text-muted-foreground">Target: 2.0x</span>
             </div>
           </div>
         </div>
@@ -313,13 +313,13 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
           <table className="w-full">
             <thead>
               <tr className="border-y border-border bg-secondary/20">
-                <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">Metric</th>
+                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Metric</th>
                 {profile.months.filter(m => m.month <= currentMonth || m.prior_revenue > 0).map((m) => (
-                  <th key={m.month} className="px-2 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">
+                  <th key={m.month} className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                     {m.label}
                   </th>
                 ))}
-                <th className="border-l border-border px-3 py-2 text-right text-[10px] font-bold uppercase tracking-[0.1em] text-foreground/70">
+                <th className="border-l border-border px-3 py-2 text-right text-[11px] font-bold uppercase tracking-[0.08em] text-foreground">
                   Total
                 </th>
               </tr>
@@ -398,11 +398,11 @@ function CompareBar({ label, agent, team, format, max }: {
   return (
     <div>
       <div className="flex items-baseline justify-between">
-        <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
+        <span className="text-[12px] font-medium text-muted-foreground">{label}</span>
         <div className="flex items-center gap-1.5">
-          <span className="text-[12px] font-bold tabular-nums">{format(agent)}</span>
+          <span className="text-[13px] font-bold tabular-nums">{format(agent)}</span>
           <span className={cn(
-            'text-[10px] font-semibold',
+            'text-[12px] font-semibold',
             isAbove ? 'text-emerald-500' : 'text-rose-500',
           )}>
             {isAbove ? '\u25B2' : '\u25BC'}
@@ -412,7 +412,7 @@ function CompareBar({ label, agent, team, format, max }: {
       <div className="relative mt-1.5 h-2 w-full overflow-hidden rounded-full bg-secondary">
         {/* Team marker line */}
         <div
-          className="absolute top-0 h-full w-0.5 bg-muted-foreground/30"
+          className="absolute top-0 h-full w-0.5 bg-muted-foreground/50"
           style={{ left: `${teamPct}%` }}
         />
         {/* Agent bar */}
@@ -422,7 +422,7 @@ function CompareBar({ label, agent, team, format, max }: {
           style={{ width: `${agentPct}%` }}
         />
       </div>
-      <span className="mt-0.5 block text-[10px] text-muted-foreground/40">
+      <span className="mt-1 block text-[12px] font-medium text-muted-foreground">
         Team avg: {format(team)}
       </span>
     </div>
@@ -486,8 +486,8 @@ function MonthRow({ label, months, getter, format, totalFmt, bold, muted, curren
         return (
           <td key={m.month} className="px-2 py-2 text-right">
             <span className={cn(
-              'tabular-nums text-[11px]',
-              isFuture ? 'text-muted-foreground/20' : v === 0 ? 'text-muted-foreground/30' : '',
+              'tabular-nums text-[12px]',
+              isFuture ? 'text-muted-foreground/30' : v === 0 ? 'text-muted-foreground/50' : '',
               bold && v > 0 && 'font-semibold',
             )}>
               {isFuture ? '\u2014' : format(v)}

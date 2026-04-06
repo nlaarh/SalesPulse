@@ -26,7 +26,7 @@ export default function KPICard({ title, value, delta, deltaLabel, icon, subtitl
       <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
 
       <div className="flex items-start justify-between">
-        <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
           {title}{tip && <Tip text={tip} />}
         </span>
         {icon && (
@@ -60,7 +60,7 @@ export default function KPICard({ title, value, delta, deltaLabel, icon, subtitl
             <span>{delta! > 0 ? '+' : ''}{delta!.toFixed(1)}%</span>
           </div>
           {deltaLabel && (
-            <span className="text-[10px] text-muted-foreground">{deltaLabel}</span>
+            <span className="text-[12px] font-medium text-muted-foreground">{deltaLabel}</span>
           )}
         </div>
       )}

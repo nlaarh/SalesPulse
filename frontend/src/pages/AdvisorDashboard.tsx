@@ -194,7 +194,7 @@ export default function AdvisorDashboard() {
       {/* ── Target Achievement ────────────────────────────────────────── */}
       {achievement?.current_month && achievement?.yearly && (
         <div className="animate-enter card-premium px-5 py-4">
-          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
+          <div className="mb-3 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             Target Achievement
           </div>
           <div className="grid grid-cols-2 gap-6">

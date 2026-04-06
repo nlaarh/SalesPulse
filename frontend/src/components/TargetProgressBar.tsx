@@ -31,15 +31,15 @@ export default function TargetProgressBar({ label, actual, target, pacePct, pace
 
   return (
     <div>
-      <div className="mb-1.5 flex items-center justify-between text-[11px]">
-        <span className="font-semibold uppercase tracking-[0.08em] text-muted-foreground/60">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-[13px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
           {label}
         </span>
-        <span className="tabular-nums">
-          <span className={cn('font-bold', color === 'indigo' ? 'text-indigo-400' : 'text-emerald-400')}>
+        <span className="tabular-nums text-[14px]">
+          <span className={cn('font-bold', color === 'indigo' ? 'text-indigo-500' : 'text-emerald-500')}>
             {formatCurrency(actual, true)}
           </span>
-          <span className="text-muted-foreground/50"> / {formatCurrency(target, true)}</span>
+          <span className="font-medium text-muted-foreground"> / {formatCurrency(target, true)}</span>
         </span>
       </div>
       <div className={cn('relative h-7 overflow-hidden rounded-full', barBg)}>
@@ -48,7 +48,7 @@ export default function TargetProgressBar({ label, actual, target, pacePct, pace
           style={{ width: `${Math.max(achievementPct, 3)}%` }}
         >
           {achievementPct >= 12 && (
-            <span className="text-[12px] font-bold text-white drop-shadow-sm tabular-nums">
+            <span className="text-[13px] font-bold text-white drop-shadow-sm tabular-nums">
               {achievementPct.toFixed(1)}%
             </span>
           )}
@@ -59,11 +59,11 @@ export default function TargetProgressBar({ label, actual, target, pacePct, pace
           style={{ left: `${pacePct}%` }}
         />
       </div>
-      <div className="mt-1 flex items-center justify-between text-[10px]">
-        <span className={cn('font-medium', pace.cls)} style={{ marginLeft: `${Math.max(pacePct - 5, 0)}%` }}>
+      <div className="mt-1.5 flex items-center justify-between text-[12px]">
+        <span className={cn('font-semibold', pace.cls)} style={{ marginLeft: `${Math.max(pacePct - 5, 0)}%` }}>
           ▲ {paceLabel} — {pace.text}
         </span>
-        <span className="text-muted-foreground/40 tabular-nums">
+        <span className="font-medium text-muted-foreground tabular-nums">
           {formatCurrency(remaining, true)} to go
         </span>
       </div>

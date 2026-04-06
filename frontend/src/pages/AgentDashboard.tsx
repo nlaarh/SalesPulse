@@ -45,6 +45,10 @@ export interface AgentProfile {
   yoy: { revenue_pct: number; commission_pct: number; deals_pct: number; win_rate_delta: number; avg_deal_delta: number }
   months: AgentMonthData[]
   top_opportunities: Opp[]
+  won_opportunities: Array<{
+    id: string; name: string; amount: number; stage: string
+    probability: number; close_date: string; commission: number
+  }>
   team: { avg_revenue: number; avg_commission: number; win_rate: number; avg_deal: number; total_agents: number }
   strengths: string[]; improvements: string[]
   pushed_count: number; pushed_value: number; stale_count: number
@@ -97,14 +101,14 @@ function KPICard({ label, value, delta, sub, tip }: {
 }) {
   return (
     <div className="card-premium px-4 py-3.5">
-      <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">
+      <span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {label}{tip && <Tip text={tip} />}
       </span>
       <p className="mt-1 text-[22px] font-bold tabular-nums tracking-tight">{value}</p>
       <div className="mt-1 flex items-center gap-2">
         {delta}
       </div>
-      <span className="mt-0.5 block text-[10px] text-muted-foreground/40">{sub}</span>
+      <span className="mt-0.5 block text-[12px] font-medium text-muted-foreground">{sub}</span>
     </div>
   )
 }
@@ -296,7 +300,7 @@ export default function AgentDashboard() {
           value={formatCurrency(s.pipeline_value, true)}
           delta={
             <span className={cn(
-              'text-[10px] font-semibold',
+              'text-[12px] font-semibold',
               s.coverage >= 2 ? 'text-emerald-500' : s.coverage >= 1 ? 'text-amber-500' : 'text-rose-500',
             )}>
               {s.coverage}x coverage
@@ -314,7 +318,7 @@ export default function AgentDashboard() {
               value={`${pct.toFixed(0)}%`}
               delta={
                 <span className={cn(
-                  'text-[10px] font-semibold',
+                  'text-[12px] font-semibold',
                   pct >= 100 ? 'text-emerald-500' : pct >= 80 ? 'text-amber-500' : 'text-rose-500',
                 )}>
                   {pct >= 100 ? 'On track' : pct >= 80 ? 'Close' : 'Below target'}
@@ -330,7 +334,7 @@ export default function AgentDashboard() {
       {/* ── Target Achievement ────────────────────────────────────────────── */}
       {achievement && achievement.monthly.target > 0 && (
         <div className="animate-enter stagger-2 card-premium px-5 py-4">
-          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
+          <div className="mb-3 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             Target Achievement — {profile.name}
           </div>
           <div className="grid grid-cols-2 gap-6">
@@ -363,7 +367,7 @@ export default function AgentDashboard() {
             </div>
             <h2 className="text-sm font-semibold">Manager's Brief<Tip text={TIPS.managerBrief} /></h2>
             {profile.ai_powered && (
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
                 AI-Powered
               </span>
             )}

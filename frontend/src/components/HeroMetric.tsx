@@ -60,7 +60,7 @@ export default function HeroMetric({
       </div>
 
       {/* Supporting metrics */}
-      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-[13px] text-muted-foreground">
+      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[14px] text-muted-foreground">
         <Stat label="Won Deals" value={formatNumber(deals)} />
         <Sep />
         <Stat label="Win Rate" value={formatPct(winRate)} highlight={winRate >= 50} />
@@ -92,7 +92,7 @@ function Delta({ pct, label }: { pct: number; label: string }) {
 function Stat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <span className="flex items-center gap-1.5">
-      <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50">{label}</span>
+      <span className="text-[12px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
       <span className={cn(
         'tabular-nums font-semibold',
         highlight ? 'text-emerald-500' : 'text-foreground',
