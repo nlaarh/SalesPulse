@@ -9,7 +9,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import {
   Bug, RefreshCw, Loader2, ChevronDown, ChevronUp, MessageSquare,
   CheckCircle2, Circle, ExternalLink, AlertTriangle, Info, Bot, Send,
-  Plus, X, Calendar, Zap,
+  Plus, X, Calendar, Zap, Pencil,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { fetchIssues, fetchIssue, addIssueComment, updateIssue, submitIssue } from '@/lib/api'
@@ -84,6 +84,10 @@ function IssueCard({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => 
   const [saving, setSaving]           = useState(false)
   const [localSev, setLocalSev]       = useState(getSev(issue))
   const [localStatus, setLocalStatus] = useState<IssueStatus>(getStatus(issue))
+  const [editMode, setEditMode]       = useState(false)
+  const [editTitle, setEditTitle]     = useState(issue.title)
+  const [editBody, setEditBody]       = useState('')
+  const [editSaving, setEditSaving]   = useState(false)
 
   const verdict = issue.triage_verdict ? VERDICT_MAP[issue.triage_verdict] : null
   const sevOpt  = SEVERITY_OPTIONS.find(s => s.value === localSev) ?? SEVERITY_OPTIONS[1]
@@ -95,6 +99,7 @@ function IssueCard({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => 
     try {
       const d = await fetchIssue(issue.number)
       setDetail({ body: d.issue.body, comments: d.comments })
+      if (!editBody) setEditBody(d.issue.body)
     } catch {
       setDetailError(true)
     } finally {
@@ -120,8 +125,18 @@ function IssueCard({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => 
     finally { setSaving(false) }
   }
 
-  const postComment = async () => {
-    if (!comment.trim()) return
+  const saveEdit = async () => {
+    if (!editTitle.trim()) return
+    setEditSaving(true)
+    try {
+      await updateIssue(issue.number, '', { title: editTitle, body: editBody })
+      setEditMode(false)
+      setTimeout(() => loadDetail(true), 800)
+    } catch { /* ignore */ }
+    finally { setEditSaving(false) }
+  }
+
+  const postComment = async () => {    if (!comment.trim()) return
     setPosting(true)
     try {
       await addIssueComment(issue.number, comment.trim(), commenterName.trim() || 'User')
@@ -219,6 +234,15 @@ function IssueCard({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => 
           <ExternalLink className="h-4 w-4" />
         </a>
 
+        {/* Edit toggle — stop propagation */}
+        <button
+          onClick={e => { e.stopPropagation(); setEditMode(v => !v); if (!open) { setOpen(true); loadDetail() } }}
+          className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          title={editMode ? 'Cancel edit' : 'Edit issue'}
+        >
+          {editMode ? <X className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+        </button>
+
         {/* Expand toggle */}
         <div className="shrink-0 text-muted-foreground">
           {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -242,6 +266,37 @@ function IssueCard({ issue, onRefresh }: { issue: GithubIssue; onRefresh: () => 
 
           {detail && (
             <>
+              {/* Edit mode form */}
+              {editMode && (
+                <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-primary">Edit Issue</p>
+                  <input
+                    value={editTitle}
+                    onChange={e => setEditTitle(e.target.value)}
+                    placeholder="Title"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  />
+                  <textarea
+                    value={editBody}
+                    onChange={e => setEditBody(e.target.value)}
+                    rows={5}
+                    placeholder="Description…"
+                    className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  />
+                  <div className="flex gap-2">
+                    <button onClick={saveEdit} disabled={editSaving || !editTitle.trim()}
+                      className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[13px] font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                      {editSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pencil className="h-3.5 w-3.5" />}
+                      Save Changes
+                    </button>
+                    <button onClick={() => setEditMode(false)}
+                      className="rounded-lg border border-border px-4 py-2 text-[13px] text-muted-foreground hover:text-foreground">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Description — strip GitHub metadata header, show only user text */}
               <div>
                 <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">

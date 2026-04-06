@@ -10,7 +10,7 @@ import { formatCurrency } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import Markdown from '@/components/Markdown'
 import {
-  ArrowLeft, DollarSign, Calendar, User, Building2,
+  ArrowLeft, User, Building2,
   AlertTriangle, CheckCircle2, Clock,
   Sparkles, GitBranch, CheckSquare, CalendarDays, Loader2,
   ChevronRight, RefreshCw,
@@ -106,11 +106,6 @@ function daysSince(iso: string | null | undefined): number | null {
   } catch { return null }
 }
 
-function stageIdx(stage: string): number {
-  const i = TRAVEL_STAGES.findIndex(s => s.toLowerCase() === stage.toLowerCase())
-  return i >= 0 ? i : TRAVEL_STAGES.length - 1
-}
-
 function scoreColor(score: number) {
   if (score >= 70) return 'text-emerald-500'
   if (score >= 40) return 'text-amber-500'
@@ -194,32 +189,30 @@ function StagePipeline({ history, currentStage }: { history: StageHistory[]; cur
 /* ── Timeline Card ────────────────────────────────────────────────────────── */
 
 function TimelineCard({ item, isLast }: { item: TimelineItem; isLast: boolean }) {
-  const d = item.data as Record<string, unknown>
-
   let icon = <GitBranch className="h-3.5 w-3.5 text-primary" />
   let iconBg = 'bg-primary/10'
   let headline = ''
   let sub = ''
 
   if (item.kind === 'stage') {
-    const h = d as StageHistory
+    const h = item.data as unknown as StageHistory
     headline = `Stage changed → ${h.stage}`
     sub = h.by ? `By ${h.by}` : ''
   } else if (item.kind === 'task') {
-    const t = d as TaskItem
+    const t = item.data as unknown as TaskItem
     icon = <CheckSquare className={cn('h-3.5 w-3.5', t.closed ? 'text-emerald-500' : 'text-amber-500')} />
     iconBg = t.closed ? 'bg-emerald-500/10' : 'bg-amber-500/10'
     headline = t.subject || 'Task'
     sub = [t.status, t.priority && t.priority !== 'Normal' ? `${t.priority} priority` : '', t.owner].filter(Boolean).join(' · ')
   } else {
-    const e = d as EventItem
+    const e = item.data as unknown as EventItem
     icon = <CalendarDays className="h-3.5 w-3.5 text-cyan-500" />
     iconBg = 'bg-cyan-500/10'
     headline = e.subject || 'Event'
     sub = e.owner || ''
   }
 
-  const desc = (d.description as string | null) || ''
+  const desc = ((item.data as Record<string, unknown>).description as string | null) || ''
 
   return (
     <div className="flex gap-3">

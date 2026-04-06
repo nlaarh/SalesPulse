@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { formatCurrency, cn } from '@/lib/utils'
 import { scoreColor, scoreBg, fmtDate } from '@/lib/formatters'
 import { Tip, TIPS } from '@/components/MetricTip'
-import { ExternalLink, ArrowUpDown, ChevronRight, Trophy, Filter } from 'lucide-react'
+import { ExternalLink, ChevronRight, Trophy, Filter } from 'lucide-react'
 import type { AgentProfile } from '../AgentDashboard'
 
 /* ── Props ──────────────────────────────────────────────────────────────── */

@@ -3,7 +3,7 @@
  */
 
 import { useNavigate } from 'react-router-dom'
-import { formatCurrency, cn } from '@/lib/utils'
+import { formatCurrency } from '@/lib/utils'
 import { Tip, TIPS } from '@/components/MetricTip'
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 import type { SlippingDeal } from '@/lib/types'
