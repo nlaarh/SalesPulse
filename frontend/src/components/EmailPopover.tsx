@@ -11,15 +11,19 @@ interface Props {
   onSend: (to: string) => Promise<void>
   description?: string
   label?: string
+  defaultEmail?: string
 }
 
-export default function EmailPopover({ onSend, description, label = 'Email' }: Props) {
+export default function EmailPopover({ onSend, description, label = 'Email', defaultEmail = '' }: Props) {
   const [open, setOpen]   = useState(false)
-  const [to, setTo]       = useState('')
+  const [to, setTo]       = useState(defaultEmail)
   const [sending, setSending] = useState(false)
   const [sent, setSent]   = useState(false)
   const [error, setError] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+
+  // Sync if defaultEmail changes (e.g. user loads after mount)
+  useEffect(() => { if (defaultEmail && !to) setTo(defaultEmail) }, [defaultEmail])
 
   useEffect(() => {
     if (!open) return
@@ -36,7 +40,7 @@ export default function EmailPopover({ onSend, description, label = 'Email' }: P
     try {
       await onSend(to)
       setSent(true)
-      setTimeout(() => { setOpen(false); setSent(false); setTo('') }, 2200)
+      setTimeout(() => { setOpen(false); setSent(false) }, 2200)
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
         ?? (e as Error).message ?? 'Failed to send'

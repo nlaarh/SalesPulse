@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useAuth } from '@/contexts/AuthContext'
 import {
   ArrowLeft, User, Phone, Mail, MapPin, Shield,
   Car, CreditCard, Plane, Heart, Loader2, Sparkles,
@@ -342,6 +343,7 @@ function UpsellPanel({ accountId }: { accountId: string }) {
 export default function CustomerProfile() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -391,6 +393,7 @@ export default function CustomerProfile() {
           </button>
           <EmailPopover
             description={`Customer 360: ${acct.name}`}
+            defaultEmail={user?.email ?? ''}
             onSend={async (to) => { await emailCustomerProfile(id!, to) }}
           />
         </div>

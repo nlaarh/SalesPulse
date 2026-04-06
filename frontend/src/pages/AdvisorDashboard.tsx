@@ -28,6 +28,7 @@ import { Loader2, BarChart3, Trophy, Sparkles, Printer } from 'lucide-react'
 import type { AchievementResponse } from '@/lib/api'
 import EmailPopover from '@/components/EmailPopover'
 import { emailAdvisorDashboard } from '@/lib/api'
+import { useAuth } from '@/contexts/AuthContext'
 import TargetProgressBar from '@/components/TargetProgressBar'
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
@@ -45,6 +46,7 @@ const TABS: { key: Tab; label: string; icon: typeof BarChart3 }[] = [
 export default function AdvisorDashboard() {
   const { line, period, startDate, endDate, viewMode } = useSales()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const c = useChartColors()
 
   const [summary, setSummary] = useState<Summary | null>(null)
@@ -198,6 +200,7 @@ export default function AdvisorDashboard() {
           </button>
           <EmailPopover
             description={`${line} Sales Report — ${periodLabel}`}
+            defaultEmail={user?.email ?? ''}
             onSend={async (to) => {
               await emailAdvisorDashboard(to, line, period, startDate ?? undefined, endDate ?? undefined)
             }}

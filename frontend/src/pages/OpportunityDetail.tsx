@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useAuth } from '@/contexts/AuthContext'
 import { fetchOpportunityDetail, emailOpportunity } from '@/lib/api'
 import EmailPopover from '@/components/EmailPopover'
 import { formatCurrency } from '@/lib/utils'
@@ -241,6 +242,7 @@ function TimelineCard({ item, isLast }: { item: TimelineItem; isLast: boolean })
 export default function OpportunityDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [detail, setDetail] = useState<OppDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -368,6 +370,7 @@ export default function OpportunityDetail() {
             </button>
             <EmailPopover
               description={`Opportunity: ${detail.name}`}
+              defaultEmail={user?.email ?? ''}
               onSend={async (to) => { await emailOpportunity(id!, to) }}
             />
           </div>
