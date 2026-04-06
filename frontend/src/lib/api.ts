@@ -184,6 +184,11 @@ export async function fetchTopOpportunities(
   return data
 }
 
+export async function fetchOpportunityDetail(oppId: string) {
+  const { data } = await api.get(`/api/sales/opportunities/${oppId}`, { timeout: 30000 })
+  return data
+}
+
 // ── Agent Profile (Drill-down) ──────────────────────────────────────────────
 
 export async function fetchAgentProfile(

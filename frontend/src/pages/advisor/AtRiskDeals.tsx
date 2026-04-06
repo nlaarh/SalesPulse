@@ -2,6 +2,7 @@
  * At-Risk Deals card — shared across all advisor tabs.
  */
 
+import { useNavigate } from 'react-router-dom'
 import { formatCurrency, cn } from '@/lib/utils'
 import { Tip, TIPS } from '@/components/MetricTip'
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
@@ -13,8 +14,18 @@ interface AtRiskDealsProps {
 }
 
 export default function AtRiskDeals({ deals, onSelectAdvisor }: AtRiskDealsProps) {
+  const navigate = useNavigate()
   const totalAtRisk = deals.reduce((sum, d) => sum + d.amount, 0)
   const top8 = deals.slice(0, 8)
+
+  const handleClick = (d: SlippingDeal) => {
+    if (d.id) {
+      // Navigate to opportunity detail page
+      navigate(`/opportunity/${d.id}`)
+    } else if (onSelectAdvisor) {
+      onSelectAdvisor(d.owner)
+    }
+  }
 
   return (
     <div>
@@ -36,15 +47,12 @@ export default function AtRiskDeals({ deals, onSelectAdvisor }: AtRiskDealsProps
             {top8.map((d) => (
               <div
                 key={d.id}
-                onClick={() => onSelectAdvisor?.(d.owner)}
-                className={cn(
-                  'flex items-center gap-3 rounded-lg border border-border/30 px-3 py-2.5 transition-colors hover:bg-secondary/20',
-                  onSelectAdvisor && 'cursor-pointer hover:border-primary/20',
-                )}
+                onClick={() => handleClick(d)}
+                className="flex cursor-pointer items-center gap-3 rounded-lg border border-border/30 px-3 py-2.5 transition-colors hover:bg-secondary/20 hover:border-primary/20"
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[12px] font-medium">{d.name}</p>
-                  <p className={cn('mt-0.5 text-[10px]', onSelectAdvisor ? 'text-primary/70' : 'text-muted-foreground')}>
+                  <p className="mt-0.5 text-[10px] text-primary/70">
                     {d.owner} &middot; {d.stage}
                   </p>
                 </div>

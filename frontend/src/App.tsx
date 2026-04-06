@@ -18,6 +18,7 @@ const LeadFunnel = lazy(() => import('@/pages/LeadFunnel'))
 const MonthlyReport = lazy(() => import('@/pages/MonthlyReport'))
 const TopOpportunities = lazy(() => import('@/pages/TopOpportunities'))
 const AgentDashboard = lazy(() => import('@/pages/AgentDashboard'))
+const OpportunityDetail = lazy(() => import('@/pages/OpportunityDetail'))
 const Help = lazy(() => import('@/pages/Help'))
 const Settings = lazy(() => import('@/pages/Settings'))
 const IssuesPage = lazy(() => import('@/pages/Issues'))
@@ -62,6 +63,7 @@ export default function App() {
                   <Route path="opportunities" element={<Suspense fallback={LazyFallback}><TopOpportunities /></Suspense>} />
                   <Route path="agent/:name" element={<Suspense fallback={LazyFallback}><AgentDashboard /></Suspense>} />
                   <Route path="pipeline" element={<Suspense fallback={LazyFallback}><Pipeline /></Suspense>} />
+                  <Route path="opportunity/:id" element={<Suspense fallback={LazyFallback}><OpportunityDetail /></Suspense>} />
                   <Route path="travel" element={<Suspense fallback={LazyFallback}><TravelAnalytics /></Suspense>} />
                   <Route path="leads" element={<Suspense fallback={LazyFallback}><LeadFunnel /></Suspense>} />
                   <Route path="help" element={<Suspense fallback={LazyFallback}><Help /></Suspense>} />

@@ -356,3 +356,193 @@ def top_opportunities(
             'Forecast category (10%)',
         ],
     }
+
+
+@router.get("/api/sales/opportunities/{opp_id}")
+def opportunity_detail(opp_id: str):
+    """Full detail for a single opportunity: fields + stage history + activity timeline + AI analysis."""
+
+    def fetch():
+        # 1. Opportunity record
+        opp_records = sf_query_all(f"""
+            SELECT Id, Name, StageName, Amount, CloseDate, Probability,
+                   ForecastCategory, PushCount, Description,
+                   CreatedDate, LastActivityDate, LastStageChangeDate,
+                   Owner.Name, Account.Name, RecordType.Name,
+                   Type, LeadSource
+            FROM Opportunity
+            WHERE Id = '{opp_id}'
+            LIMIT 1
+        """)
+        if not opp_records:
+            return None
+        opp = opp_records[0]
+
+        # 2. Stage history
+        history_records = sf_query_all(f"""
+            SELECT StageName, Amount, CloseDate, CreatedDate, CreatedBy.Name
+            FROM OpportunityHistory
+            WHERE OpportunityId = '{opp_id}'
+            ORDER BY CreatedDate DESC
+            LIMIT 50
+        """)
+
+        # 3. Tasks
+        task_records = sf_query_all(f"""
+            SELECT Subject, Status, ActivityDate, Description, Priority,
+                   CreatedDate, Owner.Name, IsClosed
+            FROM Task
+            WHERE WhatId = '{opp_id}'
+            ORDER BY CreatedDate DESC
+            LIMIT 30
+        """)
+
+        # 4. Events
+        event_records = sf_query_all(f"""
+            SELECT Subject, StartDateTime, EndDateTime, Description,
+                   CreatedDate, Owner.Name, IsAllDayEvent
+            FROM Event
+            WHERE WhatId = '{opp_id}'
+            ORDER BY StartDateTime DESC
+            LIMIT 30
+        """)
+
+        today = date.today()
+        score_info = _score_opportunity(opp, today)
+
+        result = {
+            'id': opp.get('Id'),
+            'name': opp.get('Name', ''),
+            'stage': opp.get('StageName', ''),
+            'amount': opp.get('Amount') or 0,
+            'close_date': opp.get('CloseDate', ''),
+            'probability': opp.get('Probability') or 0,
+            'forecast_category': opp.get('ForecastCategory', ''),
+            'push_count': opp.get('PushCount') or 0,
+            'description': opp.get('Description', ''),
+            'created_date': opp.get('CreatedDate', ''),
+            'last_activity': opp.get('LastActivityDate', ''),
+            'last_stage_change': opp.get('LastStageChangeDate', ''),
+            'owner': (opp.get('Owner') or {}).get('Name', ''),
+            'account': (opp.get('Account') or {}).get('Name', ''),
+            'record_type': (opp.get('RecordType') or {}).get('Name', ''),
+            'type': opp.get('Type', ''),
+            'lead_source': opp.get('LeadSource', ''),
+            'score': score_info['score'],
+            'score_reasons': score_info['reasons'],
+            'history': [
+                {
+                    'stage': h.get('StageName', ''),
+                    'amount': h.get('Amount') or 0,
+                    'close_date': h.get('CloseDate', ''),
+                    'date': h.get('CreatedDate', ''),
+                    'by': (h.get('CreatedBy') or {}).get('Name', ''),
+                }
+                for h in history_records
+            ],
+            'tasks': [
+                {
+                    'type': 'task',
+                    'subject': t.get('Subject', ''),
+                    'status': t.get('Status', ''),
+                    'due': t.get('ActivityDate', ''),
+                    'description': t.get('Description', ''),
+                    'priority': t.get('Priority', ''),
+                    'date': t.get('CreatedDate', ''),
+                    'owner': (t.get('Owner') or {}).get('Name', ''),
+                    'closed': t.get('IsClosed', False),
+                }
+                for t in task_records
+            ],
+            'events': [
+                {
+                    'type': 'event',
+                    'subject': e.get('Subject', ''),
+                    'start': e.get('StartDateTime', ''),
+                    'end': e.get('EndDateTime', ''),
+                    'description': e.get('Description', ''),
+                    'date': e.get('StartDateTime') or e.get('CreatedDate', ''),
+                    'owner': (e.get('Owner') or {}).get('Name', ''),
+                    'all_day': e.get('IsAllDayEvent', False),
+                }
+                for e in event_records
+            ],
+        }
+
+        # Build merged timeline sorted newest first
+        timeline = []
+        for h in result['history']:
+            timeline.append({'kind': 'stage', 'date': h['date'], 'data': h})
+        for t in result['tasks']:
+            timeline.append({'kind': 'task', 'date': t['date'], 'data': t})
+        for e in result['events']:
+            timeline.append({'kind': 'event', 'date': e['date'], 'data': e})
+        timeline.sort(key=lambda x: x['date'] or '', reverse=True)
+        result['timeline'] = timeline
+
+        # AI analysis
+        result['ai_analysis'] = _ai_deal_analysis(result)
+        return result
+
+    return cache.cached_query(f"opp_detail_{opp_id}", fetch, ttl=900, disk_ttl=3600)
+
+
+def _ai_deal_analysis(detail: dict) -> str:
+    """Generate an AI narrative analyzing the deal health and recommending next steps."""
+    try:
+        from routers.ai_config import get_ai_config
+        cfg = get_ai_config()
+        if not cfg.get('api_key'):
+            return ''
+        from openai import OpenAI
+        kwargs: dict = {'api_key': cfg['api_key']}
+        if cfg.get('base_url'):
+            kwargs['base_url'] = cfg['base_url']
+        client = OpenAI(**kwargs)
+
+        days_overdue = ''
+        if detail.get('close_date'):
+            try:
+                cd = datetime.strptime(detail['close_date'], '%Y-%m-%d').date()
+                diff = (date.today() - cd).days
+                if diff > 0:
+                    days_overdue = f'{diff} days overdue'
+                else:
+                    days_overdue = f'closes in {-diff} days'
+            except Exception:
+                pass
+
+        recent_tasks = '; '.join(
+            f"{t['subject']} ({t['status']})" for t in detail['tasks'][:5]
+        )
+        stage_changes = ' → '.join(
+            h['stage'] for h in reversed(detail['history'][:10])
+        )
+
+        prompt = f"""You are a senior sales manager at AAA reviewing a deal.
+
+Deal: {detail['name']}
+Owner: {detail['owner']} | Account: {detail['account']}
+Stage: {detail['stage']} | Amount: ${detail['amount']:,.0f} | Close Date: {detail['close_date']} ({days_overdue})
+Probability: {detail['probability']}% | Push Count: {detail['push_count']}
+Stage History: {stage_changes or 'No changes recorded'}
+Recent Tasks: {recent_tasks or 'None'}
+Days since last activity: {_days_between(detail.get('last_activity'), date.today()) or 'Unknown'}
+
+Write a 3-4 sentence deal health assessment covering:
+1. Current deal health (positive/concerning signals)
+2. Key risk factors based on the stage history, push count, and activity
+3. Specific recommended next action
+
+Be direct and actionable. No fluff."""
+
+        resp = client.chat.completions.create(
+            model=cfg['model'],
+            messages=[{'role': 'user', 'content': prompt}],
+            max_tokens=300,
+            temperature=0.4,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        log.warning(f"AI deal analysis failed: {e}")
+        return ''
