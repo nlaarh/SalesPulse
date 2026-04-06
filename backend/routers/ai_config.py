@@ -15,9 +15,8 @@ CONFIG_DIR = Path.home() / '.salesinsight'
 CONFIG_FILE = CONFIG_DIR / 'ai_config.json'
 
 SUPPORTED_PROVIDERS = {
-    'openai':    {'label': 'OpenAI',          'models': ['gpt-4.1-mini', 'gpt-4.1', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini']},
-    'azure':     {'label': 'Azure OpenAI',    'models': ['gpt-4.1-mini', 'gpt-4.1', 'gpt-4o', 'gpt-4o-mini']},
-    'anthropic': {'label': 'Anthropic Claude', 'models': ['claude-sonnet-4-5-20250514', 'claude-haiku-4-5-20251001', 'claude-3-5-sonnet-20241022']},
+    'openai': {'label': 'OpenAI',       'models': ['gpt-4.1-mini', 'gpt-4.1', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini']},
+    'azure':  {'label': 'Azure OpenAI', 'models': ['gpt-4.1-mini', 'gpt-4.1', 'gpt-4o', 'gpt-4o-mini']},
 }
 
 DEFAULT_CONFIG = {
@@ -38,9 +37,9 @@ def _load() -> dict:
     # Fall back to env vars on first load
     return {
         **DEFAULT_CONFIG,
-        'api_key': os.getenv('OPENAI_API_KEY', ''),
-        'model':   os.getenv('AI_MODEL', 'gpt-4o-mini'),
         'provider': os.getenv('AI_PROVIDER', 'openai'),
+        'model':    os.getenv('AI_MODEL', 'gpt-4.1-mini'),
+        'api_key':  os.getenv('OPENAI_API_KEY', ''),
         'base_url': os.getenv('OPENAI_BASE_URL', ''),
     }
 
@@ -51,12 +50,10 @@ def _save(cfg: dict):
 
 
 def get_ai_config() -> dict:
-    """Returns the current config. Always falls back to OPENAI_API_KEY env var if no key saved."""
+    """Returns current config. UI-saved key always wins; falls back to OPENAI_API_KEY env var."""
     cfg = _load()
-    # If config file has no key, fall back to env var (Azure App Settings)
     if not cfg.get('api_key'):
         cfg['api_key'] = os.getenv('OPENAI_API_KEY', '')
-    # Sync to env so existing code (sales_narrative.py etc.) picks it up
     if cfg.get('api_key'):
         os.environ['OPENAI_API_KEY'] = cfg['api_key']
     if cfg.get('model'):
@@ -64,6 +61,24 @@ def get_ai_config() -> dict:
     if cfg.get('base_url'):
         os.environ['OPENAI_BASE_URL'] = cfg['base_url']
     return cfg
+
+
+def call_ai(messages: list[dict], max_tokens: int = 1024, cfg: dict | None = None) -> str:
+    """Unified OpenAI call. Returns response text or raises on failure."""
+    if cfg is None:
+        cfg = get_ai_config()
+    api_key  = cfg.get('api_key', '')
+    model    = cfg.get('model', 'gpt-4.1-mini')
+    base_url = cfg.get('base_url', '')
+    if not api_key:
+        raise ValueError('No API key configured')
+    from openai import OpenAI
+    kwargs: dict = {'api_key': api_key}
+    if base_url:
+        kwargs['base_url'] = base_url
+    client = OpenAI(**kwargs)
+    resp = client.chat.completions.create(model=model, messages=messages, max_tokens=max_tokens)
+    return resp.choices[0].message.content or ''
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
