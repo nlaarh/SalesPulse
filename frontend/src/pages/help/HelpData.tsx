@@ -24,20 +24,61 @@ type FieldEntry = {
 }
 
 const OPP_FIELDS: FieldEntry[] = [
-  { name: 'Id',                           type: 'ID',       label: 'Opportunity ID',      queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Salesforce unique identifier' },
-  { name: 'Amount',                        type: 'Currency', label: 'Amount',               queryable: true,  indexed: false, groupable: false, custom: false, notes: 'Gross booking value. Always filter Amount != null before SUM.' },
-  { name: 'StageName',                     type: 'Picklist', label: 'Stage',                queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Won stages = "Closed Won" + "Invoice". Invoice = Travel billed. Never use IsClosed+IsWon alone.' },
-  { name: 'CloseDate',                     type: 'Date',     label: 'Close Date',           queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Date field — use bare date (2024-01-01). No T suffix.' },
-  { name: 'RecordTypeId',                  type: 'ID',       label: 'Record Type ID',       queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Use instead of RecordType.Name — direct indexed, no cross-object join. Travel=012Pb0000006hIjIAI, Insurance=012Pb0000006hIgIAI' },
-  { name: 'OwnerId',                       type: 'ID',       label: 'Owner User ID',        queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Use in GROUP BY instead of Owner.Name — avoids User table join per row.' },
-  { name: 'IsClosed',                      type: 'Boolean',  label: 'Is Closed',            queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'True for both won AND lost. Use StageName for won-only filter.' },
-  { name: 'IsWon',                         type: 'Boolean',  label: 'Is Won',               queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'True for Closed Won. NOT true for Invoice stage — use StageName filter.' },
-  { name: 'CreatedDate',                   type: 'DateTime', label: 'Created Date',         queryable: true,  indexed: true,  groupable: false, custom: false, notes: 'DateTime — use T00:00:00Z suffix in SOQL.' },
-  { name: 'LastActivityDate',              type: 'Date',     label: 'Last Activity',        queryable: true,  indexed: false, groupable: false, custom: false, notes: 'Date of most recent task/event. Used in priority score decay.' },
+  { name: 'Id',                           type: 'ID',       label: 'Opportunity ID',       queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Salesforce unique identifier' },
+  { name: 'AccountId',                    type: 'ID',       label: 'Account ID',           queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'FK to Account (customer/member). Use to join to Account for member info.' },
+  { name: 'Amount',                       type: 'Currency', label: 'Amount',               queryable: true,  indexed: false, groupable: false, custom: false, notes: 'Gross booking value. Always filter Amount != null before SUM.' },
+  { name: 'StageName',                    type: 'Picklist', label: 'Stage',                queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Won stages = "Closed Won" + "Invoice". Invoice = Travel billed. Never use IsClosed+IsWon alone.' },
+  { name: 'CloseDate',                    type: 'Date',     label: 'Close Date',           queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Date field — use bare date (2024-01-01). No T suffix.' },
+  { name: 'RecordTypeId',                 type: 'ID',       label: 'Record Type ID',       queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Travel=hIjIAI · Insurance=hIgIAI · Medicare=hIhIAI · Membership Svc=hIiIAI · Financial Svc=hIfIAI · Driver Programs=hIeIAI · Retirement=AjaIAE' },
+  { name: 'OwnerId',                      type: 'ID',       label: 'Owner User ID',        queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Use in GROUP BY instead of Owner.Name — avoids User table join per row.' },
+  { name: 'Type',                         type: 'Picklist', label: 'Opportunity Type',     queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'NWQ = new business. Used for new vs. renewal filtering.' },
+  { name: 'IsClosed',                     type: 'Boolean',  label: 'Is Closed',            queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'True for both won AND lost. Use StageName for won-only filter.' },
+  { name: 'IsWon',                        type: 'Boolean',  label: 'Is Won',               queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'True for Closed Won. NOT true for Invoice stage — use StageName filter.' },
+  { name: 'CreatedDate',                  type: 'DateTime', label: 'Created Date',         queryable: true,  indexed: true,  groupable: false, custom: false, notes: 'DateTime — use T00:00:00Z suffix in SOQL.' },
+  { name: 'LastActivityDate',             type: 'Date',     label: 'Last Activity',        queryable: true,  indexed: false, groupable: false, custom: false, notes: 'Date of most recent task/event. Used in priority score decay.' },
   { name: 'ForecastCategory',             type: 'Picklist', label: 'Forecast Category',    queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Pipeline, BestCase, Commit, Omitted, Closed.' },
-  { name: 'PushCount',                     type: 'Integer',  label: 'Push Count',           queryable: true,  indexed: false, groupable: false, custom: false, notes: 'Times close date was pushed forward. PushCount ≥ 3 = at-risk signal.' },
-  { name: 'Earned_Commission_Amount__c',  type: 'Currency', label: 'Commission Earned',    queryable: true,  indexed: false, groupable: false, custom: true,  notes: 'Populated 2-3 months post-booking. Travel only. Do not use for YoY comparisons.' },
-  { name: 'Destination_Region__c',        type: 'Picklist', label: 'Destination Region',   queryable: true,  indexed: true,  groupable: true,  custom: true,  notes: 'Travel division only. Used in destination analytics.' },
+  { name: 'PushCount',                    type: 'Integer',  label: 'Push Count',           queryable: true,  indexed: false, groupable: false, custom: false, notes: 'Times close date was pushed forward. PushCount ≥ 3 = at-risk signal.' },
+  { name: 'Earned_Commission_Amount__c',  type: 'Currency', label: 'Commission Earned',    queryable: true,  indexed: false, groupable: false, custom: true,  notes: 'Travel only. Populated 2-3 months post-booking. Do not use for real-time YoY.' },
+  { name: 'Destination_Region__c',        type: 'Picklist', label: 'Destination Region',   queryable: true,  indexed: true,  groupable: true,  custom: true,  notes: 'Travel only. Values: United States, Caribbean, International, etc.' },
+  { name: 'Axis_Trip_ID__c',              type: 'Text',     label: 'Axis Trip ID',         queryable: true,  indexed: true,  groupable: true,  custom: true,  notes: 'Travel only. External booking system reference (Axis). Format: "NN*NNNNNNN".' },
+  { name: 'Number_Traveling__c',          type: 'Number',   label: 'Number Traveling',     queryable: true,  indexed: false, groupable: false, custom: true,  notes: 'Travel only. Formula field — number of travelers on booking.' },
+  { name: 'SOA_Completed__c',             type: 'Picklist', label: 'SOA Completed',        queryable: true,  indexed: true,  groupable: true,  custom: true,  notes: 'Insurance only. Statement of Account completed flag.' },
+  { name: 'Loss_Reason__c',               type: 'Picklist', label: 'Loss Reason',          queryable: true,  indexed: true,  groupable: true,  custom: true,  notes: 'Populated on Closed Lost. Used in loss analysis.' },
+]
+
+const ACCOUNT_FIELDS: FieldEntry[] = [
+  { name: 'Id',                              type: 'ID',       label: 'Account ID',              queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Salesforce unique identifier. Use as FK from Opportunity.AccountId.' },
+  { name: 'Name',                            type: 'Text',     label: 'Full Name',               queryable: true,  indexed: false, groupable: true,  custom: false, notes: 'Customer full name (Person Account). Searchable with LIKE.' },
+  { name: 'PersonEmail',                     type: 'Email',    label: 'Email',                   queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Person Account email. Indexed.' },
+  { name: 'Phone',                           type: 'Phone',    label: 'Phone',                   queryable: true,  indexed: false, groupable: false, custom: false, notes: 'Primary phone number.' },
+  { name: 'RecordType.Name',                 type: 'Text',     label: 'Record Type',             queryable: false, indexed: false, groupable: false, custom: false, notes: 'Person Account = individual customer/member. Household = household grouping. Business = corporate.' },
+  { name: 'Account_Member_ID__c',            type: 'Text',     label: 'Member #',                queryable: true,  indexed: true,  groupable: true,  custom: true,  notes: 'AAA membership number. Searchable. Use for member lookup.' },
+  { name: 'Member_Status__c',               type: 'Picklist', label: 'Member Status',           queryable: true,  indexed: true,  groupable: true,  custom: true,  notes: 'A=Active, X=Expired/Cancelled. Key for active member filters.' },
+  { name: 'Account_Member_Since__c',         type: 'Date',     label: 'Member Since',            queryable: true,  indexed: true,  groupable: false, custom: true,  notes: 'Date member first joined AAA. Used for tenure calculations.' },
+  { name: 'ImportantActiveMemCoverage__c',   type: 'Text',     label: 'Membership Coverage',     queryable: true,  indexed: false, groupable: true,  custom: true,  notes: 'Current membership tier from active Asset: PREMIER, PLUS, Basic (B).' },
+  { name: 'ImportantActiveMemExpiryDate__c', type: 'Date',     label: 'Membership Expiry',       queryable: true,  indexed: true,  groupable: false, custom: true,  notes: 'Expiry date of current active membership. Use for renewal targeting.' },
+  { name: 'MPI__c',                          type: 'Number',   label: 'Member Product Index',    queryable: true,  indexed: false, groupable: false, custom: true,  notes: 'MPI = number of AAA product categories held. Higher = more engaged member.' },
+  { name: 'LTV__c',                          type: 'Picklist', label: 'Lifetime Value (LTV)',    queryable: true,  indexed: true,  groupable: true,  custom: true,  notes: 'Segmented LTV tier. Used for prioritization.' },
+  { name: 'Insuance_Customer_ID__c',         type: 'Text',     label: 'Insurance Customer #',    queryable: true,  indexed: true,  groupable: true,  custom: true,  notes: 'Insurance system customer ID. Note: field name has typo "Insuance".' },
+  { name: 'EPIC_GUID__c',                    type: 'Text',     label: 'EPIC GUID',               queryable: true,  indexed: true,  groupable: true,  custom: true,  notes: 'ID in EPIC insurance system. Use to correlate SF with insurance platform.' },
+  { name: 'FinServ__InsuranceCustomerSince__c', type: 'Date',  label: 'Insurance Customer Since',queryable: true,  indexed: false, groupable: false, custom: true,  notes: 'Date customer first purchased insurance from AAA.' },
+  { name: 'FinServ__TotalHouseholdPremiums__c', type: 'Currency', label: 'Total Household Premiums', queryable: true, indexed: false, groupable: false, custom: true, notes: 'Rollup of all insurance premiums for household. From FinancialServices Cloud.' },
+  { name: 'Region__c',                       type: 'Picklist', label: 'Region',                  queryable: true,  indexed: true,  groupable: true,  custom: true,  notes: 'AAA geographic region. Used for territory-based analytics.' },
+  { name: 'ERS_Calls_Made_CP__c',            type: 'Number',   label: 'ERS Calls Made (Period)', queryable: true,  indexed: false, groupable: false, custom: true,  notes: 'Emergency Roadside Service calls used in current membership period.' },
+  { name: 'ERS_Calls_Available_CP__c',       type: 'Number',   label: 'ERS Calls Available',     queryable: true,  indexed: false, groupable: false, custom: true,  notes: 'Remaining ERS calls in current period based on membership tier.' },
+]
+
+const ASSET_FIELDS: FieldEntry[] = [
+  { name: 'Id',            type: 'ID',       label: 'Asset ID',       queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Salesforce unique identifier.' },
+  { name: 'Name',          type: 'Text',     label: 'Asset Name',     queryable: true,  indexed: false, groupable: true,  custom: false, notes: 'Membership format: "MemberNumber - Level - StatusCode" e.g. "6200842153806005 - PLUS - L".' },
+  { name: 'RecordType.Name', type: 'Text',   label: 'Record Type',    queryable: false, indexed: false, groupable: false, custom: false, notes: 'Membership (1.19M) = AAA membership cards. Vehicle (490K) = customer vehicles. ERS Truck = fleet trucks.' },
+  { name: 'AccountId',     type: 'ID',       label: 'Account ID',     queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'FK to Account (member). Use to get all assets for a customer.' },
+  { name: 'Status',        type: 'Picklist', label: 'Status',         queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Membership: A=Active, L=Lapsed, X=Expired/Cancelled, C=Cancelled, P=Pending. Vehicle: Active/Inactive.' },
+  { name: 'SerialNumber',  type: 'Text',     label: 'Serial Number',  queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Membership: membership card number. Vehicle: VIN.' },
+  { name: 'PurchaseDate',  type: 'Date',     label: 'Purchase Date',  queryable: true,  indexed: true,  groupable: false, custom: false, notes: 'Membership join/renewal date.' },
+  { name: 'UsageEndDate',  type: 'Date',     label: 'Expiry Date',    queryable: true,  indexed: true,  groupable: false, custom: false, notes: 'Membership expiry date. Use for renewal campaigns.' },
+  { name: 'Price',         type: 'Currency', label: 'Price',          queryable: true,  indexed: false, groupable: false, custom: false, notes: 'Membership price paid.' },
+  { name: 'Description',   type: 'Text',     label: 'Description',    queryable: false, indexed: false, groupable: false, custom: false, notes: 'Vehicle: make/model/year details. NOT filterable in WHERE clause.' },
 ]
 
 const LEAD_FIELDS: FieldEntry[] = [
@@ -47,22 +88,24 @@ const LEAD_FIELDS: FieldEntry[] = [
   { name: 'ConvertedDate',  type: 'Date',     label: 'Converted Date', queryable: true,  indexed: true,  groupable: false, custom: false, notes: 'Date field — no T suffix. Only populated when IsConverted = true.' },
   { name: 'CreatedDate',    type: 'DateTime', label: 'Created Date',   queryable: true,  indexed: true,  groupable: false, custom: false, notes: 'DateTime — use T00:00:00Z suffix.' },
   { name: 'OwnerId',        type: 'ID',       label: 'Owner User ID',  queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Indexed, use in GROUP BY instead of Owner.Name.' },
-  { name: 'RecordTypeId',   type: 'ID',       label: 'Record Type ID', queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Travel=012Pb0000006hIdIAI, Insurance=012Pb0000006hIbIAI, Fin Svc=012Pb0000006hIaIAI, Driver=012Pb0000006hIZIAY' },
+  { name: 'RecordTypeId',   type: 'ID',       label: 'Record Type ID', queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Travel=hIdIAI · Insurance=hIbIAI · Medicare=hIhIAI · Membership Svc=hIcIAI · Financial Svc=hIaIAI · Driver=hIZIAY · Outbound=LaLRIA0' },
   { name: 'LeadSource',     type: 'Picklist', label: 'Lead Source',    queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Used in lead funnel source effectiveness breakdown.' },
 ]
 
 const USER_FIELDS: FieldEntry[] = [
-  { name: 'Id',         type: 'ID',      label: 'User ID',    queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Matches OwnerId on Opportunity and Lead.' },
-  { name: 'Name',       type: 'Text',    label: 'Full Name',  queryable: true,  indexed: false, groupable: true,  custom: false, notes: 'Use get_owner_map() (cached) to resolve OwnerId → Name in Python. Never GROUP BY Owner.Name in SOQL.' },
-  { name: 'IsActive',   type: 'Boolean', label: 'Is Active',  queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Filter IsActive = true when building owner maps to exclude deactivated accounts.' },
-  { name: 'Title',      type: 'Text',    label: 'Job Title',  queryable: true,  indexed: false, groupable: false, custom: false, notes: 'Used in agent whitelist filtering on certain endpoints.' },
-  { name: 'Profile.Name', type: 'Text',  label: 'Profile',    queryable: false, indexed: false, groupable: false, custom: false, notes: 'NOT directly queryable as a WHERE clause — use Id filter or ProfileId.' },
+  { name: 'Id',           type: 'ID',      label: 'User ID',    queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Matches OwnerId on Opportunity and Lead.' },
+  { name: 'Name',         type: 'Text',    label: 'Full Name',  queryable: true,  indexed: false, groupable: true,  custom: false, notes: 'Use get_owner_map() (cached) to resolve OwnerId → Name in Python. Never GROUP BY Owner.Name in SOQL.' },
+  { name: 'IsActive',     type: 'Boolean', label: 'Is Active',  queryable: true,  indexed: true,  groupable: true,  custom: false, notes: 'Filter IsActive = true when building owner maps to exclude deactivated accounts.' },
+  { name: 'Title',        type: 'Text',    label: 'Job Title',  queryable: true,  indexed: false, groupable: false, custom: false, notes: 'Used in agent whitelist filtering on certain endpoints.' },
+  { name: 'Profile.Name', type: 'Text',    label: 'Profile',    queryable: false, indexed: false, groupable: false, custom: false, notes: 'NOT directly queryable as a WHERE clause — use Id filter or ProfileId.' },
 ]
 
 const OBJECT_TABS = [
-  { key: 'opp',  label: 'Opportunity', icon: Database,  fields: OPP_FIELDS,  color: 'text-primary' },
-  { key: 'lead', label: 'Lead',        icon: Megaphone, fields: LEAD_FIELDS, color: 'text-rose-500' },
-  { key: 'user', label: 'User',        icon: User,      fields: USER_FIELDS, color: 'text-amber-500' },
+  { key: 'opp',     label: 'Opportunity', icon: Database,  fields: OPP_FIELDS,     color: 'text-primary' },
+  { key: 'account', label: 'Account',     icon: User,      fields: ACCOUNT_FIELDS, color: 'text-cyan-500' },
+  { key: 'asset',   label: 'Asset',       icon: Key,       fields: ASSET_FIELDS,   color: 'text-violet-500' },
+  { key: 'lead',    label: 'Lead',        icon: Megaphone, fields: LEAD_FIELDS,    color: 'text-rose-500' },
+  { key: 'user',    label: 'User',        icon: User,      fields: USER_FIELDS,    color: 'text-amber-500' },
 ]
 
 const TYPE_COLORS: Record<string, string> = {
@@ -73,7 +116,10 @@ const TYPE_COLORS: Record<string, string> = {
   Picklist: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
   Boolean:  'bg-orange-500/10 text-orange-600 border-orange-500/20',
   Integer:  'bg-pink-500/10 text-pink-600 border-pink-500/20',
+  Number:   'bg-pink-500/10 text-pink-600 border-pink-500/20',
   Text:     'bg-gray-500/10 text-gray-500 border-gray-500/20',
+  Email:    'bg-sky-500/10 text-sky-500 border-sky-500/20',
+  Phone:    'bg-sky-500/10 text-sky-500 border-sky-500/20',
 }
 
 /* ── ER Diagram (SVG) ───────────────────────────────────────────────────── */
@@ -81,46 +127,70 @@ function ERDiagram() {
   return (
     <div className="rounded-xl border border-border bg-muted/20 p-4 overflow-x-auto">
       <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-3">Entity Relationships</p>
-      <svg viewBox="0 0 640 220" className="w-full max-w-2xl mx-auto" style={{ minWidth: 420 }}>
+      <svg viewBox="0 0 760 300" className="w-full max-w-3xl mx-auto" style={{ minWidth: 480 }}>
+        {/* Account box */}
+        <rect x="10" y="100" width="145" height="100" rx="8" className="fill-cyan-500/10 stroke-cyan-500/40" strokeWidth="1.5" />
+        <text x="82" y="122" textAnchor="middle" fontSize="11" fontWeight="600" className="fill-cyan-600">Account</text>
+        <text x="82" y="138" textAnchor="middle" fontSize="9" className="fill-gray-400">(Person / Member)</text>
+        <text x="82" y="153" textAnchor="middle" fontSize="9" className="fill-gray-400">Member #, Status</text>
+        <text x="82" y="166" textAnchor="middle" fontSize="9" className="fill-gray-400">MPI, LTV, Coverage</text>
+        <text x="82" y="179" textAnchor="middle" fontSize="9" className="fill-gray-400">Insurance Customer #</text>
+
+        {/* Asset box */}
+        <rect x="10" y="220" width="145" height="70" rx="8" className="fill-violet-500/10 stroke-violet-500/40" strokeWidth="1.5" />
+        <text x="82" y="242" textAnchor="middle" fontSize="11" fontWeight="600" className="fill-violet-500">Asset</text>
+        <text x="82" y="257" textAnchor="middle" fontSize="9" className="fill-gray-400">Membership (1.19M)</text>
+        <text x="82" y="270" textAnchor="middle" fontSize="9" className="fill-gray-400">Vehicle (490K)</text>
+
         {/* User box */}
-        <rect x="10" y="80" width="120" height="60" rx="8" className="fill-amber-500/10 stroke-amber-500/40" strokeWidth="1.5" />
-        <text x="70" y="104" textAnchor="middle" className="fill-amber-600 text-[11px]" fontSize="11" fontWeight="600">User</text>
-        <text x="70" y="120" textAnchor="middle" className="fill-gray-400 text-[10px]" fontSize="10">Id, Name, IsActive</text>
+        <rect x="210" y="120" width="120" height="55" rx="8" className="fill-amber-500/10 stroke-amber-500/40" strokeWidth="1.5" />
+        <text x="270" y="143" textAnchor="middle" fontSize="11" fontWeight="600" className="fill-amber-600">User</text>
+        <text x="270" y="159" textAnchor="middle" fontSize="9" className="fill-gray-400">Id, Name, IsActive</text>
 
         {/* Opportunity box */}
-        <rect x="200" y="20" width="150" height="80" rx="8" className="fill-primary/10 stroke-primary/40" strokeWidth="1.5" />
-        <text x="275" y="44" textAnchor="middle" className="fill-primary text-[11px]" fontSize="11" fontWeight="600">Opportunity</text>
-        <text x="275" y="60" textAnchor="middle" className="fill-gray-400 text-[10px]" fontSize="10">Amount, StageName</text>
-        <text x="275" y="74" textAnchor="middle" className="fill-gray-400 text-[10px]" fontSize="10">CloseDate, OwnerId</text>
-        <text x="275" y="88" textAnchor="middle" className="fill-gray-400 text-[10px]" fontSize="10">RecordTypeId</text>
+        <rect x="390" y="20" width="160" height="110" rx="8" className="fill-primary/10 stroke-primary/40" strokeWidth="1.5" />
+        <text x="470" y="43" textAnchor="middle" fontSize="11" fontWeight="600" className="fill-primary">Opportunity</text>
+        <text x="470" y="59" textAnchor="middle" fontSize="9" className="fill-gray-400">Amount, StageName</text>
+        <text x="470" y="72" textAnchor="middle" fontSize="9" className="fill-gray-400">CloseDate, OwnerId</text>
+        <text x="470" y="85" textAnchor="middle" fontSize="9" className="fill-gray-400">RecordTypeId, AccountId</text>
+        <text x="470" y="98" textAnchor="middle" fontSize="9" className="fill-gray-400">Destination_Region__c</text>
+        <text x="470" y="111" textAnchor="middle" fontSize="9" className="fill-gray-400">Axis_Trip_ID__c</text>
 
         {/* Lead box */}
-        <rect x="200" y="130" width="150" height="70" rx="8" className="fill-rose-500/10 stroke-rose-500/40" strokeWidth="1.5" />
-        <text x="275" y="153" textAnchor="middle" className="fill-rose-500 text-[11px]" fontSize="11" fontWeight="600">Lead</text>
-        <text x="275" y="169" textAnchor="middle" className="fill-gray-400 text-[10px]" fontSize="10">Status, IsConverted</text>
-        <text x="275" y="185" textAnchor="middle" className="fill-gray-400 text-[10px]" fontSize="10">OwnerId, RecordTypeId</text>
+        <rect x="390" y="155" width="160" height="80" rx="8" className="fill-rose-500/10 stroke-rose-500/40" strokeWidth="1.5" />
+        <text x="470" y="177" textAnchor="middle" fontSize="11" fontWeight="600" className="fill-rose-500">Lead</text>
+        <text x="470" y="193" textAnchor="middle" fontSize="9" className="fill-gray-400">Status, IsConverted</text>
+        <text x="470" y="206" textAnchor="middle" fontSize="9" className="fill-gray-400">OwnerId, RecordTypeId</text>
+        <text x="470" y="219" textAnchor="middle" fontSize="9" className="fill-gray-400">7 record types</text>
 
         {/* RecordType box */}
-        <rect x="430" y="70" width="140" height="60" rx="8" className="fill-violet-500/10 stroke-violet-500/40" strokeWidth="1.5" />
-        <text x="500" y="94" textAnchor="middle" className="fill-violet-500 text-[11px]" fontSize="11" fontWeight="600">RecordType</text>
-        <text x="500" y="110" textAnchor="middle" className="fill-gray-400 text-[10px]" fontSize="10">Id, Name, SObjectType</text>
+        <rect x="610" y="90" width="140" height="55" rx="8" className="fill-gray-500/10 stroke-gray-500/40" strokeWidth="1.5" />
+        <text x="680" y="113" textAnchor="middle" fontSize="11" fontWeight="600" className="fill-gray-400">RecordType</text>
+        <text x="680" y="129" textAnchor="middle" fontSize="9" className="fill-gray-400">Travel · Insurance · Medicare</text>
 
         {/* Edges */}
-        {/* User → Opportunity (OwnerId) */}
-        <line x1="130" y1="100" x2="200" y2="55" stroke="rgb(var(--primary)/0.3)" strokeWidth="1.5" strokeDasharray="4 2" />
-        <text x="155" y="70" fontSize="9" className="fill-gray-400" textAnchor="middle">OwnerId</text>
+        {/* Account → Opportunity */}
+        <line x1="155" y1="130" x2="390" y2="70" stroke="rgba(6,182,212,0.4)" strokeWidth="1.5" strokeDasharray="4 2" />
+        <text x="268" y="88" fontSize="9" className="fill-gray-400" textAnchor="middle">AccountId</text>
 
-        {/* User → Lead (OwnerId) */}
-        <line x1="130" y1="115" x2="200" y2="165" stroke="rgb(209,52,52,0.3)" strokeWidth="1.5" strokeDasharray="4 2" />
-        <text x="155" y="148" fontSize="9" className="fill-gray-400" textAnchor="middle">OwnerId</text>
+        {/* Account → Asset */}
+        <line x1="82" y1="200" x2="82" y2="220" stroke="rgba(139,92,246,0.4)" strokeWidth="1.5" strokeDasharray="4 2" />
+        <text x="105" y="214" fontSize="9" className="fill-gray-400">AccountId</text>
+
+        {/* User → Opportunity */}
+        <line x1="330" y1="143" x2="390" y2="90" stroke="rgba(245,158,11,0.4)" strokeWidth="1.5" strokeDasharray="4 2" />
+        <text x="366" y="108" fontSize="9" className="fill-gray-400" textAnchor="middle">OwnerId</text>
+
+        {/* User → Lead */}
+        <line x1="330" y1="158" x2="390" y2="190" stroke="rgba(245,158,11,0.4)" strokeWidth="1.5" strokeDasharray="4 2" />
+        <text x="362" y="183" fontSize="9" className="fill-gray-400" textAnchor="middle">OwnerId</text>
 
         {/* Opportunity → RecordType */}
-        <line x1="350" y1="60" x2="430" y2="90" stroke="rgb(139,92,246,0.3)" strokeWidth="1.5" strokeDasharray="4 2" />
-        <text x="395" y="70" fontSize="9" className="fill-gray-400" textAnchor="middle">RecordTypeId</text>
+        <line x1="550" y1="75" x2="610" y2="110" stroke="rgba(107,114,128,0.3)" strokeWidth="1.5" strokeDasharray="4 2" />
 
         {/* Lead → RecordType */}
-        <line x1="350" y1="165" x2="430" y2="115" stroke="rgb(139,92,246,0.3)" strokeWidth="1.5" strokeDasharray="4 2" />
-        <text x="398" y="150" fontSize="9" className="fill-gray-400" textAnchor="middle">RecordTypeId</text>
+        <line x1="550" y1="190" x2="610" y2="130" stroke="rgba(107,114,128,0.3)" strokeWidth="1.5" strokeDasharray="4 2" />
+        <text x="593" y="165" fontSize="9" className="fill-gray-400" textAnchor="middle">RecordTypeId</text>
       </svg>
     </div>
   )
