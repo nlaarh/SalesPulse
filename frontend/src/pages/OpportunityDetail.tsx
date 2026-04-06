@@ -1,6 +1,5 @@
 /**
- * OpportunityDetail — Full deal view with AI analysis + activity timeline.
- *
+ * OpportunityDetail — Full deal view with visual pipeline, AI analysis, and activity timeline.
  * Navigated to from At-Risk Pipeline cards via /opportunity/:id
  */
 
@@ -11,44 +10,82 @@ import { formatCurrency } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import {
   ArrowLeft, DollarSign, Calendar, User, Building2,
-  AlertTriangle, CheckCircle2, Clock, ChevronRight,
+  AlertTriangle, CheckCircle2, Clock,
   Sparkles, GitBranch, CheckSquare, CalendarDays, Loader2,
+  ChevronRight, RefreshCw,
 } from 'lucide-react'
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
 
+interface StageHistory {
+  stage: string; amount: number; close_date: string; date: string; by: string
+}
+interface TaskItem {
+  type: 'task'; subject: string; status: string; due: string
+  description: string; priority: string; date: string; owner: string; closed: boolean
+}
+interface EventItem {
+  type: 'event'; subject: string; start: string; end: string
+  description: string; date: string; owner: string; all_day: boolean
+}
 interface TimelineItem {
   kind: 'stage' | 'task' | 'event'
   date: string
-  data: Record<string, unknown>
+  data: StageHistory | TaskItem | EventItem
+}
+interface OppDetail {
+  id: string; name: string; stage: string; amount: number
+  close_date: string; probability: number; forecast_category: string
+  push_count: number; description: string; created_date: string
+  last_activity: string; last_stage_change: string
+  owner: string; account: string; record_type: string
+  type: string; lead_source: string
+  score: number; score_reasons: string[]
+  history: StageHistory[]; tasks: TaskItem[]; events: EventItem[]
+  timeline: TimelineItem[]; ai_analysis: string
 }
 
-interface OppDetail {
-  id: string
-  name: string
-  stage: string
-  amount: number
-  close_date: string
-  probability: number
-  forecast_category: string
-  push_count: number
-  description: string
-  created_date: string
-  last_activity: string
-  owner: string
-  account: string
-  record_type: string
-  type: string
-  lead_source: string
-  score: number
-  score_reasons: string[]
-  timeline: TimelineItem[]
-  ai_analysis: string
+/* ── Pipeline stage order ─────────────────────────────────────────────────── */
+
+const TRAVEL_STAGES = ['New', 'Qualifying/Research', 'Quote', 'Booked', 'Invoice', 'Closed Won']
+const LOST_STAGES = ['Closed Lost', 'Dead']
+
+function buildStageFlow(history: StageHistory[], currentStage: string): {
+  stage: string; entered: string | null; exitedTo: string | null; daysInStage: number | null
+}[] {
+  // Build unique visited stages in order of first visit
+  const visited: { stage: string; date: string }[] = []
+  const seen = new Set<string>()
+  for (const h of [...history].reverse()) {
+    if (!seen.has(h.stage)) {
+      seen.add(h.stage)
+      visited.push({ stage: h.stage, date: h.date })
+    }
+  }
+  // Ensure current stage is in the list
+  if (!seen.has(currentStage)) visited.push({ stage: currentStage, date: '' })
+
+  return visited.map((v, i) => {
+    const next = visited[i + 1]
+    const enteredDate = v.date ? new Date(v.date) : null
+    const exitedDate = next?.date ? new Date(next.date) : null
+    const daysInStage = enteredDate && exitedDate
+      ? Math.max(0, Math.floor((exitedDate.getTime() - enteredDate.getTime()) / 86400000))
+      : enteredDate
+        ? Math.floor((Date.now() - enteredDate.getTime()) / 86400000)
+        : null
+    return {
+      stage: v.stage,
+      entered: v.date || null,
+      exitedTo: next?.stage || null,
+      daysInStage,
+    }
+  })
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
-function formatDate(iso: string | null | undefined, short = false): string {
+function fmtDate(iso: string | null | undefined, short = false): string {
   if (!iso) return '—'
   try {
     const d = new Date(iso)
@@ -56,9 +93,7 @@ function formatDate(iso: string | null | undefined, short = false): string {
     return d.toLocaleDateString('en-US', short
       ? { month: 'short', day: 'numeric' }
       : { year: 'numeric', month: 'short', day: 'numeric' })
-  } catch {
-    return iso.slice(0, 10)
-  }
+  } catch { return iso.slice(0, 10) }
 }
 
 function daysSince(iso: string | null | undefined): number | null {
@@ -67,18 +102,12 @@ function daysSince(iso: string | null | undefined): number | null {
     const d = new Date(iso.slice(0, 10))
     const today = new Date(); today.setHours(0, 0, 0, 0)
     return Math.floor((today.getTime() - d.getTime()) / 86400000)
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
 
-function stageColor(stage: string) {
-  const s = stage.toLowerCase()
-  if (s.includes('won') || s.includes('closed won')) return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20'
-  if (s.includes('lost') || s.includes('closed lost')) return 'text-rose-500 bg-rose-500/10 border-rose-500/20'
-  if (s.includes('proposal') || s.includes('present')) return 'text-primary bg-primary/10 border-primary/20'
-  if (s.includes('qualify') || s.includes('discovery')) return 'text-amber-500 bg-amber-500/10 border-amber-500/20'
-  return 'text-muted-foreground bg-secondary/40 border-border'
+function stageIdx(stage: string): number {
+  const i = TRAVEL_STAGES.findIndex(s => s.toLowerCase() === stage.toLowerCase())
+  return i >= 0 ? i : TRAVEL_STAGES.length - 1
 }
 
 function scoreColor(score: number) {
@@ -87,81 +116,123 @@ function scoreColor(score: number) {
   return 'text-rose-500'
 }
 
-/* ── Sub-components ──────────────────────────────────────────────────────── */
+/* ── Stage Pipeline Visual ───────────────────────────────────────────────── */
 
-function KVRow({ label, value }: { label: string; value: React.ReactNode }) {
+function StagePipeline({ history, currentStage }: { history: StageHistory[]; currentStage: string }) {
+  const flow = buildStageFlow(history, currentStage)
+  const isLost = LOST_STAGES.some(s => s.toLowerCase() === currentStage.toLowerCase())
+
   return (
-    <div className="flex items-start justify-between gap-4 py-2 border-b border-border/30 last:border-0">
-      <span className="text-[11px] text-muted-foreground shrink-0">{label}</span>
-      <span className="text-[12px] font-medium text-right">{value || '—'}</span>
+    <div className="card-premium px-5 py-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
+          Deal Journey
+        </h3>
+        <span className="text-[11px] text-muted-foreground">{flow.length} stages · {history.length} history events</span>
+      </div>
+
+      <div className="relative flex items-start gap-0">
+        {flow.map((s, i) => {
+          const isCurrent = s.stage.toLowerCase() === currentStage.toLowerCase()
+          const isPast = !isCurrent && i < flow.length - 1
+          const isFirst = i === 0
+          return (
+            <div key={i} className="flex flex-1 flex-col items-start min-w-0">
+              {/* Connector line + node row */}
+              <div className="flex w-full items-center">
+                {/* Left connector */}
+                <div className={cn(
+                  'h-0.5 flex-1',
+                  isFirst ? 'bg-transparent' : isPast || isCurrent ? 'bg-primary/40' : 'bg-border/40'
+                )} />
+                {/* Node */}
+                <div className={cn(
+                  'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 text-[10px] font-bold transition-all',
+                  isCurrent && !isLost ? 'border-primary bg-primary text-primary-foreground shadow-lg shadow-primary/30' :
+                  isLost && isCurrent ? 'border-rose-500 bg-rose-500 text-white' :
+                  isPast ? 'border-primary/40 bg-primary/10 text-primary' :
+                  'border-border/40 bg-secondary/40 text-muted-foreground'
+                )}>
+                  {isPast ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
+                </div>
+                {/* Right connector */}
+                <div className={cn(
+                  'h-0.5 flex-1',
+                  i === flow.length - 1 ? 'bg-transparent' : isPast ? 'bg-primary/40' : 'bg-border/40'
+                )} />
+              </div>
+              {/* Label + time */}
+              <div className="mt-1.5 px-1 text-center w-full">
+                <p className={cn(
+                  'text-[10px] font-semibold truncate',
+                  isCurrent ? 'text-foreground' : isPast ? 'text-primary/70' : 'text-muted-foreground/50'
+                )}>
+                  {s.stage}
+                </p>
+                {s.daysInStage !== null && (
+                  <p className={cn(
+                    'text-[9px]',
+                    isCurrent ? 'text-amber-500 font-semibold' : 'text-muted-foreground/40'
+                  )}>
+                    {s.daysInStage === 0 ? '<1d' : `${s.daysInStage}d`}
+                    {isCurrent ? ' so far' : ''}
+                  </p>
+                )}
+                {s.entered && (
+                  <p className="text-[9px] text-muted-foreground/30">{fmtDate(s.entered, true)}</p>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
 
-function TimelineCard({ item }: { item: TimelineItem }) {
-  const d = item.data
+/* ── Timeline Card ────────────────────────────────────────────────────────── */
+
+function TimelineCard({ item, isLast }: { item: TimelineItem; isLast: boolean }) {
+  const d = item.data as Record<string, unknown>
+
+  let icon = <GitBranch className="h-3.5 w-3.5 text-primary" />
+  let iconBg = 'bg-primary/10'
+  let headline = ''
+  let sub = ''
+
   if (item.kind === 'stage') {
-    return (
-      <div className="flex gap-3">
-        <div className="flex flex-col items-center">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
-            <GitBranch className="h-3.5 w-3.5 text-primary" />
-          </div>
-          <div className="mt-1 w-px flex-1 bg-border/40" />
-        </div>
-        <div className="pb-4 min-w-0">
-          <p className="text-[11px] text-muted-foreground">{formatDate(d.date as string)}</p>
-          <p className="mt-0.5 text-[12px] font-semibold">Stage → <span className="text-primary">{d.stage as string}</span></p>
-          {(d.amount as number) > 0 && (
-            <p className="text-[11px] text-muted-foreground">Amount: {formatCurrency(d.amount as number, true)}</p>
-          )}
-          {d.by && <p className="text-[11px] text-muted-foreground">By {d.by as string}</p>}
-        </div>
-      </div>
-    )
+    const h = d as StageHistory
+    headline = `Stage changed → ${h.stage}`
+    sub = h.by ? `By ${h.by}` : ''
+  } else if (item.kind === 'task') {
+    const t = d as TaskItem
+    icon = <CheckSquare className={cn('h-3.5 w-3.5', t.closed ? 'text-emerald-500' : 'text-amber-500')} />
+    iconBg = t.closed ? 'bg-emerald-500/10' : 'bg-amber-500/10'
+    headline = t.subject || 'Task'
+    sub = [t.status, t.priority && t.priority !== 'Normal' ? `${t.priority} priority` : '', t.owner].filter(Boolean).join(' · ')
+  } else {
+    const e = d as EventItem
+    icon = <CalendarDays className="h-3.5 w-3.5 text-cyan-500" />
+    iconBg = 'bg-cyan-500/10'
+    headline = e.subject || 'Event'
+    sub = e.owner || ''
   }
 
-  if (item.kind === 'task') {
-    return (
-      <div className="flex gap-3">
-        <div className="flex flex-col items-center">
-          <div className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
-            d.closed ? 'bg-emerald-500/10' : 'bg-amber-500/10')}>
-            <CheckSquare className={cn('h-3.5 w-3.5', d.closed ? 'text-emerald-500' : 'text-amber-500')} />
-          </div>
-          <div className="mt-1 w-px flex-1 bg-border/40" />
-        </div>
-        <div className="pb-4 min-w-0">
-          <p className="text-[11px] text-muted-foreground">{formatDate(d.date as string)}</p>
-          <p className="mt-0.5 text-[12px] font-semibold truncate">{d.subject as string || 'Task'}</p>
-          <p className="text-[11px] text-muted-foreground">
-            {d.status as string} {d.priority && d.priority !== 'Normal' ? `· ${d.priority as string} priority` : ''}
-            {d.owner ? ` · ${d.owner as string}` : ''}
-          </p>
-          {d.description && (
-            <p className="mt-1 text-[11px] text-muted-foreground/70 line-clamp-2">{d.description as string}</p>
-          )}
-        </div>
-      </div>
-    )
-  }
+  const desc = (d.description as string | null) || ''
 
-  // event
   return (
     <div className="flex gap-3">
       <div className="flex flex-col items-center">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-cyan-500/10">
-          <CalendarDays className="h-3.5 w-3.5 text-cyan-500" />
+        <div className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full', iconBg)}>
+          {icon}
         </div>
-        <div className="mt-1 w-px flex-1 bg-border/40" />
+        {!isLast && <div className="mt-1 w-px flex-1 bg-border/30 min-h-[20px]" />}
       </div>
-      <div className="pb-4 min-w-0">
-        <p className="text-[11px] text-muted-foreground">{formatDate(d.date as string)}</p>
-        <p className="mt-0.5 text-[12px] font-semibold truncate">{d.subject as string || 'Event'}</p>
-        {d.owner && <p className="text-[11px] text-muted-foreground">{d.owner as string}</p>}
-        {d.description && (
-          <p className="mt-1 text-[11px] text-muted-foreground/70 line-clamp-2">{d.description as string}</p>
-        )}
+      <div className={cn('min-w-0', !isLast && 'pb-4')}>
+        <p className="text-[10px] text-muted-foreground/60">{fmtDate(item.date)}</p>
+        <p className="mt-0.5 text-[12px] font-semibold leading-snug">{headline}</p>
+        {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
+        {desc && <p className="mt-0.5 text-[11px] text-muted-foreground/60 line-clamp-2">{desc}</p>}
       </div>
     </div>
   )
@@ -175,21 +246,25 @@ export default function OpportunityDetail() {
   const [detail, setDetail] = useState<OppDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [retrying, setRetrying] = useState(false)
 
-  useEffect(() => {
+  const load = () => {
     if (!id) return
     setLoading(true)
     setError(false)
     fetchOpportunityDetail(id)
       .then(setDetail)
       .catch(() => setError(true))
-      .finally(() => setLoading(false))
-  }, [id])
+      .finally(() => { setLoading(false); setRetrying(false) })
+  }
+
+  useEffect(load, [id])
 
   if (loading) {
     return (
-      <div className="flex h-[60vh] items-center justify-center">
+      <div className="flex h-[60vh] flex-col items-center justify-center gap-2">
         <Loader2 className="h-6 w-6 animate-spin text-primary/50" />
+        <p className="text-[12px] text-muted-foreground">Loading opportunity details…</p>
       </div>
     )
   }
@@ -198,18 +273,33 @@ export default function OpportunityDetail() {
     return (
       <div className="flex h-[60vh] flex-col items-center justify-center gap-3">
         <AlertTriangle className="h-8 w-8 text-amber-500" />
-        <p className="text-sm text-muted-foreground">Could not load opportunity details.</p>
-        <button onClick={() => navigate(-1)} className="text-xs text-primary underline">Go back</button>
+        <p className="text-sm font-medium">Could not load opportunity details</p>
+        <p className="text-[12px] text-muted-foreground">Salesforce may be temporarily rate-limited. Wait a moment and retry.</p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => { setRetrying(true); load() }}
+            disabled={retrying}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[12px] font-semibold text-primary-foreground disabled:opacity-60"
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', retrying && 'animate-spin')} />
+            Retry
+          </button>
+          <button onClick={() => navigate(-1)} className="rounded-lg border border-border px-4 py-2 text-[12px] font-semibold">
+            Go Back
+          </button>
+        </div>
       </div>
     )
   }
 
   const daysOverdue = detail.close_date ? daysSince(detail.close_date) : null
   const isOverdue = (daysOverdue ?? 0) > 0
+  const isLost = LOST_STAGES.some(s => s.toLowerCase() === detail.stage.toLowerCase())
+  const isWon = detail.stage.toLowerCase().includes('won')
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
+    <div className="space-y-3">
+      {/* ── HEADER ── */}
       <div className="animate-enter flex items-start gap-3">
         <button
           onClick={() => navigate(-1)}
@@ -218,63 +308,73 @@ export default function OpportunityDetail() {
           <ArrowLeft className="h-3.5 w-3.5" />
         </button>
         <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={cn('rounded-full border px-2.5 py-0.5 text-[11px] font-semibold', stageColor(detail.stage))}>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className={cn(
+              'rounded-full border px-2.5 py-0.5 text-[11px] font-semibold',
+              isWon ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-500' :
+              isLost ? 'border-rose-500/20 bg-rose-500/10 text-rose-500' :
+              'border-primary/20 bg-primary/10 text-primary'
+            )}>
               {detail.stage}
             </span>
-            {isOverdue && (
-              <span className="flex items-center gap-1 rounded-full bg-rose-500/10 border border-rose-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-rose-500">
+            {isOverdue && !isWon && !isLost && (
+              <span className="flex items-center gap-1 rounded-full border border-rose-500/20 bg-rose-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-rose-500">
                 <AlertTriangle className="h-3 w-3" />
                 {daysOverdue}d overdue
               </span>
             )}
             {detail.push_count > 0 && (
-              <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-amber-500">
+              <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-500">
                 Pushed {detail.push_count}×
               </span>
             )}
           </div>
           <h1 className="mt-1 text-xl font-bold tracking-tight leading-snug">{detail.name}</h1>
           <p className="mt-0.5 text-[12px] text-muted-foreground">
-            {detail.owner}{detail.account ? ` · ${detail.account}` : ''}
+            <span className="flex items-center gap-1 inline-flex">
+              <User className="h-3 w-3 shrink-0" />{detail.owner}
+            </span>
+            {detail.account && <> · <Building2 className="h-3 w-3 shrink-0 inline" /> {detail.account}</>}
           </p>
         </div>
         <div className="shrink-0 text-right">
           <p className="text-2xl font-bold tabular-nums">{formatCurrency(detail.amount, true)}</p>
           <p className="text-[11px] text-muted-foreground">{detail.probability}% probability</p>
+          <p className={cn('text-[11px] font-semibold', scoreColor(detail.score))}>
+            Health: {detail.score}/100
+          </p>
         </div>
       </div>
 
+      {/* ── STAGE PIPELINE ── */}
+      <StagePipeline history={detail.history} currentStage={detail.stage} />
+
+      {/* ── 3-COL INFO GRID ── */}
       <div className="grid grid-cols-3 gap-3">
-        {/* Left: Deal Info */}
+        {/* Deal Details */}
         <div className="card-premium p-4 space-y-0">
           <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">Deal Details</h3>
-          <KVRow label="Close Date" value={
-            <span className={cn(isOverdue ? 'text-rose-500' : '')}>
-              {formatDate(detail.close_date)}
-              {daysOverdue !== null && isOverdue && ` (${daysOverdue}d ago)`}
-            </span>
-          } />
-          <KVRow label="Owner" value={<span className="flex items-center gap-1"><User className="h-3 w-3" />{detail.owner}</span>} />
-          <KVRow label="Account" value={<span className="flex items-center gap-1"><Building2 className="h-3 w-3" />{detail.account}</span>} />
-          <KVRow label="Record Type" value={detail.record_type} />
-          <KVRow label="Type" value={detail.type} />
-          <KVRow label="Lead Source" value={detail.lead_source} />
-          <KVRow label="Forecast" value={detail.forecast_category} />
-          <KVRow label="Created" value={formatDate(detail.created_date)} />
-          <KVRow label="Last Activity" value={
-            detail.last_activity
-              ? `${formatDate(detail.last_activity)} (${daysSince(detail.last_activity)}d ago)`
-              : '—'
-          } />
-          <KVRow label="Health Score" value={
-            <span className={cn('font-bold', scoreColor(detail.score))}>
-              {detail.score}/100
-            </span>
-          } />
+          {[
+            ['Close Date', <span className={cn(isOverdue && !isWon ? 'text-rose-500' : '')}>
+              {fmtDate(detail.close_date)}{daysOverdue !== null && isOverdue && !isWon ? ` (${daysOverdue}d ago)` : ''}
+            </span>],
+            ['Owner', detail.owner],
+            ['Account', detail.account],
+            ['Record Type', detail.record_type],
+            ['Type', detail.type],
+            ['Lead Source', detail.lead_source],
+            ['Forecast', detail.forecast_category],
+            ['Created', fmtDate(detail.created_date)],
+            ['Last Activity', detail.last_activity ? `${fmtDate(detail.last_activity)} (${daysSince(detail.last_activity)}d ago)` : null],
+          ].map(([label, value]) => value ? (
+            <div key={label as string} className="flex items-start justify-between gap-2 border-b border-border/20 py-1.5 last:border-0">
+              <span className="text-[11px] text-muted-foreground shrink-0">{label}</span>
+              <span className="text-[11px] font-medium text-right">{value}</span>
+            </div>
+          ) : null)}
         </div>
 
-        {/* Middle: AI Analysis */}
+        {/* AI Analysis */}
         <div className="card-premium p-4">
           <h3 className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
             <Sparkles className="h-3.5 w-3.5 text-primary" />
@@ -283,89 +383,76 @@ export default function OpportunityDetail() {
           {detail.ai_analysis ? (
             <p className="text-[13px] leading-relaxed text-foreground/80">{detail.ai_analysis}</p>
           ) : (
-            <p className="text-[12px] text-muted-foreground italic">AI analysis not available. Configure an AI provider in Settings.</p>
+            <p className="text-[12px] text-muted-foreground italic">Configure an AI provider in Settings to enable deal analysis.</p>
           )}
-
           {detail.score_reasons.length > 0 && (
             <div className="mt-4">
-              <p className="mb-2 text-[11px] font-semibold text-muted-foreground/60">Score Factors</p>
-              <div className="space-y-1">
-                {detail.score_reasons.map((r, i) => (
-                  <div key={i} className="flex items-start gap-1.5">
-                    <ChevronRight className="mt-0.5 h-3 w-3 shrink-0 text-primary/50" />
-                    <span className="text-[11px] text-muted-foreground">{r}</span>
-                  </div>
-                ))}
-              </div>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/50">Score Factors</p>
+              {detail.score_reasons.map((r, i) => (
+                <div key={i} className="flex items-start gap-1.5 py-0.5">
+                  <ChevronRight className="mt-0.5 h-3 w-3 shrink-0 text-primary/50" />
+                  <span className="text-[11px] text-muted-foreground">{r}</span>
+                </div>
+              ))}
             </div>
           )}
-
           {detail.description && (
-            <div className="mt-4">
-              <p className="mb-1 text-[11px] font-semibold text-muted-foreground/60">Description</p>
+            <div className="mt-3 rounded-lg bg-secondary/30 p-2.5">
+              <p className="text-[10px] font-semibold uppercase text-muted-foreground/50 mb-1">Notes</p>
               <p className="text-[11px] text-muted-foreground line-clamp-4">{detail.description}</p>
             </div>
           )}
         </div>
 
-        {/* Right: Stats */}
+        {/* Activity Stats */}
         <div className="card-premium p-4">
           <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">Activity Summary</h3>
           <div className="grid grid-cols-2 gap-2 mb-4">
-            <div className="rounded-lg bg-secondary/40 p-3 text-center">
-              <p className="text-xl font-bold tabular-nums">{detail.timeline.filter(t => t.kind === 'task').length}</p>
-              <p className="text-[10px] text-muted-foreground">Tasks</p>
-            </div>
-            <div className="rounded-lg bg-secondary/40 p-3 text-center">
-              <p className="text-xl font-bold tabular-nums">{detail.timeline.filter(t => t.kind === 'event').length}</p>
-              <p className="text-[10px] text-muted-foreground">Events</p>
-            </div>
-            <div className="rounded-lg bg-secondary/40 p-3 text-center">
-              <p className="text-xl font-bold tabular-nums">{detail.timeline.filter(t => t.kind === 'stage').length}</p>
-              <p className="text-[10px] text-muted-foreground">Stage Changes</p>
-            </div>
-            <div className="rounded-lg bg-secondary/40 p-3 text-center">
-              <p className={cn('text-xl font-bold tabular-nums', detail.push_count > 0 ? 'text-amber-500' : '')}>
-                {detail.push_count}
-              </p>
-              <p className="text-[10px] text-muted-foreground">Push-backs</p>
-            </div>
-          </div>
-
-          {/* Open tasks */}
-          {detail.timeline.filter(t => t.kind === 'task' && !(t.data as Record<string, unknown>).closed).length > 0 && (
-            <div>
-              <p className="mb-2 text-[11px] font-semibold text-muted-foreground/60">Open Tasks</p>
-              <div className="space-y-1">
-                {detail.timeline
-                  .filter(t => t.kind === 'task' && !(t.data as Record<string, unknown>).closed)
-                  .slice(0, 5)
-                  .map((t, i) => (
-                    <div key={i} className="flex items-center gap-1.5">
-                      <CheckCircle2 className="h-3 w-3 shrink-0 text-amber-500/70" />
-                      <span className="text-[11px] truncate">{t.data.subject as string}</span>
-                    </div>
-                  ))}
+            {[
+              ['Tasks', detail.timeline.filter(t => t.kind === 'task').length, 'text-amber-500'],
+              ['Events', detail.timeline.filter(t => t.kind === 'event').length, 'text-cyan-500'],
+              ['Stage Changes', detail.timeline.filter(t => t.kind === 'stage').length, 'text-primary'],
+              ['Push-backs', detail.push_count, detail.push_count > 0 ? 'text-rose-500' : ''],
+            ].map(([label, val, color]) => (
+              <div key={label as string} className="rounded-lg bg-secondary/40 p-2.5 text-center">
+                <p className={cn('text-xl font-bold tabular-nums', color as string)}>{val as number}</p>
+                <p className="text-[10px] text-muted-foreground">{label as string}</p>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
+          {/* Open tasks */}
+          {(() => {
+            const openTasks = detail.tasks.filter(t => !t.closed)
+            if (openTasks.length === 0) return null
+            return (
+              <div>
+                <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground/50">Open Tasks</p>
+                {openTasks.slice(0, 5).map((t, i) => (
+                  <div key={i} className="flex items-center gap-1.5 py-0.5">
+                    <CheckSquare className="h-3 w-3 shrink-0 text-amber-500/70" />
+                    <span className="text-[11px] truncate">{t.subject}</span>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
         </div>
       </div>
 
-      {/* Full Timeline */}
+      {/* ── TIMELINE ── */}
       <div className="card-premium p-5">
-        <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold">
+        <div className="mb-4 flex items-center gap-2">
           <Clock className="h-4 w-4 text-muted-foreground" />
-          Activity Timeline
-          <span className="ml-auto text-[11px] text-muted-foreground font-normal">{detail.timeline.length} events</span>
-        </h3>
+          <h3 className="text-sm font-semibold">Activity Timeline</h3>
+          <span className="ml-auto text-[11px] text-muted-foreground">{detail.timeline.length} events</span>
+        </div>
         {detail.timeline.length === 0 ? (
           <p className="text-[12px] text-muted-foreground italic">No timeline events recorded.</p>
         ) : (
-          <div className="columns-3 gap-4">
+          <div className="columns-3 gap-6">
             {detail.timeline.map((item, i) => (
               <div key={i} className="break-inside-avoid">
-                <TimelineCard item={item} />
+                <TimelineCard item={item} isLast={i === detail.timeline.length - 1} />
               </div>
             ))}
           </div>

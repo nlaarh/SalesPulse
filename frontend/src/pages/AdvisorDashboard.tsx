@@ -75,7 +75,9 @@ export default function AdvisorDashboard() {
     let cancelled = false
     setLoading(true)
     setLoadError(false)
-    Promise.all([
+    // Use allSettled so a single slow/rate-limited query doesn't kill the whole dashboard.
+    // summary is the only critical one — if it fails, show error.
+    Promise.allSettled([
       fetchAdvisorSummary(line, period, startDate, endDate),
       fetchAdvisorLeaderboard(line, period, startDate, endDate),
       fetchPerformanceInsights(line, period, startDate, endDate),
@@ -84,16 +86,22 @@ export default function AdvisorDashboard() {
       fetchPipelineSlipping(line),
       fetchLeadsVolume(line, period, startDate, endDate),
       fetchAgentCloseSpeed(line, period, startDate, endDate),
-    ]).then(([s, l, i, y, fn, sl, lv, cs]) => {
+    ]).then((results) => {
       if (cancelled) return
-      setSummary(s)
-      setLeaders(l.advisors ?? [])
-      setInsights(i.insights ?? [])
-      setYoY(y)
-      setFunnel(fn)
-      setSlipping(sl.deals ?? [])
-      setLeadSources(lv.by_source ?? [])
-      setCloseSpeed(cs)
+      const [s, l, i, y, fn, sl, lv, cs] = results
+      // summary is required — if it fails, show error screen
+      if (s.status === 'rejected') {
+        setLoadError(true)
+        return
+      }
+      setSummary(s.value)
+      if (l.status === 'fulfilled') setLeaders(l.value.advisors ?? [])
+      if (i.status === 'fulfilled') setInsights(i.value.insights ?? [])
+      if (y.status === 'fulfilled') setYoY(y.value)
+      if (fn.status === 'fulfilled') setFunnel(fn.value)
+      if (sl.status === 'fulfilled') setSlipping(sl.value.deals ?? [])
+      if (lv.status === 'fulfilled') setLeadSources(lv.value.by_source ?? [])
+      if (cs.status === 'fulfilled') setCloseSpeed(cs.value)
     }).catch((err) => {
       console.error(err)
       if (!cancelled) setLoadError(true)

@@ -60,43 +60,40 @@ def _base():
     return base
 
 
-# ── Rate limiter (60 calls/min) — non-blocking ─────────────────────────────
+# ── Rate limiter ─────────────────────────────────────────────────────────────
 
 _rate_lock = threading.Lock()
 _call_times = []
-# 50 calls/min per worker — raised from 20 to handle cold-cache dashboard loads
-# which can fire 30+ parallel queries at once.
-_RATE_LIMIT = 50
+# 150 calls/min — SF Enterprise allows 1,000+ API calls/24h per user.
+# Cold-start dashboard fires ~30 parallel queries; this gives ample headroom.
+_RATE_LIMIT = 150
 _RATE_WINDOW = 60
+# Max seconds to block-wait before giving up (for burst scenarios)
+_RATE_MAX_WAIT = 12
 
 
 class RateLimitExceeded(Exception):
-    """Raised when SF API rate limit is exceeded.
-
-    Non-blocking alternative to time.sleep() — callers should rely on
-    L1/L2 cache to prevent most rate-limit hits. When this fires, the
-    request fails fast rather than blocking the thread.
-    """
+    """Raised when SF API rate limit is exceeded after exhausting retries."""
     pass
 
 
 def _rate_check():
-    """Raise RateLimitExceeded if we've hit the limit (non-blocking)."""
-    with _rate_lock:
-        now = time.time()
-        _call_times[:] = [t for t in _call_times if now - t < _RATE_WINDOW]
-        if len(_call_times) >= _RATE_LIMIT:
+    """Block briefly if needed, then record call. Raises after _RATE_MAX_WAIT seconds."""
+    deadline = time.time() + _RATE_MAX_WAIT
+    while True:
+        with _rate_lock:
+            now = time.time()
+            _call_times[:] = [t for t in _call_times if now - t < _RATE_WINDOW]
+            if len(_call_times) < _RATE_LIMIT:
+                _call_times.append(time.time())
+                return
             wait = _RATE_WINDOW - (now - _call_times[0])
-            if wait > 0:
-                log.warning(
-                    f"SF rate limit hit ({_RATE_LIMIT} calls/{_RATE_WINDOW}s). "
-                    f"Would need to wait {wait:.1f}s. Rejecting request — "
-                    f"use cached data instead."
-                )
-                raise RateLimitExceeded(
-                    f"Salesforce rate limit exceeded. Retry in {wait:.0f}s."
-                )
-        _call_times.append(time.time())
+        if wait <= 0 or time.time() + min(wait, 2) > deadline:
+            raise RateLimitExceeded(
+                f"Salesforce rate limit exceeded. Retry in {max(0, wait):.0f}s."
+            )
+        log.info(f"SF rate limit: waiting {min(wait, 2):.1f}s before retry")
+        time.sleep(min(wait, 2))
 
 
 # ── Query functions ──────────────────────────────────────────────────────────
