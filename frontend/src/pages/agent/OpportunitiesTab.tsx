@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { formatCurrency, cn } from '@/lib/utils'
 import { scoreColor, scoreBg, fmtDate } from '@/lib/formatters'
 import { Tip, TIPS } from '@/components/MetricTip'
-import { ExternalLink, ArrowUpDown, ChevronRight, Trophy } from 'lucide-react'
+import { ExternalLink, ArrowUpDown, ChevronRight, Trophy, Filter } from 'lucide-react'
 import type { AgentProfile } from '../AgentDashboard'
 
 /* ── Props ──────────────────────────────────────────────────────────────── */
@@ -27,17 +27,37 @@ function stageBadge(stage: string) {
 /* ── Main Component ─────────────────────────────────────────────────────── */
 
 export default function OpportunitiesTab({ profile }: OpportunitiesTabProps) {
-  const [sortBy, setSortBy] = useState<'score' | 'amount'>('score')
+  const [sortBy, setSortBy] = useState<'score' | 'amount' | 'date' | 'stage'>('score')
   const [view, setView] = useState<'open' | 'won'>('open')
+  const [stageFilter, setStageFilter] = useState<string | null>(null)
   const navigate = useNavigate()
 
-  const sorted = [...profile.top_opportunities].sort((a, b) =>
-    sortBy === 'score' ? b.score - a.score : b.amount - a.amount
-  )
+  // Build unique stages with counts for filter chips
+  const stageCounts = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const o of profile.top_opportunities) {
+      map.set(o.stage, (map.get(o.stage) ?? 0) + 1)
+    }
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1])
+  }, [profile.top_opportunities])
 
-  const totalValue = profile.top_opportunities.reduce((sum, o) => sum + o.amount, 0)
-  const avgScore = profile.top_opportunities.length > 0
-    ? profile.top_opportunities.reduce((sum, o) => sum + o.score, 0) / profile.top_opportunities.length
+  const hasMultipleStages = stageCounts.length > 1
+
+  const filtered = stageFilter
+    ? profile.top_opportunities.filter(o => o.stage === stageFilter)
+    : profile.top_opportunities
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortBy === 'score')  return b.score - a.score
+    if (sortBy === 'amount') return b.amount - a.amount
+    if (sortBy === 'date')   return (a.close_date ?? '').localeCompare(b.close_date ?? '')
+    if (sortBy === 'stage')  return a.stage.localeCompare(b.stage)
+    return 0
+  })
+
+  const totalValue = filtered.reduce((sum, o) => sum + o.amount, 0)
+  const avgScore = filtered.length > 0
+    ? filtered.reduce((sum, o) => sum + o.score, 0) / filtered.length
     : 0
 
   const wonOpps = profile.won_opportunities ?? []
@@ -45,12 +65,12 @@ export default function OpportunitiesTab({ profile }: OpportunitiesTabProps) {
   return (
     <div>
       {/* View toggle */}
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-3 flex items-center gap-2">
         <div className="flex rounded-lg border border-border bg-secondary/40 p-0.5">
           <button
             onClick={() => setView('open')}
             className={cn(
-              'rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors',
+              'rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors',
               view === 'open' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
             )}
           >
@@ -59,7 +79,7 @@ export default function OpportunitiesTab({ profile }: OpportunitiesTabProps) {
           <button
             onClick={() => setView('won')}
             className={cn(
-              'flex items-center gap-1 rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors',
+              'flex items-center gap-1 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors',
               view === 'won' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
             )}
           >
@@ -70,36 +90,69 @@ export default function OpportunitiesTab({ profile }: OpportunitiesTabProps) {
 
         {view === 'open' && (
           <>
-            <span className="ml-auto text-[11px] text-muted-foreground">
-              Total: <span className="font-semibold text-foreground">{formatCurrency(totalValue, true)}</span>
-            </span>
-            <span className="text-[11px] text-muted-foreground">
-              Avg Score: <span className={cn('font-semibold', scoreColor(avgScore))}>{avgScore.toFixed(0)}</span>
+            <span className="ml-auto text-[12px] text-muted-foreground">
+              {formatCurrency(totalValue, true)} · avg score <span className={cn('font-semibold', scoreColor(avgScore))}>{avgScore.toFixed(0)}</span>
             </span>
             {profile.pushed_count > 0 && (
-              <span className="font-semibold text-amber-500 text-[11px]">
+              <span className="font-semibold text-amber-500 text-[12px]">
                 {profile.pushed_count} pushed
               </span>
             )}
-            <button
-              onClick={() => setSortBy(sortBy === 'score' ? 'amount' : 'score')}
-              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            {/* Sort selector */}
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value as typeof sortBy)}
+              className="rounded-lg border border-border bg-secondary/50 px-2 py-1.5 text-[12px] font-medium text-muted-foreground"
             >
-              <ArrowUpDown className="h-3 w-3" />
-              {sortBy === 'score' ? 'Amount' : 'Score'}
-            </button>
+              <option value="score">Sort: Priority</option>
+              <option value="amount">Sort: Amount</option>
+              <option value="date">Sort: Close Date</option>
+              <option value="stage">Sort: Stage</option>
+            </select>
           </>
         )}
       </div>
 
+      {/* Stage filter chips — only shown when multiple stages exist */}
+      {view === 'open' && hasMultipleStages && (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+          <button
+            onClick={() => setStageFilter(null)}
+            className={cn(
+              'rounded-full px-3 py-1 text-[12px] font-medium transition-colors',
+              stageFilter === null
+                ? 'bg-primary text-primary-foreground'
+                : 'border border-border text-muted-foreground hover:text-foreground hover:border-primary/50'
+            )}
+          >
+            All ({profile.top_opportunities.length})
+          </button>
+          {stageCounts.map(([stage, count]) => (
+            <button
+              key={stage}
+              onClick={() => setStageFilter(stageFilter === stage ? null : stage)}
+              className={cn(
+                'rounded-full px-3 py-1 text-[12px] font-medium transition-colors',
+                stageFilter === stage
+                  ? 'bg-primary text-primary-foreground'
+                  : 'border border-border text-muted-foreground hover:text-foreground hover:border-primary/50'
+              )}
+            >
+              {stage} ({count})
+            </button>
+          ))}
+        </div>
+      )}
+
       {view === 'open' ? (
         <>
           {/* Score legend */}
-          <div className="mb-3 flex items-center gap-3 text-[10px] text-muted-foreground/60">
-            <span>Priority Score<Tip text={TIPS.priorityScore} />:</span>
-            <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> 80+ Act Now</span>
-            <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-amber-500" /> 60+ Follow Up</span>
-            <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-rose-500" /> &lt;60 Monitor</span>
+          <div className="mb-3 flex items-center gap-3 text-[12px] text-muted-foreground">
+            <span>Priority<Tip text={TIPS.priorityScore} />:</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" /> 80+ Act Now</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-500" /> 60+ Follow Up</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-rose-500" /> &lt;60 Monitor</span>
           </div>
 
           {/* Open opportunity list */}
@@ -109,40 +162,40 @@ export default function OpportunitiesTab({ profile }: OpportunitiesTabProps) {
                 <div
                   key={opp.id}
                   onClick={() => navigate(`/opportunity/${opp.id}`)}
-                  className="group flex cursor-pointer items-center gap-4 px-6 py-3 transition-colors hover:bg-secondary/30"
+                  className="group flex cursor-pointer items-center gap-4 px-6 py-3.5 transition-colors hover:bg-secondary/30"
                 >
                   {/* Score */}
                   <div className="relative w-10 shrink-0 text-center" title={opp.reasons.join(' · ')}>
-                    <span className={cn('text-[14px] font-bold tabular-nums', scoreColor(opp.score))}>
+                    <span className={cn('text-[15px] font-bold tabular-nums', scoreColor(opp.score))}>
                       {opp.score.toFixed(0)}
                     </span>
-                    <div className="mt-0.5 h-1 w-full rounded-full bg-secondary">
-                      <div className={cn('h-1 rounded-full', scoreBg(opp.score))}
+                    <div className="mt-0.5 h-1.5 w-full rounded-full bg-secondary">
+                      <div className={cn('h-1.5 rounded-full', scoreBg(opp.score))}
                         style={{ width: `${opp.score}%` }} />
                     </div>
                   </div>
 
                   {/* Deal info */}
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-medium group-hover:text-primary transition-colors">{opp.name}</p>
-                    <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                      <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-medium', stageBadge(opp.stage))}>
+                    <p className="truncate text-[14px] font-semibold group-hover:text-primary transition-colors">{opp.name}</p>
+                    <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                      <span className={cn('rounded-md px-2 py-0.5 text-[11px] font-semibold', stageBadge(opp.stage))}>
                         {opp.stage}
                       </span>
                       <span>{opp.probability}% prob</span>
                       {opp.push_count > 0 && (
-                        <span className="text-amber-500">· Pushed {opp.push_count}x</span>
+                        <span className="font-semibold text-amber-500">· Pushed {opp.push_count}×</span>
                       )}
                     </p>
                   </div>
 
                   {/* Amount */}
-                  <span className="tabular-nums text-[14px] font-semibold">
+                  <span className="tabular-nums text-[15px] font-bold">
                     {opp.amount > 0 ? formatCurrency(opp.amount, true) : '—'}
                   </span>
 
                   {/* Close date */}
-                  <span className="w-16 text-right text-[11px] text-muted-foreground">
+                  <span className="w-20 text-right text-[12px] font-medium text-muted-foreground">
                     {fmtDate(opp.close_date)}
                   </span>
 
@@ -163,8 +216,8 @@ export default function OpportunitiesTab({ profile }: OpportunitiesTabProps) {
               ))}
             </div>
           ) : (
-            <div className="flex items-center justify-center py-12 text-[12px] text-muted-foreground">
-              No open opportunities
+            <div className="flex items-center justify-center py-12 text-[13px] text-muted-foreground">
+              {stageFilter ? `No opportunities in "${stageFilter}" stage` : 'No open opportunities'}
             </div>
           )}
         </>
@@ -177,14 +230,14 @@ export default function OpportunitiesTab({ profile }: OpportunitiesTabProps) {
                 <div
                   key={opp.id}
                   onClick={() => navigate(`/opportunity/${opp.id}`)}
-                  className="group flex cursor-pointer items-center gap-4 px-6 py-3 transition-colors hover:bg-secondary/30"
+                  className="group flex cursor-pointer items-center gap-4 px-6 py-3.5 transition-colors hover:bg-secondary/30"
                 >
-                  <Trophy className="h-4 w-4 shrink-0 text-emerald-500" />
+                  <Trophy className="h-5 w-5 shrink-0 text-emerald-500" />
 
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-medium group-hover:text-primary transition-colors">{opp.name}</p>
-                    <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                      <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-medium', stageBadge(opp.stage))}>
+                    <p className="truncate text-[14px] font-semibold group-hover:text-primary transition-colors">{opp.name}</p>
+                    <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                      <span className={cn('rounded-md px-2 py-0.5 text-[11px] font-semibold', stageBadge(opp.stage))}>
                         {opp.stage}
                       </span>
                       <span>Closed {fmtDate(opp.close_date)}</span>
@@ -192,9 +245,9 @@ export default function OpportunitiesTab({ profile }: OpportunitiesTabProps) {
                   </div>
 
                   <div className="text-right">
-                    <p className="tabular-nums text-[14px] font-semibold">{formatCurrency(opp.amount, true)}</p>
+                    <p className="tabular-nums text-[15px] font-bold">{formatCurrency(opp.amount, true)}</p>
                     {opp.commission > 0 && (
-                      <p className="text-[11px] text-emerald-600">+{formatCurrency(opp.commission, true)} comm</p>
+                      <p className="text-[12px] font-semibold text-emerald-600">+{formatCurrency(opp.commission, true)} comm</p>
                     )}
                   </div>
 
