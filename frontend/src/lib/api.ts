@@ -515,3 +515,26 @@ export async function flushCache() {
   const { data } = await api.post('/api/admin/cache-reset')
   return data as { ok: boolean; flushed_l1: number; flushed_l2: number; owner_map_size: number }
 }
+
+/* ── Customer Profile email ──────────────────────────────────────────────── */
+export async function emailCustomerProfile(accountId: string, to: string) {
+  const { data } = await api.post(`/api/customers/${accountId}/email`, { to })
+  return data as { status: string; to: string }
+}
+
+/* ── Opportunity email ───────────────────────────────────────────────────── */
+export async function emailOpportunity(oppId: string, to: string) {
+  const { data } = await api.post(`/api/opportunities/${oppId}/email`, { to })
+  return data as { status: string; to: string }
+}
+
+/* ── Advisor dashboard email ─────────────────────────────────────────────── */
+export async function emailAdvisorDashboard(
+  to: string, line: string, period: number,
+  startDate?: string, endDate?: string
+) {
+  const { data } = await api.post('/api/advisor/dashboard/email', {
+    to, line, period, start_date: startDate, end_date: endDate,
+  })
+  return data as { status: string; to: string }
+}

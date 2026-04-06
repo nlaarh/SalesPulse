@@ -60,7 +60,11 @@ def _base():
     return base
 
 
-# ── Rate limiter ─────────────────────────────────────────────────────────────
+def sf_instance_url() -> str:
+    """Return the Salesforce instance URL (e.g. https://nyaaa.lightning.force.com)."""
+    return _base()
+
+
 
 _rate_lock = threading.Lock()
 _call_times = []

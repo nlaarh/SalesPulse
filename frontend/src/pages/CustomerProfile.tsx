@@ -1,18 +1,20 @@
 /**
  * CustomerProfile — 360° view of a member.
- * Shows: member card, product radar, last 20 transactions, AI upsell panel.
+ * Shows: member card, product radar, last 30 transactions, AI upsell panel.
  */
 
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
-  ArrowLeft, User, Phone, Mail, MapPin, Calendar, Shield,
-  Car, CreditCard, Plane, Heart, Loader2, Sparkles, ChevronRight,
-  TrendingUp, AlertCircle, CheckCircle2, Clock,
+  ArrowLeft, User, Phone, Mail, MapPin, Shield,
+  Car, CreditCard, Plane, Heart, Loader2, Sparkles,
+  TrendingUp, AlertCircle, CheckCircle2, Clock, ExternalLink, HelpCircle, Printer,
 } from 'lucide-react'
 import axios from 'axios'
 import { cn } from '@/lib/utils'
 import Markdown from '@/components/Markdown'
+import EmailPopover from '@/components/EmailPopover'
+import { emailCustomerProfile } from '@/lib/api'
 
 const api = axios.create({ baseURL: '' })
 api.interceptors.request.use(cfg => {
@@ -32,6 +34,7 @@ interface Account {
   region: string | null; mpi: number | null; ltv: string | null
   address: { street: string | null; city: string | null; state: string | null; zip: string | null }
   ers_calls_made: number | null; ers_calls_available: number | null
+  sf_url: string | null
 }
 
 interface Membership {
@@ -45,6 +48,7 @@ interface Transaction {
   id: string; name: string; stage: string; amount: number | null
   commission: number | null; close_date: string | null; created_date: string
   record_type: string; destination: string | null; trip_id: string | null; owner: string | null
+  sf_url: string | null
 }
 
 interface Product360 {
@@ -107,7 +111,56 @@ function StatusBadge({ status, label }: { status: string | null; label: string |
   )
 }
 
-/* ── Product 360 visual ─────────────────────────────────────────────────── */
+/* ── LTV Tier badge with popover explanation ────────────────────────────── */
+const LTV_TIERS: Record<string, { label: string; color: string }> = {
+  A: { label: 'Highest Value',  color: 'text-emerald-600 bg-emerald-500/10 border-emerald-500/20' },
+  B: { label: 'High Value',     color: 'text-blue-600   bg-blue-500/10   border-blue-500/20'   },
+  C: { label: 'Mid Value',      color: 'text-amber-600  bg-amber-500/10  border-amber-500/20'  },
+  D: { label: 'Lower Value',    color: 'text-orange-600 bg-orange-500/10 border-orange-500/20' },
+  E: { label: 'Lowest Value',   color: 'text-red-600    bg-red-500/10    border-red-500/20'    },
+}
+
+function LtvBadge({ tier }: { tier: string }) {
+  const [open, setOpen] = useState(false)
+  const base = tier.replace('*N', '')
+  const isNew = tier.endsWith('*N')
+  const info = LTV_TIERS[base] ?? { label: 'Unknown', color: 'text-muted-foreground bg-muted/30 border-border' }
+  return (
+    <span className="relative inline-flex items-center gap-1">
+      <span className={cn('rounded-full border px-2 py-0.5 text-[11px] font-medium', info.color)}>
+        LTV Tier: {tier}{isNew ? '' : ''}
+      </span>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="text-muted-foreground hover:text-foreground transition-colors"
+        aria-label="What is LTV Tier?">
+        <HelpCircle className="h-3.5 w-3.5" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-6 z-50 w-72 rounded-lg border border-border bg-popover p-3 shadow-lg text-left">
+          <button onClick={() => setOpen(false)} className="absolute right-2 top-2 text-muted-foreground hover:text-foreground text-xs">✕</button>
+          <p className="text-[12px] font-semibold text-foreground mb-1">Lifetime Value (LTV) Tier</p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed mb-2">
+            A letter grade automatically calculated by Salesforce representing this customer's total lifetime value to AAA.
+          </p>
+          <div className="space-y-1">
+            {Object.entries(LTV_TIERS).map(([k, v]) => (
+              <div key={k} className={cn('flex items-center gap-2 rounded px-2 py-0.5 text-[11px]', k === base ? 'ring-1 ring-current font-semibold' : '', v.color)}>
+                <span className="font-bold w-4">{k}</span>
+                <span>{v.label}</span>
+                {k === base && isNew && <span className="ml-auto opacity-70">*N = New segment</span>}
+                {k === base && !isNew && <span className="ml-auto">← This customer</span>}
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground/60 mt-2">Source: Salesforce Account.LTV__c</p>
+        </div>
+      )}
+    </span>
+  )
+}
+
+
 function Product360Visual({ p360 }: { p360: Product360 }) {
   const total = PRODUCTS.length
   const owned = PRODUCTS.filter(p => p360[p.key as keyof Product360]).length
@@ -161,7 +214,7 @@ function TransactionsTable({ transactions }: { transactions: Transaction[] }) {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60">Last 20 Transactions</p>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60">Last 30 Transactions</p>
         <span className="text-[11px] text-muted-foreground/50">{transactions.length} records</span>
       </div>
       <div className="overflow-x-auto">
@@ -174,11 +227,12 @@ function TransactionsTable({ transactions }: { transactions: Transaction[] }) {
               <th className="px-4 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50">Amount</th>
               <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50">Stage</th>
               <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 hidden sm:table-cell">Advisor</th>
+              <th className="px-2 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50">SF</th>
             </tr>
           </thead>
           <tbody>
             {transactions.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground/50">No transactions found</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground/50">No transactions found</td></tr>
             )}
             {transactions.map((t, i) => (
               <tr key={t.id} className={cn(
@@ -204,6 +258,15 @@ function TransactionsTable({ transactions }: { transactions: Transaction[] }) {
                   </span>
                 </td>
                 <td className="px-4 py-2.5 text-muted-foreground hidden sm:table-cell">{t.owner || '—'}</td>
+                <td className="px-2 py-2.5 text-center">
+                  {t.sf_url && (
+                    <a href={t.sf_url} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
+                      title="Open in Salesforce">
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -275,6 +338,7 @@ function UpsellPanel({ accountId }: { accountId: string }) {
 }
 
 /* ── Main page ──────────────────────────────────────────────────────────── */
+/* ── Email modal ─────────────────────────────────────────────────────────── */
 export default function CustomerProfile() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -313,12 +377,24 @@ export default function CustomerProfile() {
   const activeMembership = memberships.find(m => m.status === 'A') || memberships[0]
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5 px-4 py-6">
-      {/* Back */}
-      <button onClick={() => navigate(-1)}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-        <ArrowLeft className="h-4 w-4" /> Back
-      </button>
+    <div className="mx-auto max-w-5xl space-y-5 px-4 py-6 print:px-0 print:py-0 print:space-y-4">
+      {/* Back + actions row */}
+      <div className="flex items-center justify-between print:hidden">
+        <button onClick={() => navigate(-1)}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="h-4 w-4" /> Back
+        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => window.print()}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all">
+            <Printer className="h-3.5 w-3.5" /> PDF / Print
+          </button>
+          <EmailPopover
+            description={`Customer 360: ${acct.name}`}
+            onSend={async (to) => { await emailCustomerProfile(id!, to) }}
+          />
+        </div>
+      </div>
 
       {/* Member header card */}
       <div className="rounded-xl border border-border bg-card p-5">
@@ -330,11 +406,14 @@ export default function CustomerProfile() {
             <div className="flex flex-wrap items-center gap-2 mb-1">
               <h1 className="text-xl font-bold text-foreground">{acct.name}</h1>
               <StatusBadge status={acct.member_status} label={acct.member_status_label} />
-              {acct.ltv && (
-                <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-600">
-                  LTV: {acct.ltv}
-                </span>
+              {acct.sf_url && (
+                <a href={acct.sf_url} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 text-[11px] font-medium text-blue-500 hover:bg-blue-500/20 transition-colors"
+                  title="Open in Salesforce">
+                  <ExternalLink className="h-3 w-3" /> View in SF
+                </a>
               )}
+              {acct.ltv && <LtvBadge tier={acct.ltv} />}
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
               {acct.member_id && (

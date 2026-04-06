@@ -24,8 +24,10 @@ import type { FunnelData } from '@/components/FunnelChart'
 import OverviewTab from './advisor/OverviewTab'
 import RankingsTab from './advisor/RankingsTab'
 import SummaryTab from './advisor/SummaryTab'
-import { Loader2, BarChart3, Trophy, Sparkles } from 'lucide-react'
+import { Loader2, BarChart3, Trophy, Sparkles, Printer } from 'lucide-react'
 import type { AchievementResponse } from '@/lib/api'
+import EmailPopover from '@/components/EmailPopover'
+import { emailAdvisorDashboard } from '@/lib/api'
 import TargetProgressBar from '@/components/TargetProgressBar'
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
@@ -168,26 +170,38 @@ export default function AdvisorDashboard() {
           <h1 className="mt-0.5 text-2xl font-bold tracking-tight">Sales Performance</h1>
         </div>
 
-        {/* Tab bar */}
-        <div className="flex gap-1 rounded-lg border border-border bg-secondary/30 p-1">
-          {TABS.map((t) => {
-            const Icon = t.icon
-            return (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all duration-200',
-                  tab === t.key
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                <Icon className="h-3 w-3" />
-                {t.label}
-              </button>
-            )
-          })}
+        {/* Tab bar + actions */}
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1 rounded-lg border border-border bg-secondary/30 p-1">
+            {TABS.map((t) => {
+              const Icon = t.icon
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all duration-200',
+                    tab === t.key
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <Icon className="h-3 w-3" />
+                  {t.label}
+                </button>
+              )
+            })}
+          </div>
+          <button onClick={() => window.print()}
+            className="print:hidden flex items-center gap-1 rounded-lg border border-border bg-secondary/40 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all">
+            <Printer className="h-3 w-3" /> PDF
+          </button>
+          <EmailPopover
+            description={`${line} Sales Report — ${periodLabel}`}
+            onSend={async (to) => {
+              await emailAdvisorDashboard(to, line, period, startDate ?? undefined, endDate ?? undefined)
+            }}
+          />
         </div>
       </div>
 

@@ -5,7 +5,8 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { fetchOpportunityDetail } from '@/lib/api'
+import { fetchOpportunityDetail, emailOpportunity } from '@/lib/api'
+import EmailPopover from '@/components/EmailPopover'
 import { formatCurrency } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import Markdown from '@/components/Markdown'
@@ -13,7 +14,7 @@ import {
   ArrowLeft, User, Building2,
   AlertTriangle, CheckCircle2, Clock,
   Sparkles, GitBranch, CheckSquare, CalendarDays, Loader2,
-  ChevronRight, RefreshCw, CreditCard, Shield, ChevronRight as Arrow,
+  ChevronRight, RefreshCw, ChevronRight as Arrow, Printer,
 } from 'lucide-react'
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
@@ -360,6 +361,16 @@ export default function OpportunityDetail() {
           <p className={cn('text-[14px] font-semibold', scoreColor(detail.score))}>
             Health: {detail.score}/100
           </p>
+          <div className="flex items-center justify-end gap-1.5 mt-2 print:hidden">
+            <button onClick={() => window.print()}
+              className="flex items-center gap-1 rounded-lg border border-border bg-secondary/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all">
+              <Printer className="h-3 w-3" /> PDF
+            </button>
+            <EmailPopover
+              description={`Opportunity: ${detail.name}`}
+              onSend={async (to) => { await emailOpportunity(id!, to) }}
+            />
+          </div>
         </div>
       </div>
 
