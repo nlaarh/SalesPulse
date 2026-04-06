@@ -53,8 +53,9 @@ def _get_client():
 
 _BASE_SYSTEM = """You are a VP-level sales analytics briefer for AAA Western & Central New York.
 Write a 4-5 paragraph executive briefing. Be specific — use exact dollar amounts, percentages, names.
-Use **bold** around key metrics and verdicts. Audience: VP of Sales needing actionable insights in 30s.
-No fluff, no generic advice. Every sentence must cite data."""
+Use **bold** for key metrics and verdicts. Use ## headers to separate sections when appropriate.
+Use bullet lists (- item) for multiple data points. Audience: VP of Sales needing actionable insights in 30s.
+No fluff, no generic advice. Every sentence must cite data. Output clean Markdown."""
 
 _PAGE_ADDONS = {
     'advisor': """

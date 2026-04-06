@@ -17,6 +17,7 @@ import AgentReportActions from '@/components/AgentReportActions'
 import PerformanceTab from './agent/PerformanceTab'
 import OpportunitiesTab from './agent/OpportunitiesTab'
 import SummaryTab from './agent/SummaryTab'
+import Markdown from '@/components/Markdown'
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
 
@@ -374,7 +375,7 @@ export default function AgentDashboard() {
           </div>
         </div>
         <div className="px-6 py-4">
-          <p className="text-[13px] leading-relaxed text-foreground/90">{profile.writeup}</p>
+          <Markdown compact>{profile.writeup}</Markdown>
         </div>
       </div>
 

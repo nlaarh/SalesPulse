@@ -529,10 +529,10 @@ Stage History: {stage_changes or 'No changes recorded'}
 Recent Tasks: {recent_tasks or 'None'}
 Days since last activity: {_days_between(detail.get('last_activity'), date.today()) or 'Unknown'}
 
-Write a 3-4 sentence deal health assessment covering:
-1. Current deal health (positive/concerning signals)
-2. Key risk factors based on the stage history, push count, and activity
-3. Specific recommended next action
+Write a deal health assessment using **Markdown formatting**:
+- Use **bold** for key findings
+- Use ## headers: Deal Health, Risk Factors, Next Action
+- Use bullet lists for multiple risk factors or action items
 
 Be direct and actionable. No fluff."""
 

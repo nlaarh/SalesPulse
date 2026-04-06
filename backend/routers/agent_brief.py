@@ -145,16 +145,20 @@ TOP OPPS: """ + ' | '.join(
 
     prompt = f"""{context}
 
-Write a 5-6 sentence executive briefing for this advisor's manager (VP of Sales).
-Be specific, data-driven, like a Bloomberg analyst note. Include:
+Write a manager's briefing for this advisor using **Markdown formatting**:
+- Use **bold** for key metrics (dollar amounts, percentages, names)
+- Use ## headers for sections: Performance, Trends, Risks, Action Items
+- Use bullet lists for multiple points
+
+Cover:
 1. Overall performance assessment vs team
 2. Key YoY trend and what's driving it
 3. One strength to recognize
-4. Task management assessment — flag overdue tasks by name and which ones need immediate attention
+4. Task management — flag overdue tasks by name and which ones need immediate attention
 5. One specific action item (with numbers)
 6. Any deal-level or task-level risk needing attention
 
-No fluff, no generic advice. Use dollar amounts and percentages. For tasks, mention specific task subjects and related deals."""
+No fluff, no generic advice. Use dollar amounts and percentages."""
 
     try:
         resp = client.chat.completions.create(

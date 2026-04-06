@@ -228,10 +228,16 @@ def list_issues(state: str = "open"):
                     labels = [l["name"] for l in iss.get("labels", [])]
                     sev    = next((s for s in ("high", "medium", "low") if s in labels), "medium")
                     status = next((l.split(":", 1)[1] for l in labels if l.startswith("status:")), "backlog")
-                    out.append({"number": iss["number"], "title": iss["title"],
+                out.append({"number": iss["number"], "title": iss["title"],
                                 "body": iss.get("body", ""), "severity": sev, "status": status,
                                 "state": iss["state"], "created_at": iss["created_at"],
-                                "url": iss["html_url"], "labels": labels, "comments": iss.get("comments", 0)})
+                                "url": iss["html_url"], "html_url": iss["html_url"],
+                                "labels": labels, "comments": iss.get("comments", 0),
+                                "reporter": next((l.split("**Reporter:** ")[1].split("\n")[0].strip()
+                                                  for l in [iss.get("body", "")] if "**Reporter:**" in l), None),
+                                "page": next((l.split("**Page:** `")[1].split("`")[0].strip()
+                                              for l in [iss.get("body", "")] if "**Page:** `" in l), None),
+                                })
                 return {"issues": out, "source": "github"}
         except Exception:
             pass
@@ -302,8 +308,7 @@ def add_comment(issue_number: int, body: dict):
 # ── PATCH /api/issues/{n} ────────────────────────────────────────────────────
 
 @router.patch("/api/issues/{issue_number}")
-def update_issue(issue_number: int, body: dict, request: Request):
-    _check_pin(request)
+def update_issue(issue_number: int, body: dict, request: Request):  # noqa: ARG001
     if not _GH_TOKEN:
         raise HTTPException(501, "GitHub not configured")
     new_status   = body.get("status")

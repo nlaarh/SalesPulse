@@ -8,6 +8,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { fetchOpportunityDetail } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import Markdown from '@/components/Markdown'
 import {
   ArrowLeft, DollarSign, Calendar, User, Building2,
   AlertTriangle, CheckCircle2, Clock,
@@ -381,7 +382,7 @@ export default function OpportunityDetail() {
             AI Analysis
           </h3>
           {detail.ai_analysis ? (
-            <p className="text-[14px] leading-relaxed text-foreground">{detail.ai_analysis}</p>
+            <Markdown>{detail.ai_analysis}</Markdown>
           ) : (
             <p className="text-[13px] text-muted-foreground italic">Configure an AI provider in Settings to enable deal analysis.</p>
           )}
