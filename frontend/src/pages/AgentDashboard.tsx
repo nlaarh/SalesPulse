@@ -130,8 +130,8 @@ export default function AgentDashboard() {
     achievementPct: number | null
   } | null>(null)
   const [achievement, setAchievement] = useState<{
-    monthly: { target: number; actual: number; bookings_actual?: number; commission_actual?: number; achievement_pct: number | null }
-    yearly: { target: number; actual: number; bookings_actual?: number; commission_actual?: number; achievement_pct: number | null; pace_pct: number }
+    monthly: { target: number; bookings_target?: number; actual: number; bookings_actual?: number; commission_actual?: number; achievement_pct: number | null }
+    yearly: { target: number; bookings_target?: number; actual: number; bookings_actual?: number; commission_actual?: number; achievement_pct: number | null; pace_pct: number }
     monthlyPacePct: number
     monthLabel: string
     yearLabel: string
@@ -393,7 +393,9 @@ export default function AgentDashboard() {
               actual={achBase === 'bookings'
                 ? (achievement.monthly.bookings_actual ?? achievement.monthly.actual)
                 : (achievement.monthly.commission_actual ?? achievement.monthly.actual)}
-              target={achievement.monthly.target}
+              target={achBase === 'bookings'
+                ? (achievement.monthly.bookings_target ?? achievement.monthly.target)
+                : achievement.monthly.target}
               pacePct={achievement.monthlyPacePct}
               paceLabel={achievement.dayLabel}
               color="indigo"
@@ -403,7 +405,9 @@ export default function AgentDashboard() {
               actual={achBase === 'bookings'
                 ? (achievement.yearly.bookings_actual ?? achievement.yearly.actual)
                 : (achievement.yearly.commission_actual ?? achievement.yearly.actual)}
-              target={achievement.yearly.target}
+              target={achBase === 'bookings'
+                ? (achievement.yearly.bookings_target ?? achievement.yearly.target)
+                : achievement.yearly.target}
               pacePct={achievement.yearly.pace_pct}
               paceLabel={`Month ${achievement.monthOfYear}/12`}
               color="green"

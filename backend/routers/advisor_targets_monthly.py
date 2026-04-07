@@ -478,10 +478,15 @@ def get_target_achievement(
         co_year_actual_comm += y_actual_comm
         co_year_actual_book += y_actual_book
 
+        # Targets are stored in commission dollars; derive bookings target by dividing by comm_rate
+        m_book_target = round(m_target / comm_rate) if comm_rate > 0 and m_target > 0 else m_target
+        y_book_target = round(y_target / comm_rate) if comm_rate > 0 and y_target > 0 else y_target
+
         advisor_results.append({
             'name': display_name,
             'monthly': {
                 'target': m_target,
+                'bookings_target': m_book_target,
                 'actual': m_actual_comm,          # legacy: commission
                 'bookings_actual': m_actual_book,
                 'commission_actual': m_actual_comm,
@@ -489,6 +494,7 @@ def get_target_achievement(
             },
             'yearly': {
                 'target': y_target,
+                'bookings_target': y_book_target,
                 'actual': y_actual_comm,          # legacy
                 'bookings_actual': y_actual_book,
                 'commission_actual': y_actual_comm,
@@ -515,6 +521,7 @@ def get_target_achievement(
             'pace_pct': monthly_pace,
             'company': {
                 'target': co_month_target,
+                'bookings_target': round(co_month_target / comm_rate) if comm_rate > 0 and co_month_target > 0 else co_month_target,
                 'actual': co_month_actual_comm,
                 'bookings_actual': round(co_month_actual_book),
                 'commission_actual': round(co_month_actual_comm),
@@ -526,6 +533,7 @@ def get_target_achievement(
             'pace_pct': yearly_pace,
             'company': {
                 'target': co_year_target,
+                'bookings_target': round(co_year_target / comm_rate) if comm_rate > 0 and co_year_target > 0 else co_year_target,
                 'actual': co_year_actual_comm,
                 'bookings_actual': round(co_year_actual_book),
                 'commission_actual': round(co_year_actual_comm),

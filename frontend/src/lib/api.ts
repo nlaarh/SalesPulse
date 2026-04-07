@@ -397,18 +397,18 @@ export interface AchievementResponse {
     day_of_month: number
     days_in_month: number
     pace_pct: number
-    company: { target: number; actual: number; bookings_actual?: number; commission_actual?: number; achievement_pct: number | null }
+    company: { target: number; bookings_target?: number; actual: number; bookings_actual?: number; commission_actual?: number; achievement_pct: number | null }
   } | null
   yearly: {
     year: number
     month_of_year: number
     pace_pct: number
-    company: { target: number; actual: number; bookings_actual?: number; commission_actual?: number; achievement_pct: number | null }
+    company: { target: number; bookings_target?: number; actual: number; bookings_actual?: number; commission_actual?: number; achievement_pct: number | null }
   } | null
   advisors: {
     name: string
-    monthly: { target: number; actual: number; bookings_actual?: number; commission_actual?: number; achievement_pct: number | null }
-    yearly: { target: number; actual: number; bookings_actual?: number; commission_actual?: number; achievement_pct: number | null; pace_pct: number }
+    monthly: { target: number; bookings_target?: number; actual: number; bookings_actual?: number; commission_actual?: number; achievement_pct: number | null }
+    yearly: { target: number; bookings_target?: number; actual: number; bookings_actual?: number; commission_actual?: number; achievement_pct: number | null; pace_pct: number }
   }[]
 }
 

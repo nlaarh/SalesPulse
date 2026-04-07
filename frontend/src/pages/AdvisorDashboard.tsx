@@ -251,7 +251,9 @@ export default function AdvisorDashboard() {
               actual={achBase === 'bookings'
                 ? (achievement.current_month.company.bookings_actual ?? achievement.current_month.company.actual)
                 : (achievement.current_month.company.commission_actual ?? achievement.current_month.company.actual)}
-              target={achievement.current_month.company.target}
+              target={achBase === 'bookings'
+                ? (achievement.current_month.company.bookings_target ?? achievement.current_month.company.target)
+                : achievement.current_month.company.target}
               pacePct={achievement.current_month.pace_pct}
               paceLabel={`Day ${achievement.current_month.day_of_month}/${achievement.current_month.days_in_month}`}
               color="indigo"
@@ -261,7 +263,9 @@ export default function AdvisorDashboard() {
               actual={achBase === 'bookings'
                 ? (achievement.yearly.company.bookings_actual ?? achievement.yearly.company.actual)
                 : (achievement.yearly.company.commission_actual ?? achievement.yearly.company.actual)}
-              target={achievement.yearly.company.target}
+              target={achBase === 'bookings'
+                ? (achievement.yearly.company.bookings_target ?? achievement.yearly.company.target)
+                : achievement.yearly.company.target}
               pacePct={achievement.yearly.pace_pct}
               paceLabel={`Month ${achievement.yearly.month_of_year}/12`}
               color="green"
