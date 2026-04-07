@@ -2,19 +2,21 @@ import { useState, useEffect, useCallback } from 'react'
 import { fetchMonthlyTargets, saveMonthlyTargets } from '@/lib/api'
 import type { MonthlyTargetAdvisor } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { Loader2, Save, CopyCheck, ArrowDownToLine } from 'lucide-react'
+import { Loader2, Save, CopyCheck, ArrowDownToLine, DollarSign, BookOpen } from 'lucide-react'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+type TargetBase = 'bookings' | 'commission'
 
 interface GridRow {
   advisor_target_id: number
   name: string
   branch: string | null
   title: string | null
-  prior_year: number            // last year actual revenue
-  prior_year_rev: number        // last year booking revenue
-  prior_year_months: number[]   // 12 values, seasonal shape (Jan-Dec)
-  targets: Record<number, number>  // month (1-12) -> amount
+  prior_year: number            // last year commission
+  prior_year_rev: number        // last year bookings
+  prior_year_months: number[]   // 12 values, seasonal shape (Jan-Dec) — bookings based
+  targets: Record<number, number>  // month (1-12) -> amount (in selected base unit)
 }
 
 interface Props {
@@ -30,8 +32,9 @@ export default function TargetGrid({ line }: Props) {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
-  // Growth percentage
   const [growthPct, setGrowthPct] = useState(10)
+  const [targetBase, setTargetBase] = useState<TargetBase>('bookings')
+  const [commRate, setCommRate] = useState(10) // commission rate %
   const [methodology, setMethodology] = useState<{
     commission_rate: number; prior_year: number
     prior_year_bookings: number; prior_year_commission: number; note: string
@@ -42,7 +45,13 @@ export default function TargetGrid({ line }: Props) {
     setError('')
     try {
       const data = await fetchMonthlyTargets(year, line)
-      if (data.methodology) setMethodology(data.methodology)
+      if (data.methodology) {
+        setMethodology(data.methodology)
+        // Seed commission rate from server
+        if (data.methodology.commission_rate > 0) {
+          setCommRate(Math.round(data.methodology.commission_rate * 10) / 10)
+        }
+      }
       const gridRows: GridRow[] = data.advisors.map((a: MonthlyTargetAdvisor) => {
         const targets: Record<number, number> = {}
         for (const m of a.months) targets[m.month] = m.target
@@ -51,8 +60,8 @@ export default function TargetGrid({ line }: Props) {
           name: a.name,
           branch: a.branch,
           title: a.title,
-          prior_year: a.prior_year_actual ?? 0,
-          prior_year_rev: a.prior_year_revenue ?? 0,
+          prior_year: a.prior_year_actual ?? 0,       // commission
+          prior_year_rev: a.prior_year_revenue ?? 0,  // bookings
           prior_year_months: a.prior_year_months ?? [],
           targets,
         }
@@ -69,6 +78,17 @@ export default function TargetGrid({ line }: Props) {
   useEffect(() => { loadData() }, [loadData])
 
   const isDirty = JSON.stringify(rows) !== JSON.stringify(original)
+
+  // ── helpers ──────────────────────────────────────────────────────────────
+  const priorYearBase = (row: GridRow) =>
+    targetBase === 'bookings' ? row.prior_year_rev : row.prior_year
+
+  const toOther = (amount: number) =>
+    targetBase === 'bookings'
+      ? Math.round(amount * commRate / 100)   // bookings → commission
+      : commRate > 0 ? Math.round(amount / (commRate / 100)) : 0  // commission → bookings
+
+  const otherLabel = targetBase === 'bookings' ? 'Est. Commission' : 'Est. Bookings'
 
   function updateCell(rowIdx: number, month: number, value: string) {
     const num = parseFloat(value.replace(/[^0-9.]/g, '')) || 0
@@ -95,47 +115,36 @@ export default function TargetGrid({ line }: Props) {
   function fillDown(month: number) {
     if (rows.length === 0) return
     const firstVal = rows[0].targets[month] || 0
-    setRows(prev => prev.map(r => ({
-      ...r,
-      targets: { ...r.targets, [month]: firstVal },
-    })))
+    setRows(prev => prev.map(r => ({ ...r, targets: { ...r.targets, [month]: firstVal } })))
     setSaved(false)
   }
 
-  // Apply growth % using prior year's seasonal monthly shape
   function applyGrowthPct(pct: number) {
-    // Company-wide seasonal shape (fallback for new advisors)
     const companyShape = Array(12).fill(0)
     rows.forEach(r => r.prior_year_months.forEach((v, i) => { companyShape[i] += v }))
     const companyTotal = companyShape.reduce((s, v) => s + v, 0)
 
-    // Median prior year (for new advisors)
-    const withData = rows.filter(r => r.prior_year > 0)
+    const withData = rows.filter(r => priorYearBase(r) > 0)
     const medianPrior = withData.length > 0
-      ? withData.map(r => r.prior_year).sort((a, b) => a - b)[Math.floor(withData.length / 2)]
+      ? withData.map(r => priorYearBase(r)).sort((a, b) => a - b)[Math.floor(withData.length / 2)]
       : 0
 
     setRows(prev => prev.map(r => {
-      const base = r.prior_year > 0 ? r.prior_year : medianPrior
+      const base = priorYearBase(r) > 0 ? priorYearBase(r) : medianPrior
       const yearlyTarget = Math.round(base * (1 + pct / 100))
 
-      // Use this advisor's prior year monthly shape if available
+      // Use bookings monthly shape for seasonality (same either way)
       const pyMonths = r.prior_year_months
       const pyTotal = pyMonths.reduce((s, v) => s + v, 0)
 
       const targets: Record<number, number> = {}
       if (pyTotal > 0) {
-        // Distribute target proportionally to prior year's monthly pattern
-        for (let m = 1; m <= 12; m++) {
+        for (let m = 1; m <= 12; m++)
           targets[m] = Math.round(yearlyTarget * (pyMonths[m - 1] / pyTotal))
-        }
       } else if (companyTotal > 0) {
-        // New advisor — use company-wide seasonal shape
-        for (let m = 1; m <= 12; m++) {
+        for (let m = 1; m <= 12; m++)
           targets[m] = Math.round(yearlyTarget * (companyShape[m - 1] / companyTotal))
-        }
       } else {
-        // No data at all — flat
         for (let m = 1; m <= 12; m++) targets[m] = Math.round(yearlyTarget / 12)
       }
       return { ...r, targets }
@@ -151,13 +160,9 @@ export default function TargetGrid({ line }: Props) {
         .filter((r, i) => JSON.stringify(r.targets) !== JSON.stringify(original[i]?.targets))
         .map(r => ({
           advisor_target_id: r.advisor_target_id,
-          months: Object.fromEntries(
-            Object.entries(r.targets).map(([k, v]) => [k, v])
-          ),
+          months: Object.fromEntries(Object.entries(r.targets).map(([k, v]) => [k, v])),
         }))
-      if (updates.length > 0) {
-        await saveMonthlyTargets(year, updates)
-      }
+      if (updates.length > 0) await saveMonthlyTargets(year, updates)
       setSaved(true)
       setOriginal(JSON.parse(JSON.stringify(rows)))
     } catch {
@@ -171,9 +176,9 @@ export default function TargetGrid({ line }: Props) {
     return Object.values(row.targets).reduce((s, v) => s + v, 0)
   }
 
-  const fmt = (v: number) => v > 0 ? v.toLocaleString('en-US', { maximumFractionDigits: 0 }) : '0'
-  const fmtCurrency = (v: number) => `$${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
-  const fmtCompact = (v: number) => {
+  const fmt  = (v: number) => v > 0 ? v.toLocaleString('en-US', { maximumFractionDigits: 0 }) : '0'
+  const fmtC = (v: number) => `$${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+  const fmtK = (v: number) => {
     if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`
     if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`
     return `$${v.toFixed(0)}`
@@ -187,87 +192,134 @@ export default function TargetGrid({ line }: Props) {
     )
   }
 
-  // Totals
-  const totalPriorYear = rows.reduce((s, r) => s + r.prior_year, 0)
-  const totalPriorRev = rows.reduce((s, r) => s + r.prior_year_rev, 0)
-  const newTarget = Math.round(totalPriorYear * (1 + growthPct / 100))
-  const newBookings = Math.round(totalPriorRev * (1 + growthPct / 100))
-  const currentTotal = rows.reduce((s, r) => s + rowTotal(r), 0)
+  const totalPriorBookings  = rows.reduce((s, r) => s + r.prior_year_rev, 0)
+  const totalPriorComm      = rows.reduce((s, r) => s + r.prior_year, 0)
+  const totalPriorBase      = targetBase === 'bookings' ? totalPriorBookings : totalPriorComm
+  const newTargetBase       = Math.round(totalPriorBase * (1 + growthPct / 100))
+  const currentTotal        = rows.reduce((s, r) => s + rowTotal(r), 0)
+  const currentOtherTotal   = toOther(currentTotal)
 
   return (
     <div className="space-y-4">
-      {/* Growth Planner */}
-      {rows.length > 0 && totalPriorYear > 0 && (
-        <div className="rounded-xl border border-border bg-secondary/20 p-4">
-          {methodology && (
-            <div className="mb-3 rounded-md bg-amber-500/5 border border-amber-500/10 px-3 py-1.5 text-[10px] text-muted-foreground">
-              <span className="font-semibold text-amber-600">Note:</span> {methodology.note}
+
+      {/* ── Planner bar ─────────────────────────────────────────────────── */}
+      {rows.length > 0 && (
+        <div className="rounded-xl border border-border bg-secondary/20 p-4 space-y-3">
+
+          {/* Row 1: Base selector + commission rate */}
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Base toggle */}
+            <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-0.5">
+              <button
+                onClick={() => setTargetBase('bookings')}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold transition-all',
+                  targetBase === 'bookings'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <BookOpen className="h-3.5 w-3.5" /> Bookings basis
+              </button>
+              <button
+                onClick={() => setTargetBase('commission')}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold transition-all',
+                  targetBase === 'commission'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <DollarSign className="h-3.5 w-3.5" /> Commission basis
+              </button>
             </div>
-          )}
-          <div className="flex items-center gap-6">
-            {/* PY vs New side by side */}
+
+            {/* Commission rate */}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-medium text-muted-foreground">Avg commission rate</span>
+              <input
+                type="number"
+                min={0} max={100} step={0.1}
+                value={commRate}
+                onChange={e => setCommRate(parseFloat(e.target.value) || 0)}
+                className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-[13px] font-bold tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              <span className="text-[12px] font-semibold text-muted-foreground">%</span>
+              {methodology?.commission_rate ? (
+                <span className="text-[10px] text-muted-foreground/50">(SF actual: {methodology.commission_rate}%)</span>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Row 2: PY → New target + growth control */}
+          <div className="flex flex-wrap items-center gap-6">
             <div className="flex items-center gap-4 flex-1">
               {/* Prior Year */}
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">{year - 1} Actual</div>
-                <div className="mt-1 text-[11px] text-muted-foreground">
-                  Est. Commission: <span className="font-bold text-foreground tabular-nums">{fmtCompact(totalPriorYear)}</span>
+                <div className="mt-0.5 text-[13px] font-bold text-foreground tabular-nums">
+                  {fmtK(totalPriorBase)} <span className="text-[10px] font-normal text-muted-foreground">({targetBase})</span>
                 </div>
                 <div className="text-[11px] text-muted-foreground">
-                  Bookings: <span className="font-semibold text-foreground/70 tabular-nums">{fmtCompact(totalPriorRev)}</span>
+                  {targetBase === 'bookings'
+                    ? <>{otherLabel}: <span className="font-semibold">{fmtK(Math.round(totalPriorBookings * commRate / 100))}</span></>
+                    : <>{otherLabel}: <span className="font-semibold">{fmtK(commRate > 0 ? Math.round(totalPriorComm / (commRate / 100)) : 0)}</span></>
+                  }
                 </div>
               </div>
 
-              {/* Arrow */}
               <div className="text-muted-foreground/30 text-lg">→</div>
 
               {/* New Target */}
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-primary">{year} Target (+{growthPct}%)</div>
-                <div className="mt-1 text-[11px] text-muted-foreground">
-                  Est. Commission: <span className="font-bold text-primary tabular-nums">{fmtCompact(newTarget)}</span>
+                <div className="mt-0.5 text-[13px] font-bold text-primary tabular-nums">
+                  {fmtK(newTargetBase)} <span className="text-[10px] font-normal text-primary/60">({targetBase})</span>
                 </div>
                 <div className="text-[11px] text-muted-foreground">
-                  Bookings: <span className="font-semibold text-primary/70 tabular-nums">{fmtCompact(newBookings)}</span>
+                  {otherLabel}: <span className="font-semibold text-primary/70">{fmtK(toOther(newTargetBase))}</span>
                 </div>
               </div>
             </div>
 
-            {/* Growth % input + Apply */}
+            {/* Growth control */}
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-medium text-muted-foreground">Growth</span>
-                <input
-                  type="number"
-                  value={growthPct}
-                  onChange={e => setGrowthPct(Number(e.target.value) || 0)}
-                  className="w-14 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-[14px] font-bold tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-                <span className="text-[13px] font-semibold text-muted-foreground">%</span>
-              </div>
+              <span className="text-[11px] font-medium text-muted-foreground">Growth</span>
+              <input
+                type="number"
+                value={growthPct}
+                onChange={e => setGrowthPct(Number(e.target.value) || 0)}
+                className="w-14 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-[14px] font-bold tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              <span className="text-[13px] font-semibold text-muted-foreground">%</span>
               <button
                 onClick={() => applyGrowthPct(growthPct)}
-                className="rounded-lg bg-primary px-4 py-1.5 text-[12px] font-semibold text-primary-foreground transition-colors hover:opacity-90"
+                className="rounded-lg bg-primary px-4 py-1.5 text-[12px] font-semibold text-primary-foreground hover:opacity-90 transition-colors"
               >
-                Apply to targets
+                Apply to grid
               </button>
             </div>
           </div>
 
+          {/* Row 3: Current grid summary */}
           {currentTotal > 0 && (
-            <div className="mt-3 border-t border-border/50 pt-2 text-[11px] text-muted-foreground">
-              Current grid total: <span className="font-semibold text-foreground">{fmtCompact(currentTotal)}</span>
-              {totalPriorYear > 0 && (
-                <span className={cn('ml-2 font-semibold', currentTotal >= totalPriorYear ? 'text-emerald-500' : 'text-rose-500')}>
-                  ({currentTotal >= totalPriorYear ? '+' : ''}{((currentTotal / totalPriorYear - 1) * 100).toFixed(1)}% vs PY)
+            <div className="border-t border-border/50 pt-2 flex items-center gap-4 text-[11px] text-muted-foreground">
+              <span>Grid total ({targetBase}): <span className="font-semibold text-foreground">{fmtK(currentTotal)}</span></span>
+              <span>{otherLabel}: <span className="font-semibold text-foreground">{fmtK(currentOtherTotal)}</span></span>
+              {totalPriorBase > 0 && (
+                <span className={cn('font-semibold', currentTotal >= totalPriorBase ? 'text-emerald-500' : 'text-rose-500')}>
+                  {currentTotal >= totalPriorBase ? '+' : ''}{((currentTotal / totalPriorBase - 1) * 100).toFixed(1)}% vs {year - 1}
                 </span>
+              )}
+              {methodology?.note && (
+                <span className="ml-auto text-[10px] text-amber-600 italic">{methodology.note}</span>
               )}
             </div>
           )}
         </div>
       )}
 
-      {/* Header */}
+      {/* ── Header row ──────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <select
@@ -279,17 +331,11 @@ export default function TargetGrid({ line }: Props) {
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
-          <span className="text-[12px] text-muted-foreground">
-            {rows.length} advisors
-          </span>
+          <span className="text-[12px] text-muted-foreground">{rows.length} advisors</span>
         </div>
         <div className="flex items-center gap-2">
-          {saved && (
-            <span className="text-[11px] font-medium text-emerald-500">Saved ✓</span>
-          )}
-          {error && (
-            <span className="text-[11px] font-medium text-destructive">{error}</span>
-          )}
+          {saved && <span className="text-[11px] font-medium text-emerald-500">Saved ✓</span>}
+          {error && <span className="text-[11px] font-medium text-destructive">{error}</span>}
           <button
             onClick={handleSave}
             disabled={!isDirty || saving}
@@ -306,7 +352,7 @@ export default function TargetGrid({ line }: Props) {
         </div>
       </div>
 
-      {/* Grid */}
+      {/* ── Grid ────────────────────────────────────────────────────────── */}
       {rows.length === 0 ? (
         <div className="py-10 text-center text-[13px] text-muted-foreground/50">
           No targets found for {year}. Upload targets first.
@@ -319,13 +365,18 @@ export default function TargetGrid({ line }: Props) {
                 <th className="sticky left-0 z-10 bg-secondary/60 px-3 py-2 text-left font-semibold text-muted-foreground min-w-[150px]">
                   Advisor
                 </th>
+                {/* Prior year column */}
+                <th className="px-2 py-2 text-right font-semibold text-muted-foreground min-w-[80px] border-r border-border/50">
+                  <div className="text-[10px] uppercase tracking-wide">{year - 1}</div>
+                  <div className="text-[10px] text-muted-foreground/60">{targetBase === 'bookings' ? 'Bookings' : 'Commission'}</div>
+                </th>
                 {MONTHS.map((m, i) => (
-                  <th key={m} className="px-1 py-2 text-center font-semibold text-muted-foreground min-w-[80px]">
+                  <th key={m} className="px-1 py-2 text-center font-semibold text-muted-foreground min-w-[76px]">
                     <div className="flex flex-col items-center gap-0.5">
-                      <span>{m}</span>
+                      <span>{m} {year}</span>
                       <button
                         onClick={() => fillDown(i + 1)}
-                        title={`Fill all advisors with first row's ${m} value`}
+                        title={`Fill all with first row's ${m} value`}
                         className="text-[9px] text-primary/50 hover:text-primary transition-colors"
                       >
                         <ArrowDownToLine className="h-3 w-3" />
@@ -333,8 +384,12 @@ export default function TargetGrid({ line }: Props) {
                     </div>
                   </th>
                 ))}
-                <th className="px-3 py-2 text-right font-bold text-primary min-w-[90px]">
-                  TOTAL
+                <th className="px-2 py-2 text-right font-bold text-primary min-w-[90px]">
+                  <div>{year} Total</div>
+                  <div className="text-[10px] font-normal text-primary/60">{targetBase}</div>
+                </th>
+                <th className="px-2 py-2 text-right font-semibold text-muted-foreground/70 min-w-[80px]">
+                  <div className="text-[10px] uppercase tracking-wide">{otherLabel}</div>
                 </th>
                 <th className="px-2 py-2 w-8" />
               </tr>
@@ -343,17 +398,29 @@ export default function TargetGrid({ line }: Props) {
               {rows.map((row, ri) => {
                 const isChanged = JSON.stringify(row.targets) !== JSON.stringify(original[ri]?.targets)
                 const total = rowTotal(row)
+                const pyBase = priorYearBase(row)
+                const vsGrowth = pyBase > 0 ? ((total / pyBase - 1) * 100) : null
                 return (
                   <tr key={row.advisor_target_id} className={cn(
                     'border-t border-border/50 transition-colors',
                     isChanged ? 'bg-primary/5' : 'hover:bg-secondary/30',
                   )}>
+                    {/* Name */}
                     <td className="sticky left-0 z-10 bg-background px-3 py-1.5 font-medium min-w-[150px]">
                       <div>{row.name}</div>
-                      {row.branch && (
-                        <div className="text-[10px] text-muted-foreground/50">{row.branch}</div>
+                      {row.branch && <div className="text-[10px] text-muted-foreground/50">{row.branch}</div>}
+                    </td>
+                    {/* Prior year */}
+                    <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground border-r border-border/50">
+                      <div className="font-semibold">{pyBase > 0 ? fmtK(pyBase) : '—'}</div>
+                      {vsGrowth !== null && total > 0 && (
+                        <div className={cn('text-[10px] font-semibold',
+                          vsGrowth >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
+                          {vsGrowth >= 0 ? '+' : ''}{vsGrowth.toFixed(0)}%
+                        </div>
                       )}
                     </td>
+                    {/* Monthly cells */}
                     {MONTHS.map((_, mi) => {
                       const m = mi + 1
                       const val = row.targets[m] || 0
@@ -369,16 +436,19 @@ export default function TargetGrid({ line }: Props) {
                             className={cn(
                               'w-full rounded-md border px-2 py-1.5 text-right text-[12px] tabular-nums',
                               'bg-secondary/30 focus:bg-background focus:outline-none focus:ring-1 focus:ring-primary/40',
-                              cellChanged
-                                ? 'border-primary/40 bg-primary/10'
-                                : 'border-border/50',
+                              cellChanged ? 'border-primary/40 bg-primary/10' : 'border-border/50',
                             )}
                           />
                         </td>
                       )
                     })}
-                    <td className="px-3 py-1.5 text-right font-bold tabular-nums text-primary/80">
-                      {fmtCurrency(total)}
+                    {/* Row total */}
+                    <td className="px-2 py-1.5 text-right font-bold tabular-nums text-primary/80">
+                      {fmtC(total)}
+                    </td>
+                    {/* Est. other */}
+                    <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground/70 text-[11px]">
+                      {total > 0 ? fmtK(toOther(total)) : '—'}
                     </td>
                     <td className="px-1 py-1.5">
                       <button
@@ -392,11 +462,16 @@ export default function TargetGrid({ line }: Props) {
                   </tr>
                 )
               })}
-              {/* Company Total Row */}
+
+              {/* Totals row */}
               {rows.length > 0 && (
                 <tr className="border-t-2 border-border bg-secondary/30 font-semibold">
                   <td className="sticky left-0 z-10 bg-secondary/30 px-3 py-2.5 text-[12px] font-bold uppercase tracking-wide">
                     Total
+                  </td>
+                  {/* Prior year total */}
+                  <td className="px-2 py-2.5 text-right tabular-nums font-bold text-foreground border-r border-border/50">
+                    {fmtK(totalPriorBase)}
                   </td>
                   {MONTHS.map((_, mi) => {
                     const m = mi + 1
@@ -409,13 +484,17 @@ export default function TargetGrid({ line }: Props) {
                       </td>
                     )
                   })}
-                  <td className="px-3 py-2.5 text-right font-bold tabular-nums text-primary">
-                    {fmtCurrency(currentTotal)}
-                    {totalPriorYear > 0 && (
-                      <div className={cn('text-[10px] font-semibold', currentTotal >= totalPriorYear ? 'text-emerald-500' : 'text-rose-500')}>
-                        {currentTotal >= totalPriorYear ? '+' : ''}{((currentTotal / totalPriorYear - 1) * 100).toFixed(0)}% vs PY
+                  <td className="px-2 py-2.5 text-right font-bold tabular-nums text-primary">
+                    {fmtC(currentTotal)}
+                    {totalPriorBase > 0 && (
+                      <div className={cn('text-[10px] font-semibold',
+                        currentTotal >= totalPriorBase ? 'text-emerald-500' : 'text-rose-500')}>
+                        {currentTotal >= totalPriorBase ? '+' : ''}{((currentTotal / totalPriorBase - 1) * 100).toFixed(0)}% vs {year-1}
                       </div>
                     )}
+                  </td>
+                  <td className="px-2 py-2.5 text-right tabular-nums text-muted-foreground/70 text-[11px] font-bold">
+                    {fmtK(currentOtherTotal)}
                   </td>
                   <td />
                 </tr>
@@ -427,3 +506,4 @@ export default function TargetGrid({ line }: Props) {
     </div>
   )
 }
+

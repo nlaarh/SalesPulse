@@ -253,22 +253,9 @@ export default function Layout() {
           <SalesPulseLogo size={28} showText />
         </div>
 
-        {/* ⌘K Search trigger */}
-        <div className="px-3 pb-2">
-          <button
-            onClick={openPalette}
-            className="flex w-full items-center gap-2 rounded-lg border border-border/60 bg-secondary/30 px-3 py-2 text-left text-[12px] text-muted-foreground/60 transition-colors hover:bg-secondary/60 hover:text-foreground"
-          >
-            <Command className="h-3.5 w-3.5 shrink-0" />
-            <span className="flex-1">Quick search…</span>
-            <kbd className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground/40">
-              ⌘K
-            </kbd>
-          </button>
-        </div>
-
-        {/* Nav */}
-        <nav className="flex-1 space-y-0.5 px-3 pt-3">
+        {/* Nav + Filters — scrollable middle section */}
+        <div className="flex-1 overflow-y-auto">
+        <nav className="space-y-0.5 px-3 pt-3">
           {/* Dashboard */}
           <span className="mb-2 block px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
             Dashboard
@@ -562,7 +549,8 @@ export default function Layout() {
             <DateRangeSummary viewMode={viewMode} startDate={startDate} endDate={endDate} />
           </div>
 
-        </div>
+        </div>{/* end filters */}
+        </div>{/* end scrollable wrapper */}
 
         {/* User info + Logout */}
         {user && (
