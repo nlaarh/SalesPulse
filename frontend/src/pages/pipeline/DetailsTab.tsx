@@ -1,4 +1,5 @@
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
+import { fmtDate } from '@/lib/formatters'
 import { Tip, TIPS } from '@/components/MetricTip'
 import { Layers, AlertTriangle, Download } from 'lucide-react'
 import { exportToExcel } from '@/lib/exportExcel'
@@ -89,7 +90,7 @@ export default function DetailsTab({ stages, slipping }: DetailsTabProps) {
                 Opportunity: d.name ?? '',
                 Stage: d.stage ?? '',
                 Amount: d.amount ?? 0,
-                'Close Date': d.close_date ?? '',
+                'Close Date': d.close_date ? fmtDate(d.close_date) : '',
                 'Days Past Due': d.days_past_due ?? 0,
               })), `Past_Due_Deals_${new Date().toISOString().slice(0,10)}`)}
               className="ml-auto flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition">
@@ -127,7 +128,7 @@ export default function DetailsTab({ stages, slipping }: DetailsTabProps) {
                     <td className="tabular-nums px-5 py-3 text-right text-[13px] text-muted-foreground">
                       {d.days_since_activity != null ? `${d.days_since_activity}d ago` : '—'}
                     </td>
-                    <td className="tabular-nums px-5 py-3 text-right text-[13px] text-muted-foreground">{d.close_date}</td>
+                    <td className="tabular-nums px-5 py-3 text-right text-[13px] text-muted-foreground">{fmtDate(d.close_date)}</td>
                   </tr>
                 ))}
               </tbody>

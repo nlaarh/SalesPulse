@@ -19,6 +19,12 @@ function buildPrintHtml(p: AgentProfile, startDate: string, endDate: string): st
     if (compact && v >= 1_000)     return `$${(v / 1_000).toFixed(0)}K`
     return `$${v.toLocaleString()}`
   }
+  const fmtD = (iso: string | null | undefined) => {
+    if (!iso) return '—'
+    const s = iso.includes('T') ? iso : iso + 'T00:00:00'
+    const d = new Date(s)
+    return isNaN(d.getTime()) ? iso.slice(0, 10) : d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+  }
   const pct = (v: number | null | undefined) => v == null ? '—' : `${v.toFixed(1)}%`
   const s  = p.summary
   const yoy = p.yoy
@@ -41,7 +47,7 @@ function buildPrintHtml(p: AgentProfile, startDate: string, endDate: string): st
       <td style="padding:5px 8px;border-bottom:1px solid #f1f5f9">${(opp.name ?? '').substring(0, 45)}</td>
       <td style="padding:5px 8px;border-bottom:1px solid #f1f5f9;text-align:right">${fmt(opp.amount)}</td>
       <td style="padding:5px 8px;border-bottom:1px solid #f1f5f9;text-align:center">${opp.stage ?? '—'}</td>
-      <td style="padding:5px 8px;border-bottom:1px solid #f1f5f9;text-align:center">${opp.close_date ?? '—'}</td>
+      <td style="padding:5px 8px;border-bottom:1px solid #f1f5f9;text-align:center">${fmtD(opp.close_date)}</td>
     </tr>`).join('')
 
   const strengthItems = (p.strengths ?? []).slice(0, 4).map(s => `<li>${s}</li>`).join('')

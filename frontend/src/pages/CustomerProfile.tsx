@@ -311,7 +311,7 @@ function ActivityTimeline({ transactions, leads }: { transactions: Transaction[]
                   <div className="flex items-start gap-2 flex-wrap">
                     {/* date */}
                     <span className="text-[10px] text-muted-foreground/50 whitespace-nowrap font-mono mt-0.5">
-                      {item.data.close_date || item.data.created_date}
+                      {fmtDate(item.data.close_date || item.data.created_date)}
                     </span>
                     {/* type badge */}
                     <span className="text-[9px] font-bold uppercase tracking-wide bg-orange-500/10 text-orange-600 border border-orange-500/20 px-1.5 py-0.5 rounded">
@@ -346,7 +346,7 @@ function ActivityTimeline({ transactions, leads }: { transactions: Transaction[]
                     )}
                     {item.data.owner && <span>· {item.data.owner}</span>}
                     {item.data.created_date && item.data.created_date !== item.date && (
-                      <span>· created {item.data.created_date}</span>
+                      <span>· created {fmtDate(item.data.created_date)}</span>
                     )}
                   </div>
                 </div>
@@ -361,7 +361,7 @@ function ActivityTimeline({ transactions, leads }: { transactions: Transaction[]
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start gap-2 flex-wrap">
                     <span className="text-[10px] text-muted-foreground/50 whitespace-nowrap font-mono mt-0.5">
-                      {item.data.converted_date || item.data.created_date}
+                      {fmtDate(item.data.converted_date || item.data.created_date)}
                     </span>
                     <span className="text-[9px] font-bold uppercase tracking-wide bg-violet-500/10 text-violet-600 border border-violet-500/20 px-1.5 py-0.5 rounded flex items-center gap-0.5">
                       <Megaphone className="h-2.5 w-2.5" /> Lead
@@ -384,10 +384,10 @@ function ActivityTimeline({ transactions, leads }: { transactions: Transaction[]
                   <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground/60">
                     {item.data.lead_source && <span>{item.data.lead_source}</span>}
                     {item.data.owner && <span>· {item.data.owner}</span>}
-                    <span>· created {item.data.created_date}</span>
+                    <span>· created {fmtDate(item.data.created_date)}</span>
                     {item.data.converted_date && (
                       <span className="flex items-center gap-0.5 text-emerald-600">
-                        <GitMerge className="h-2.5 w-2.5" /> converted {item.data.converted_date}
+                        <GitMerge className="h-2.5 w-2.5" /> converted {fmtDate(item.data.converted_date)}
                       </span>
                     )}
                   </div>
