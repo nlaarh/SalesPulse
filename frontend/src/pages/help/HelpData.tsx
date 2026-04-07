@@ -3,13 +3,120 @@
  */
 
 import { useState, useMemo } from 'react'
-import { Search, Database, User, Megaphone, Key } from 'lucide-react'
+import { Search, Database, User, Megaphone, Key, Users, Building2, Briefcase, Plane, ShieldCheck, HeartPulse, Star, Car, DollarSign, GraduationCap } from 'lucide-react'
 import { clsx } from 'clsx'
 import { motion } from 'framer-motion'
 import { SectionHeader, FieldTag } from './HelpHowItWorks'
 
 const fadeUp = { hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0 } }
 const stagger = (n = 0.04) => ({ hidden: {}, show: { transition: { staggerChildren: n } } })
+
+/* ── AAA Business Model Visual ─────────────────────────────────────────────── */
+function BusinessModelDiagram() {
+  const accountTypes = [
+    {
+      icon: Users, color: 'text-cyan-600', bg: 'bg-cyan-500/10', border: 'border-cyan-500/30',
+      title: 'Person Account', count: '1.2M', role: 'Individual AAA Members',
+      items: ['Membership (Basic / Plus / Premier)', 'Vehicles on file', 'Travel & Insurance history', 'ERS roadside calls'],
+    },
+    {
+      icon: Building2, color: 'text-violet-600', bg: 'bg-violet-500/10', border: 'border-violet-500/30',
+      title: 'Facility', count: '1,465', role: 'Partner Businesses / Garages',
+      items: ['Auto repair shops', 'Approved garages', 'Fleet service partners', 'Dispatch destinations (Towbook)'],
+    },
+    {
+      icon: Briefcase, color: 'text-amber-600', bg: 'bg-amber-500/10', border: 'border-amber-500/30',
+      title: 'Business', count: '1,334', role: 'Corporate Accounts',
+      items: ['Group travel accounts', 'Corporate insurance clients', 'Fleet management', 'Employer programs'],
+    },
+  ]
+
+  const membershipTiers = [
+    { label: 'Basic', color: 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300', items: ['4 ERS calls/year', '3 mi tow', 'Travel discounts'] },
+    { label: 'Plus', color: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300', items: ['4 ERS calls/year', '100 mi tow', 'Lockout service', 'Extrication'] },
+    { label: 'Premier', color: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300', items: ['4 ERS calls/year', '200 mi tow', 'Priority service', 'Trip interruption'] },
+  ]
+
+  const businessLines = [
+    { icon: Plane,        color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/30', label: 'Travel',              sub: 'Vacation packages, cruises, tours, flights',           rt: 'RecordType Travel' },
+    { icon: ShieldCheck,  color: 'text-emerald-600', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', label: 'Insurance',        sub: 'Auto, home, life insurance products',                 rt: 'RecordType Insurance' },
+    { icon: HeartPulse,   color: 'text-rose-500',    bg: 'bg-rose-500/10',    border: 'border-rose-500/30',   label: 'Medicare',         sub: 'Medicare supplement & advantage plans',               rt: 'RecordType Medicare' },
+    { icon: Star,         color: 'text-violet-500',  bg: 'bg-violet-500/10',  border: 'border-violet-500/30', label: 'Membership Svc',   sub: 'Upgrades, renewals, household add-ons',               rt: 'RecordType Membership Services' },
+    { icon: DollarSign,   color: 'text-cyan-500',    bg: 'bg-cyan-500/10',    border: 'border-cyan-500/30',   label: 'Financial Svc',    sub: 'Financial planning, annuities, investments',          rt: 'RecordType Financial Services' },
+    { icon: GraduationCap, color: 'text-indigo-500', bg: 'bg-indigo-500/10', border: 'border-indigo-500/30',  label: 'Driver Programs',  sub: 'Teen driver courses, mature driver safety',           rt: 'RecordType Driver Programs' },
+    { icon: Car,          color: 'text-slate-500',   bg: 'bg-slate-500/10',   border: 'border-slate-500/30',  label: 'Retirement Living', sub: 'Retirement community referrals & placement',         rt: 'RecordType Retirement Living' },
+  ]
+
+  return (
+    <div className="space-y-6 mb-6">
+      {/* Account Types */}
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-3">Account Record Types — who is in Salesforce</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {accountTypes.map(a => (
+            <div key={a.title} className={clsx('rounded-xl border p-4', a.bg, a.border)}>
+              <div className="flex items-center gap-2 mb-2">
+                <a.icon className={clsx('w-5 h-5', a.color)} />
+                <div>
+                  <p className="text-[12px] font-bold text-foreground">{a.title}</p>
+                  <p className={clsx('text-[10px] font-semibold', a.color)}>{a.count} records</p>
+                </div>
+              </div>
+              <p className="text-[10px] text-muted-foreground mb-2">{a.role}</p>
+              <ul className="space-y-0.5">
+                {a.items.map(item => (
+                  <li key={item} className="text-[10px] text-muted-foreground flex items-start gap-1">
+                    <span className={clsx('mt-0.5 shrink-0', a.color)}>·</span>{item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Membership Tiers */}
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-3">AAA Membership Tiers — stored as Asset (RecordType = Membership)</p>
+        <div className="grid grid-cols-3 gap-3">
+          {membershipTiers.map(t => (
+            <div key={t.label} className="rounded-xl border border-border bg-muted/20 p-3">
+              <span className={clsx('inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold mb-2', t.color)}>{t.label}</span>
+              <ul className="space-y-0.5">
+                {t.items.map(i => (
+                  <li key={i} className="text-[10px] text-muted-foreground">· {i}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground/60 mt-2">Stored in <code className="text-[10px] bg-muted px-1 rounded">Asset</code> object. Status: A=Active, L=Lapsed, X=Expired. Coverage level in <code className="text-[10px] bg-muted px-1 rounded">ImportantActiveMemCoverage__c</code> on Account.</p>
+      </div>
+
+      {/* Business Lines */}
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-3">Business Lines — Opportunity RecordTypes (products sold)</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {businessLines.map(b => (
+            <div key={b.label} className={clsx('flex items-start gap-3 rounded-lg border p-3', b.bg, b.border)}>
+              <b.icon className={clsx('w-4 h-4 mt-0.5 shrink-0', b.color)} />
+              <div className="min-w-0">
+                <p className="text-[12px] font-semibold text-foreground">{b.label}</p>
+                <p className="text-[10px] text-muted-foreground">{b.sub}</p>
+                <code className="text-[9px] text-muted-foreground/50 mt-0.5 block">{b.rt}</code>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 rounded-lg border border-border bg-muted/30 p-3 text-[10px] text-muted-foreground space-y-1">
+          <p><strong>Top Customers page</strong> queries <code className="bg-muted px-1 rounded">Opportunity</code> grouped by <code className="bg-muted px-1 rounded">AccountId</code> — those AccountIds resolve to <strong>Person Accounts</strong> (individual AAA members). Verified against Salesforce.</p>
+          <p><strong>Invoice stage</strong> is Travel-only. <strong>In Process stage</strong> is Insurance-only. Won = <code className="bg-muted px-1 rounded">Closed Won</code> + <code className="bg-muted px-1 rounded">Invoice</code>.</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
 /* ── Field data ─────────────────────────────────────────────────────────── */
 type FieldEntry = {
@@ -219,6 +326,8 @@ export default function DataSection() {
         title="Data Model & Field Reference"
         subtitle="Searchable field dictionary. Hover field names for SOQL tips."
       />
+
+      <BusinessModelDiagram />
 
       <ERDiagram />
 
