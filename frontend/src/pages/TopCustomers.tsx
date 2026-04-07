@@ -46,7 +46,7 @@ export default function TopCustomers() {
   useEffect(() => {
     setLoading(true)
     fetchTopCustomers(line, limit, startDate, endDate)
-      .then(setCustomers)
+      .then(data => setCustomers(Array.isArray(data) ? data : []))
       .catch(() => setCustomers([]))
       .finally(() => setLoading(false))
   }, [line, limit, startDate, endDate])

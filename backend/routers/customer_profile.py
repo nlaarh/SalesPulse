@@ -18,7 +18,6 @@ log = logging.getLogger('salesinsight.customer')
 
 MEMBER_STATUS = {'A': 'Active', 'X': 'Expired', 'C': 'Cancelled', 'L': 'Lapsed', 'P': 'Pending'}
 
-
 # ── Top Customers by Revenue ─────────────────────────────────────────────────
 
 @router.get('/api/customers/top-revenue')
@@ -37,8 +36,9 @@ def get_top_customers(
 
     def fetch():
         lf = _line_filter(line)
-        rows = sf_query_all(f"""
-            SELECT AccountId, Account.Name,
+        # Step 1: aggregate by AccountId only (Account.Name can't be used in GROUP BY)
+        agg_rows = sf_query_all(f"""
+            SELECT AccountId,
                    COUNT(Id) deal_count,
                    SUM(Amount) total_rev,
                    AVG(Amount) avg_deal
@@ -47,15 +47,28 @@ def get_top_customers(
               AND CloseDate >= {sd} AND CloseDate <= {ed}
               AND Amount != null
               AND {lf}
-            GROUP BY AccountId, Account.Name
+            GROUP BY AccountId
             ORDER BY SUM(Amount) DESC
             LIMIT {limit}
         """)
+        if not agg_rows:
+            return []
+
+        # Step 2: fetch names for top AccountIds
+        ids_csv = ','.join(f"'{r['AccountId']}'" for r in agg_rows if r.get('AccountId'))
+        name_map: dict = {}
+        if ids_csv:
+            name_rows = sf_query_all(f"""
+                SELECT Id, Name FROM Account WHERE Id IN ({ids_csv})
+            """)
+            name_map = {r['Id']: r.get('Name', '') for r in name_rows}
+
         result = []
-        for r in rows:
+        for r in agg_rows:
+            aid = r.get('AccountId', '')
             result.append({
-                'account_id': r.get('AccountId', ''),
-                'name': (r.get('Account') or {}).get('Name', '') or r.get('AccountId', ''),
+                'account_id': aid,
+                'name': name_map.get(aid, aid),
                 'total_rev': float(r.get('total_rev') or 0),
                 'deal_count': int(r.get('deal_count') or 0),
                 'avg_deal': float(r.get('avg_deal') or 0),
