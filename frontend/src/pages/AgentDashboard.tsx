@@ -8,7 +8,7 @@ import { DeltaPill } from '@/components/DeltaPill'
 import type { AgentMonthData, Opp } from '@/lib/types'
 import {
   Loader2, ArrowLeft, Sparkles,
-  Target, BarChart3, ListTodo, FileText,
+  Target, BarChart3, ListTodo, FileText, BookOpen, DollarSign,
 } from 'lucide-react'
 import ManagerBriefing from '@/components/ManagerBriefing'
 import TargetProgressBar from '@/components/TargetProgressBar'
@@ -130,14 +130,15 @@ export default function AgentDashboard() {
     achievementPct: number | null
   } | null>(null)
   const [achievement, setAchievement] = useState<{
-    monthly: { target: number; actual: number; achievement_pct: number | null }
-    yearly: { target: number; actual: number; achievement_pct: number | null; pace_pct: number }
+    monthly: { target: number; actual: number; bookings_actual?: number; commission_actual?: number; achievement_pct: number | null }
+    yearly: { target: number; actual: number; bookings_actual?: number; commission_actual?: number; achievement_pct: number | null; pace_pct: number }
     monthlyPacePct: number
     monthLabel: string
     yearLabel: string
     dayLabel: string
     monthOfYear: number
   } | null>(null)
+  const [achBase, setAchBase] = useState<'commission' | 'bookings'>('commission')
   const monthlyTarget = targetData?.monthlyTarget ?? null
   const c = useChartColors()
 
@@ -335,21 +336,48 @@ export default function AgentDashboard() {
       {/* ── Target Achievement ────────────────────────────────────────────── */}
       {achievement && achievement.monthly.target > 0 && (
         <div className="animate-enter stagger-2 card-premium px-5 py-4">
-          <div className="mb-3 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            Target Achievement — {profile.name}
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              Target Achievement — {profile.name}
+            </span>
+            {/* Bookings / Commission toggle */}
+            <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-0.5">
+              <button
+                onClick={() => setAchBase('commission')}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md px-3 py-1 text-[11px] font-semibold transition-all',
+                  achBase === 'commission' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <DollarSign className="h-3 w-3" /> Commission
+              </button>
+              <button
+                onClick={() => setAchBase('bookings')}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md px-3 py-1 text-[11px] font-semibold transition-all',
+                  achBase === 'bookings' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <BookOpen className="h-3 w-3" /> Bookings
+              </button>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-6">
             <TargetProgressBar
-              label={achievement.monthLabel}
-              actual={achievement.monthly.actual}
+              label={`${achievement.monthLabel} (${achBase})`}
+              actual={achBase === 'bookings'
+                ? (achievement.monthly.bookings_actual ?? achievement.monthly.actual)
+                : (achievement.monthly.commission_actual ?? achievement.monthly.actual)}
               target={achievement.monthly.target}
               pacePct={achievement.monthlyPacePct}
               paceLabel={achievement.dayLabel}
               color="indigo"
             />
             <TargetProgressBar
-              label={achievement.yearLabel}
-              actual={achievement.yearly.actual}
+              label={`${achievement.yearLabel} (${achBase})`}
+              actual={achBase === 'bookings'
+                ? (achievement.yearly.bookings_actual ?? achievement.yearly.actual)
+                : (achievement.yearly.commission_actual ?? achievement.yearly.actual)}
               target={achievement.yearly.target}
               pacePct={achievement.yearly.pace_pct}
               paceLabel={`Month ${achievement.monthOfYear}/12`}

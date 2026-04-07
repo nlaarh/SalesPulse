@@ -431,18 +431,29 @@ def get_target_achievement(
         return [{**r, 'Name': owner_map.get(r.get('OwnerId', ''), '')} for r in rows]
     ytd_records = cache.cached_query(ytd_key, fetch_ytd, ttl=900, disk_ttl=21600)
 
-    actuals_map: dict[str, dict[int, float]] = {}
+    # Store both bookings and commission actuals per advisor per month
+    actuals_map: dict[str, dict[int, dict]] = {}
     for r in ytd_records:
         name = (r.get('Name') or '').strip().lower()
         if not name:
             continue
         rev = r.get('rev', 0) or 0
-        val = round(rev * comm_rate) if line == 'Travel' else rev
-        actuals_map.setdefault(name, {})[r.get('mo', 0)] = val
+        sf_comm = r.get('comm', 0) or 0
+        # Derive commission from bookings if SF field is missing
+        derived_comm = round(rev * comm_rate) if line == 'Travel' else rev
+        final_comm = round(sf_comm) if sf_comm and sf_comm > 100 else derived_comm
+        actuals_map.setdefault(name, {})[r.get('mo', 0)] = {
+            'bookings': round(rev),
+            'commission': final_comm,
+        }
+
+    def _sum_actual(abm: dict, months, key: str) -> float:
+        return sum((abm.get(m) or {}).get(key, 0) for m in months)
 
     # Build results
     advisor_results = []
-    co_month_target = co_month_actual = co_year_target = co_year_actual = 0.0
+    co_month_target = co_month_actual_comm = co_month_actual_book = 0.0
+    co_year_target = co_year_actual_comm = co_year_actual_book = 0.0
 
     for name_lower, display_name in all_names.items():
         at_id = advisor_ids.get(name_lower)
@@ -452,26 +463,36 @@ def get_target_achievement(
         abm = actuals_map.get(name_lower, {})
 
         m_target = tbm.get(month, 0)
-        m_actual = abm.get(month, 0)
+        m_actual_comm = _sum_actual(abm, [month], 'commission')
+        m_actual_book = _sum_actual(abm, [month], 'bookings')
         y_target = sum(tbm.get(m, 0) for m in range(1, 13))
-        y_actual = sum(abm.get(m, 0) for m in range(1, month + 1))
+        y_actual_comm = _sum_actual(abm, range(1, month + 1), 'commission')
+        y_actual_book = _sum_actual(abm, range(1, month + 1), 'bookings')
         completed_target = sum(tbm.get(m, 0) for m in range(1, month))
         y_pace = round(completed_target / y_target * 100, 1) if y_target > 0 else 0
 
         co_month_target += m_target
-        co_month_actual += m_actual
+        co_month_actual_comm += m_actual_comm
+        co_month_actual_book += m_actual_book
         co_year_target += y_target
-        co_year_actual += y_actual
+        co_year_actual_comm += y_actual_comm
+        co_year_actual_book += y_actual_book
 
         advisor_results.append({
             'name': display_name,
             'monthly': {
-                'target': m_target, 'actual': m_actual,
-                'achievement_pct': round(m_actual / m_target * 100, 1) if m_target > 0 else None,
+                'target': m_target,
+                'actual': m_actual_comm,          # legacy: commission
+                'bookings_actual': m_actual_book,
+                'commission_actual': m_actual_comm,
+                'achievement_pct': round(m_actual_comm / m_target * 100, 1) if m_target > 0 else None,
             },
             'yearly': {
-                'target': y_target, 'actual': y_actual,
-                'achievement_pct': round(y_actual / y_target * 100, 1) if y_target > 0 else None,
+                'target': y_target,
+                'actual': y_actual_comm,          # legacy
+                'bookings_actual': y_actual_book,
+                'commission_actual': y_actual_comm,
+                'achievement_pct': round(y_actual_comm / y_target * 100, 1) if y_target > 0 else None,
                 'pace_pct': y_pace,
             },
         })
@@ -487,21 +508,28 @@ def get_target_achievement(
     yearly_pace = round(co_completed / co_year_target * 100, 1) if co_year_target > 0 else 0
 
     return {
+        'comm_rate': round(comm_rate * 100, 1),
         'current_month': {
             'month': month, 'year': year,
             'day_of_month': day, 'days_in_month': days_in_month,
             'pace_pct': monthly_pace,
             'company': {
-                'target': co_month_target, 'actual': co_month_actual,
-                'achievement_pct': round(co_month_actual / co_month_target * 100, 1) if co_month_target > 0 else None,
+                'target': co_month_target,
+                'actual': co_month_actual_comm,
+                'bookings_actual': round(co_month_actual_book),
+                'commission_actual': round(co_month_actual_comm),
+                'achievement_pct': round(co_month_actual_comm / co_month_target * 100, 1) if co_month_target > 0 else None,
             },
         },
         'yearly': {
             'year': year, 'month_of_year': month,
             'pace_pct': yearly_pace,
             'company': {
-                'target': co_year_target, 'actual': co_year_actual,
-                'achievement_pct': round(co_year_actual / co_year_target * 100, 1) if co_year_target > 0 else None,
+                'target': co_year_target,
+                'actual': co_year_actual_comm,
+                'bookings_actual': round(co_year_actual_book),
+                'commission_actual': round(co_year_actual_comm),
+                'achievement_pct': round(co_year_actual_comm / co_year_target * 100, 1) if co_year_target > 0 else None,
             },
         },
         'advisors': advisor_results,
