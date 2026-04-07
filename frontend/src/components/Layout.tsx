@@ -612,9 +612,9 @@ export default function Layout() {
             )}
           >
             {isDark ? (
-              <><Moon className="h-3.5 w-3.5 text-primary" /> Dark</>
-            ) : (
               <><Sun className="h-3.5 w-3.5 text-primary" /> Light</>
+            ) : (
+              <><Moon className="h-3.5 w-3.5 text-primary" /> Dark</>
             )}
           </button>
         </div>
