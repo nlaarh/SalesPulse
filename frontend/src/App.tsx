@@ -23,6 +23,7 @@ const Help = lazy(() => import('@/pages/Help'))
 const Settings = lazy(() => import('@/pages/Settings'))
 const IssuesPage = lazy(() => import('@/pages/Issues'))
 const CustomerProfile = lazy(() => import('@/pages/CustomerProfile'))
+const TopCustomers = lazy(() => import('@/pages/TopCustomers'))
 
 /* ── React Query client ──────────────────────────────────────────────────── */
 
@@ -71,6 +72,7 @@ export default function App() {
                   <Route path="settings" element={<Suspense fallback={LazyFallback}><Settings /></Suspense>} />
                   <Route path="issues" element={<Suspense fallback={LazyFallback}><IssuesPage /></Suspense>} />
                   <Route path="customer/:id" element={<Suspense fallback={LazyFallback}><CustomerProfile /></Suspense>} />
+                  <Route path="customers" element={<Suspense fallback={LazyFallback}><TopCustomers /></Suspense>} />
                 </Route>
               </Route>
             </Routes>

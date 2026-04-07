@@ -10,11 +10,59 @@ from auth import get_current_user
 from models import User
 from sf_client import sf_parallel, sf_query_all, sf_instance_url
 from routers.ai_config import call_ai, get_ai_config
+import cache
+from shared import VALID_LINES, line_filter_opp as _line_filter, resolve_dates as _resolve_dates
 
 router = APIRouter()
 log = logging.getLogger('salesinsight.customer')
 
 MEMBER_STATUS = {'A': 'Active', 'X': 'Expired', 'C': 'Cancelled', 'L': 'Lapsed', 'P': 'Pending'}
+
+
+# ── Top Customers by Revenue ─────────────────────────────────────────────────
+
+@router.get('/api/customers/top-revenue')
+def get_top_customers(
+    line: str = Query('Travel'),
+    limit: int = Query(25, ge=10, le=100),
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    _user: User = Depends(get_current_user),
+):
+    """Top N customers by closed-won revenue. Uses Opportunity aggregation — no Account table scan."""
+    if line not in VALID_LINES:
+        line = 'Travel'
+    sd, ed = _resolve_dates(start_date, end_date, 12)
+    key = f"top_customers_{line}_{limit}_{sd}_{ed}"
+
+    def fetch():
+        lf = _line_filter(line)
+        rows = sf_query_all(f"""
+            SELECT AccountId, Account.Name,
+                   COUNT(Id) deal_count,
+                   SUM(Amount) total_rev,
+                   AVG(Amount) avg_deal
+            FROM Opportunity
+            WHERE StageName IN ('Closed Won','Invoice')
+              AND CloseDate >= {sd} AND CloseDate <= {ed}
+              AND Amount != null
+              AND {lf}
+            GROUP BY AccountId, Account.Name
+            ORDER BY SUM(Amount) DESC
+            LIMIT {limit}
+        """)
+        result = []
+        for r in rows:
+            result.append({
+                'account_id': r.get('AccountId', ''),
+                'name': (r.get('Account') or {}).get('Name', '') or r.get('AccountId', ''),
+                'total_rev': float(r.get('total_rev') or 0),
+                'deal_count': int(r.get('deal_count') or 0),
+                'avg_deal': float(r.get('avg_deal') or 0),
+            })
+        return result
+
+    return cache.cached_query(key, fetch, ttl=3600, disk_ttl=21600)
 
 
 # ── Search ──────────────────────────────────────────────────────────────────

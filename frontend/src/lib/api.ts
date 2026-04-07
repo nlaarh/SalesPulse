@@ -543,3 +543,24 @@ export async function emailAdvisorDashboard(
   })
   return data as { status: string; to: string }
 }
+
+/* ── Top Customers by Revenue ────────────────────────────────────────────── */
+export interface TopCustomer {
+  account_id: string
+  name: string
+  total_rev: number
+  deal_count: number
+  avg_deal: number
+}
+
+export async function fetchTopCustomers(
+  line = 'Travel',
+  limit = 25,
+  startDate?: string | null,
+  endDate?: string | null,
+): Promise<TopCustomer[]> {
+  const { data } = await api.get('/api/customers/top-revenue', {
+    params: withDates({ line, limit }, startDate, endDate),
+  })
+  return data as TopCustomer[]
+}

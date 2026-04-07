@@ -5,7 +5,7 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
 import {
-  Users, GitBranch, Plane, Megaphone, Table2, Target,
+  Users, GitBranch, Plane, Megaphone, Table2, Target, UserCheck,
   ChevronDown, Sun, Moon, Calendar, Command,
   ArrowRight, X, HelpCircle, Settings, LogOut, Bug,
 } from 'lucide-react'
@@ -14,11 +14,9 @@ import CommandPalette from '@/components/CommandPalette'
 import ReportIssue from '@/components/ReportIssue'
 import { useState, useRef, useEffect, useCallback } from 'react'
 
-const NAV_DASHBOARD = [
-  { to: '/dashboard', label: 'Sales Performance', icon: Users, desc: 'Revenue, pipeline & team' },
-]
-
 const NAV_ANALYTICS = [
+  { to: '/dashboard', label: 'Sales Performance', icon: Users, desc: 'Revenue, pipeline & team' },
+  { to: '/customers', label: 'Top Customers', icon: UserCheck, desc: 'Highest revenue accounts' },
   { to: '/monthly', label: 'Advisor Monthly Report', icon: Table2, desc: 'Agent × month breakdown' },
   { to: '/pipeline', label: 'Pipeline & Forecast', icon: GitBranch, desc: 'Stages, velocity & risk' },
   { to: '/opportunities', label: 'Top Opportunities', icon: Target, desc: 'AI-scored deal ranking' },
@@ -256,45 +254,8 @@ export default function Layout() {
         {/* Nav + Filters — scrollable middle section */}
         <div className="flex-1 overflow-y-auto">
         <nav className="space-y-0.5 px-3 pt-3">
-          {/* Dashboard */}
-          <span className="mb-2 block px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
-            Dashboard
-          </span>
-          {NAV_DASHBOARD.map(({ to, label, icon: Icon, desc }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === '/dashboard'}
-              className={({ isActive }) => cn(
-                'group relative flex items-center gap-3 rounded-lg px-2.5 py-2',
-                'text-[13px] font-medium transition-all duration-200',
-                isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-              )}
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <div className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-primary" />
-                  )}
-                  <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2 : 1.5} />
-                  <div className="flex flex-col">
-                    <span>{label}</span>
-                    <span className={cn(
-                      'text-[10px] font-normal leading-tight',
-                      isActive ? 'text-primary/60' : 'text-muted-foreground/40',
-                    )}>
-                      {desc}
-                    </span>
-                  </div>
-                </>
-              )}
-            </NavLink>
-          ))}
-
           {/* Analytics */}
-          <span className="mb-2 mt-4 block px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
+          <span className="mb-2 block px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
             Analytics
           </span>
           {NAV_ANALYTICS.map(({ to, label, icon: Icon, desc }) => (
