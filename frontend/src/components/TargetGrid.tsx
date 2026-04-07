@@ -90,6 +90,26 @@ export default function TargetGrid({ line }: Props) {
 
   const otherLabel = targetBase === 'bookings' ? 'Est. Commission' : 'Est. Bookings'
 
+  // Convert all target cells when switching basis
+  function switchBase(newBase: TargetBase) {
+    if (newBase === targetBase) return
+    setRows(prev => prev.map(r => {
+      const newTargets: Record<number, number> = {}
+      for (const [k, v] of Object.entries(r.targets)) {
+        if (newBase === 'commission') {
+          // bookings → commission: multiply by rate
+          newTargets[Number(k)] = Math.round(v * commRate / 100)
+        } else {
+          // commission → bookings: divide by rate
+          newTargets[Number(k)] = commRate > 0 ? Math.round(v / (commRate / 100)) : 0
+        }
+      }
+      return { ...r, targets: newTargets }
+    }))
+    setTargetBase(newBase)
+    setSaved(false)
+  }
+
   function updateCell(rowIdx: number, month: number, value: string) {
     const num = parseFloat(value.replace(/[^0-9.]/g, '')) || 0
     setRows(prev => {
@@ -211,7 +231,7 @@ export default function TargetGrid({ line }: Props) {
             {/* Base toggle */}
             <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-0.5">
               <button
-                onClick={() => setTargetBase('bookings')}
+                onClick={() => switchBase('bookings')}
                 className={cn(
                   'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold transition-all',
                   targetBase === 'bookings'
@@ -222,7 +242,7 @@ export default function TargetGrid({ line }: Props) {
                 <BookOpen className="h-3.5 w-3.5" /> Bookings basis
               </button>
               <button
-                onClick={() => setTargetBase('commission')}
+                onClick={() => switchBase('commission')}
                 className={cn(
                   'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold transition-all',
                   targetBase === 'commission'
