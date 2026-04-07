@@ -66,11 +66,10 @@ export default function AdvisorDashboard() {
   const [achievement, setAchievement] = useState<AchievementResponse | null>(null)
   const [achBase, setAchBase] = useState<'commission' | 'bookings'>('commission')
 
-  // Refetch achievement if bookings_actual is missing (stale pre-deploy state)
   function switchAchBase(base: 'commission' | 'bookings') {
     setAchBase(base)
     if (base === 'bookings' && achievement?.current_month?.company?.bookings_actual === undefined) {
-      fetchTargetAchievement(line).then(setAchievement).catch(() => {})
+      fetchTargetAchievement(line, undefined, startDate, endDate).then(setAchievement).catch(() => {})
     }
   }
 
@@ -131,8 +130,8 @@ export default function AdvisorDashboard() {
         setTargetMap(map)
       })
       .catch(() => {})
-    // Load achievement data for progress bars
-    fetchTargetAchievement(line)
+    // Load achievement data for progress bars (respects selected date range)
+    fetchTargetAchievement(line, undefined, startDate, endDate)
       .then((data) => {
         if (cancelled) return
         setAchievement(data)
@@ -247,7 +246,12 @@ export default function AdvisorDashboard() {
           </div>
           <div className="grid grid-cols-2 gap-6">
             <TargetProgressBar
-              label={`${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][achievement.current_month.month - 1]} Target (${achBase})`}
+              label={(() => {
+                const pm = achievement.current_month.period_months
+                const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+                if (!pm || pm.length === 1) return `${MONTHS[achievement.current_month.month - 1]} Target (${achBase})`
+                return `${MONTHS[pm[0]-1]}–${MONTHS[pm[pm.length-1]-1]} Target (${achBase})`
+              })()}
               actual={achBase === 'bookings'
                 ? (achievement.current_month.company.bookings_actual ?? achievement.current_month.company.actual)
                 : (achievement.current_month.company.commission_actual ?? achievement.current_month.company.actual)}
@@ -255,7 +259,7 @@ export default function AdvisorDashboard() {
                 ? (achievement.current_month.company.bookings_target ?? achievement.current_month.company.target)
                 : achievement.current_month.company.target}
               pacePct={achievement.current_month.pace_pct}
-              paceLabel={`Day ${achievement.current_month.day_of_month}/${achievement.current_month.days_in_month}`}
+              paceLabel={achievement.current_month.period_label ?? `Day ${achievement.current_month.day_of_month}/${achievement.current_month.days_in_month}`}
               color="indigo"
             />
             <TargetProgressBar

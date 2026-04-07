@@ -397,6 +397,8 @@ export interface AchievementResponse {
     day_of_month: number
     days_in_month: number
     pace_pct: number
+    period_months?: number[]
+    period_label?: string
     company: { target: number; bookings_target?: number; actual: number; bookings_actual?: number; commission_actual?: number; achievement_pct: number | null }
   } | null
   yearly: {
@@ -417,9 +419,11 @@ export async function fetchMonthlyTargets(year: number, line = 'Travel') {
   return data as MonthlyTargetsResponse
 }
 
-export async function fetchTargetAchievement(line = 'Travel', advisorName?: string) {
+export async function fetchTargetAchievement(line = 'Travel', advisorName?: string, startDate?: string | null, endDate?: string | null) {
   const params: Record<string, string> = { line }
   if (advisorName) params.advisor_name = advisorName
+  if (startDate) params.start_date = startDate
+  if (endDate) params.end_date = endDate
   const { data } = await api.get('/api/targets/achievement', { params })
   return data as AchievementResponse
 }

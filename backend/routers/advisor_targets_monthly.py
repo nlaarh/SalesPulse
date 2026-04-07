@@ -372,6 +372,8 @@ def get_monthly_targets(
 def get_target_achievement(
     line: str = "Travel",
     advisor_name: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -388,10 +390,42 @@ def get_target_achievement(
     days_in_month = calendar.monthrange(year, month)[1]
     lf = line_filter_opp(line)
 
+    # Parse optional period dates; default to current month
+    try:
+        p_start = date.fromisoformat(start_date) if start_date else date(year, month, 1)
+        p_end   = date.fromisoformat(end_date)   if end_date   else today
+    except ValueError:
+        p_start = date(year, month, 1)
+        p_end   = today
+
+    # Clamp period to the current year for target look-ups
+    p_year = p_end.year  # use the year the period ends in
+    p_start_clamped = max(p_start, date(p_year, 1, 1))
+
+    # Which months (1-12) in p_year are covered by the period?
+    period_months = [
+        m for m in range(1, 13)
+        if date(p_year, m, calendar.monthrange(p_year, m)[1]) >= p_start_clamped
+        and date(p_year, m, 1) <= p_end
+    ]
+    if not period_months:
+        period_months = [p_end.month]
+
+    # Pace for the period bar: elapsed days / total period days
+    period_total_days = max((p_end - p_start).days + 1, 1)
+    elapsed_days = max((min(today, p_end) - p_start).days + 1, 0)
+    period_pace = round(elapsed_days / period_total_days * 100, 1)
+
+    # Labels for the period bar
+    period_month_num  = period_months[0] if len(period_months) == 1 else None
+    period_day_label  = (f"Day {day}/{days_in_month}" if len(period_months) == 1
+                         else f"{elapsed_days}/{period_total_days} days")
+
+
     # Get current + prior year data. Use prior year's commission rate (most complete)
-    cur_records = _sf_advisors_with_bookings(line, year, cache, sf_query_all, WON_STAGES, lf)
-    py_records = _sf_advisors_with_bookings(line, year - 1, cache, sf_query_all, WON_STAGES, lf)
-    comm_rate = _get_comm_rate_accurate(line, year - 1, cache, sf_query_all, WON_STAGES, lf)
+    cur_records = _sf_advisors_with_bookings(line, p_year, cache, sf_query_all, WON_STAGES, lf)
+    py_records = _sf_advisors_with_bookings(line, p_year - 1, cache, sf_query_all, WON_STAGES, lf)
+    comm_rate = _get_comm_rate_accurate(line, p_year - 1, cache, sf_query_all, WON_STAGES, lf)
 
     all_names: dict[str, str] = {}
     for r in cur_records + py_records:
@@ -407,23 +441,23 @@ def get_target_achievement(
         if name:
             prior_earnings[name] = round(rev * comm_rate) if line == 'Travel' else rev
 
-    _ensure_monthly_targets(db, year, advisor_ids, prior_earnings)
+    _ensure_monthly_targets(db, p_year, advisor_ids, prior_earnings)
 
     monthly_rows = db.query(MonthlyAdvisorTarget).filter(
-        MonthlyAdvisorTarget.year == year).all()
+        MonthlyAdvisorTarget.year == p_year).all()
     monthly_map: dict[int, dict[int, float]] = {}
     for mr in monthly_rows:
         monthly_map.setdefault(mr.advisor_target_id, {})[mr.month] = mr.target_amount
 
-    # YTD actuals
-    ytd_key = f"achievement_ytd_{line}_{year}_{month}_{day}"
+    # Fetch actuals for the full year (Jan 1 → today) so both bars can be computed
+    ytd_key = f"achievement_ytd_{line}_{p_year}_{month}_{day}"
     def fetch_ytd():
         rows = sf_query_all(f"""
             SELECT OwnerId, CALENDAR_MONTH(CloseDate) mo,
                    SUM(Amount) rev, SUM(Earned_Commission_Amount__c) comm
             FROM Opportunity
             WHERE {WON_STAGES} AND {lf}
-              AND CloseDate >= {year}-01-01 AND CloseDate <= {today.isoformat()}
+              AND CloseDate >= {p_year}-01-01 AND CloseDate <= {today.isoformat()}
               AND Amount != null
             GROUP BY OwnerId, CALENDAR_MONTH(CloseDate)
         """)
@@ -450,9 +484,10 @@ def get_target_achievement(
     def _sum_actual(abm: dict, months, key: str) -> float:
         return sum((abm.get(m) or {}).get(key, 0) for m in months)
 
-    # Build results
+    # Build results — "period" bar uses period_months; "yearly" bar uses YTD (Jan → today)
+    ytd_months = range(1, month + 1)
     advisor_results = []
-    co_month_target = co_month_actual_comm = co_month_actual_book = 0.0
+    co_period_target = co_period_actual_comm = co_period_actual_book = 0.0
     co_year_target = co_year_actual_comm = co_year_actual_book = 0.0
 
     for name_lower, display_name in all_names.items():
@@ -462,40 +497,43 @@ def get_target_achievement(
         tbm = monthly_map.get(at_id, {})
         abm = actuals_map.get(name_lower, {})
 
-        m_target = tbm.get(month, 0)
-        m_actual_comm = _sum_actual(abm, [month], 'commission')
-        m_actual_book = _sum_actual(abm, [month], 'bookings')
-        y_target = sum(tbm.get(m, 0) for m in range(1, 13))
-        y_actual_comm = _sum_actual(abm, range(1, month + 1), 'commission')
-        y_actual_book = _sum_actual(abm, range(1, month + 1), 'bookings')
+        # Period bar (respects selected date range)
+        p_target       = sum(tbm.get(m, 0) for m in period_months)
+        p_actual_comm  = _sum_actual(abm, period_months, 'commission')
+        p_actual_book  = _sum_actual(abm, period_months, 'bookings')
+
+        # Yearly bar (always YTD: Jan → current month)
+        y_target       = sum(tbm.get(m, 0) for m in range(1, 13))
+        y_actual_comm  = _sum_actual(abm, ytd_months, 'commission')
+        y_actual_book  = _sum_actual(abm, ytd_months, 'bookings')
         completed_target = sum(tbm.get(m, 0) for m in range(1, month))
         y_pace = round(completed_target / y_target * 100, 1) if y_target > 0 else 0
 
-        co_month_target += m_target
-        co_month_actual_comm += m_actual_comm
-        co_month_actual_book += m_actual_book
-        co_year_target += y_target
-        co_year_actual_comm += y_actual_comm
-        co_year_actual_book += y_actual_book
+        co_period_target      += p_target
+        co_period_actual_comm += p_actual_comm
+        co_period_actual_book += p_actual_book
+        co_year_target        += y_target
+        co_year_actual_comm   += y_actual_comm
+        co_year_actual_book   += y_actual_book
 
-        # Targets are stored in commission dollars; derive bookings target by dividing by comm_rate
-        m_book_target = round(m_target / comm_rate) if comm_rate > 0 and m_target > 0 else m_target
+        # Bookings targets = commission targets ÷ comm_rate
+        p_book_target = round(p_target / comm_rate) if comm_rate > 0 and p_target > 0 else p_target
         y_book_target = round(y_target / comm_rate) if comm_rate > 0 and y_target > 0 else y_target
 
         advisor_results.append({
             'name': display_name,
             'monthly': {
-                'target': m_target,
-                'bookings_target': m_book_target,
-                'actual': m_actual_comm,          # legacy: commission
-                'bookings_actual': m_actual_book,
-                'commission_actual': m_actual_comm,
-                'achievement_pct': round(m_actual_comm / m_target * 100, 1) if m_target > 0 else None,
+                'target': p_target,
+                'bookings_target': p_book_target,
+                'actual': p_actual_comm,
+                'bookings_actual': p_actual_book,
+                'commission_actual': p_actual_comm,
+                'achievement_pct': round(p_actual_comm / p_target * 100, 1) if p_target > 0 else None,
             },
             'yearly': {
                 'target': y_target,
                 'bookings_target': y_book_target,
-                'actual': y_actual_comm,          # legacy
+                'actual': y_actual_comm,
                 'bookings_actual': y_actual_book,
                 'commission_actual': y_actual_comm,
                 'achievement_pct': round(y_actual_comm / y_target * 100, 1) if y_target > 0 else None,
@@ -510,26 +548,28 @@ def get_target_achievement(
         sum(monthly_map.get(advisor_ids.get(n, 0), {}).get(m, 0) for m in range(1, month))
         for n in all_names
     )
-    monthly_pace = round(day / days_in_month * 100, 1)
     yearly_pace = round(co_completed / co_year_target * 100, 1) if co_year_target > 0 else 0
 
     return {
         'comm_rate': round(comm_rate * 100, 1),
         'current_month': {
-            'month': month, 'year': year,
+            'month': period_month_num or period_months[-1],
+            'year': p_year,
             'day_of_month': day, 'days_in_month': days_in_month,
-            'pace_pct': monthly_pace,
+            'pace_pct': period_pace,
+            'period_months': period_months,
+            'period_label': period_day_label,
             'company': {
-                'target': co_month_target,
-                'bookings_target': round(co_month_target / comm_rate) if comm_rate > 0 and co_month_target > 0 else co_month_target,
-                'actual': co_month_actual_comm,
-                'bookings_actual': round(co_month_actual_book),
-                'commission_actual': round(co_month_actual_comm),
-                'achievement_pct': round(co_month_actual_comm / co_month_target * 100, 1) if co_month_target > 0 else None,
+                'target': co_period_target,
+                'bookings_target': round(co_period_target / comm_rate) if comm_rate > 0 and co_period_target > 0 else co_period_target,
+                'actual': co_period_actual_comm,
+                'bookings_actual': round(co_period_actual_book),
+                'commission_actual': round(co_period_actual_comm),
+                'achievement_pct': round(co_period_actual_comm / co_period_target * 100, 1) if co_period_target > 0 else None,
             },
         },
         'yearly': {
-            'year': year, 'month_of_year': month,
+            'year': p_year, 'month_of_year': month,
             'pace_pct': yearly_pace,
             'company': {
                 'target': co_year_target,
