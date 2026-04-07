@@ -142,6 +142,31 @@ export default function AgentDashboard() {
   const monthlyTarget = targetData?.monthlyTarget ?? null
   const c = useChartColors()
 
+  // Refetch achievement if bookings_actual is missing (stale pre-deploy state)
+  function switchAchBase(base: 'commission' | 'bookings') {
+    setAchBase(base)
+    if (base === 'bookings' && achievement?.monthly?.bookings_actual === undefined && name) {
+      const decoded = decodeURIComponent(name)
+      fetchTargetAchievement(line, decoded)
+        .then((data) => {
+          if (!data.current_month || !data.yearly) return
+          const adv = data.advisors[0]
+          if (!adv) return
+          const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+          setAchievement({
+            monthly: adv.monthly,
+            yearly: adv.yearly,
+            monthlyPacePct: data.current_month.pace_pct,
+            monthLabel: `${monthNames[data.current_month.month - 1]} Target`,
+            yearLabel: `${data.yearly.year} Yearly Target`,
+            dayLabel: `Day ${data.current_month.day_of_month}/${data.current_month.days_in_month}`,
+            monthOfYear: data.yearly.month_of_year,
+          })
+        })
+        .catch(() => {})
+    }
+  }
+
   useEffect(() => {
     if (!name) return
     const decoded = decodeURIComponent(name)
@@ -343,7 +368,7 @@ export default function AgentDashboard() {
             {/* Bookings / Commission toggle */}
             <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-0.5">
               <button
-                onClick={() => setAchBase('commission')}
+                onClick={() => switchAchBase('commission')}
                 className={cn(
                   'flex items-center gap-1.5 rounded-md px-3 py-1 text-[11px] font-semibold transition-all',
                   achBase === 'commission' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
@@ -352,7 +377,7 @@ export default function AgentDashboard() {
                 <DollarSign className="h-3 w-3" /> Commission
               </button>
               <button
-                onClick={() => setAchBase('bookings')}
+                onClick={() => switchAchBase('bookings')}
                 className={cn(
                   'flex items-center gap-1.5 rounded-md px-3 py-1 text-[11px] font-semibold transition-all',
                   achBase === 'bookings' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',

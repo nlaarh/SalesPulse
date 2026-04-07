@@ -66,6 +66,14 @@ export default function AdvisorDashboard() {
   const [achievement, setAchievement] = useState<AchievementResponse | null>(null)
   const [achBase, setAchBase] = useState<'commission' | 'bookings'>('commission')
 
+  // Refetch achievement if bookings_actual is missing (stale pre-deploy state)
+  function switchAchBase(base: 'commission' | 'bookings') {
+    setAchBase(base)
+    if (base === 'bookings' && achievement?.current_month?.company?.bookings_actual === undefined) {
+      fetchTargetAchievement(line).then(setAchievement).catch(() => {})
+    }
+  }
+
   const isInsurance = line.toLowerCase() === 'insurance'
 
   const periodLabel = viewMode === 'custom' && startDate && endDate
@@ -218,7 +226,7 @@ export default function AdvisorDashboard() {
             {/* Bookings / Commission toggle */}
             <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-0.5">
               <button
-                onClick={() => setAchBase('commission')}
+                onClick={() => switchAchBase('commission')}
                 className={cn(
                   'flex items-center gap-1.5 rounded-md px-3 py-1 text-[11px] font-semibold transition-all',
                   achBase === 'commission' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
@@ -227,7 +235,7 @@ export default function AdvisorDashboard() {
                 <DollarSign className="h-3 w-3" /> Commission
               </button>
               <button
-                onClick={() => setAchBase('bookings')}
+                onClick={() => switchAchBase('bookings')}
                 className={cn(
                   'flex items-center gap-1.5 rounded-md px-3 py-1 text-[11px] font-semibold transition-all',
                   achBase === 'bookings' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
