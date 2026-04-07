@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
 from auth import get_current_user
 from models import User
-from sf_client import sf_parallel, sf_query_all, sf_instance_url
+from sf_client import sf_parallel, sf_query_all, sf_instance_url, sf_sosl
 from routers.ai_config import call_ai, get_ai_config
 import cache
 from shared import VALID_LINES, line_filter_opp as _line_filter, resolve_dates as _resolve_dates
@@ -85,19 +85,20 @@ def search_customers(
     q: str = Query(..., min_length=2),
     _user: User = Depends(get_current_user),
 ):
-    safe = q.replace("'", "\\'")
+    """Search customers by name, member ID, or email using SOSL full-text search."""
+    safe = q.replace('"', '').replace("'", '').replace('\\', '').strip()
     try:
-        records = sf_query_all(f"""
-            SELECT Id, Name, PersonEmail,
-                   Account_Member_ID__c, Member_Status__c,
-                   Account_Member_Since__c, ImportantActiveMemCoverage__c,
-                   Region__c, MPI__c, BillingCity, BillingState
-            FROM Account
-            WHERE RecordType.Name = 'Person Account'
-              AND (Name LIKE '%{safe}%' OR Account_Member_ID__c LIKE '%{safe}%')
-            ORDER BY Name
-            LIMIT 20
-        """)
+        # Use SOSL for name search (works on encrypted Name fields)
+        sosl = (
+            f"FIND {{{safe}}} IN ALL FIELDS "
+            f"RETURNING Account("
+            f"Id, Name, PersonEmail, Account_Member_ID__c, Member_Status__c, "
+            f"Account_Member_Since__c, ImportantActiveMemCoverage__c, "
+            f"Region__c, MPI__c, BillingCity, BillingState "
+            f"WHERE RecordType.Name = 'Person Account') "
+            f"LIMIT 20"
+        )
+        records = sf_sosl(sosl)
         return {'results': [_fmt_summary(r) for r in records]}
     except Exception as e:
         log.error(f'Customer search error: {e}')
@@ -146,6 +147,13 @@ def get_customer_profile(
                 WHERE AccountId = '{account_id}'
                 ORDER BY CreatedDate DESC LIMIT 60
             """,
+            leads=f"""
+                SELECT Id, Name, Status, IsConverted, ConvertedDate, CreatedDate,
+                       RecordType.Name, Owner.Name, LeadSource
+                FROM Lead
+                WHERE ConvertedAccountId = '{account_id}'
+                ORDER BY CreatedDate DESC LIMIT 30
+            """,
         )
     except Exception as e:
         log.error(f'Customer profile error {account_id}: {e}')
@@ -159,6 +167,26 @@ def get_customer_profile(
     mships = data.get('memberships') or []
     vehs   = data.get('vehicles') or []
     opps   = data.get('opportunities') or []
+    raw_leads = data.get('leads') or []
+
+    # Also try email-based lead lookup for unlinked leads
+    email = acct.get('PersonEmail')
+    if email:
+        try:
+            email_leads = sf_query_all(f"""
+                SELECT Id, Name, Status, IsConverted, ConvertedDate, CreatedDate,
+                       RecordType.Name, Owner.Name, LeadSource
+                FROM Lead
+                WHERE Email = '{email}' AND ConvertedAccountId = null
+                ORDER BY CreatedDate DESC LIMIT 10
+            """)
+            # Deduplicate by Id
+            seen = {l['Id'] for l in raw_leads}
+            for l in email_leads:
+                if l.get('Id') not in seen:
+                    raw_leads.append(l)
+        except Exception:
+            pass
 
     # Product 360 — which product families does this customer have?
     try:
@@ -194,6 +222,7 @@ def get_customer_profile(
         'product_360':  product_360,
         'transactions': transactions,
         'opportunities': opp_groups,
+        'leads':        [_fmt_lead(l, base_url) for l in raw_leads],
     }
 
 
@@ -501,4 +530,19 @@ def _fmt_opp(r: dict, base_url: str = '') -> dict:
         'trip_id':      r.get('Axis_Trip_ID__c'),
         'owner':        (r.get('Owner') or {}).get('Name'),
         'sf_url': f"{base_url}/lightning/r/Opportunity/{r.get('Id')}/view" if base_url else None,
+    }
+
+
+def _fmt_lead(r: dict, base_url: str = '') -> dict:
+    return {
+        'id':             r.get('Id'),
+        'name':           r.get('Name'),
+        'status':         r.get('Status'),
+        'is_converted':   bool(r.get('IsConverted')),
+        'converted_date': (r.get('ConvertedDate') or '')[:10] or None,
+        'created_date':   (r.get('CreatedDate') or '')[:10],
+        'record_type':    (r.get('RecordType') or {}).get('Name', 'Other'),
+        'owner':          (r.get('Owner') or {}).get('Name'),
+        'lead_source':    r.get('LeadSource'),
+        'sf_url': f"{base_url}/lightning/r/Lead/{r.get('Id')}/view" if base_url else None,
     }

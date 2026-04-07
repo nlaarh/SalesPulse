@@ -564,3 +564,23 @@ export async function fetchTopCustomers(
   })
   return data as TopCustomer[]
 }
+
+/* ── Customer Search ─────────────────────────────────────────────────────── */
+export interface CustomerSummary {
+  id: string
+  name: string
+  email: string | null
+  member_id: string | null
+  member_status: string | null
+  member_status_label: string | null
+  coverage: string | null
+  city: string | null
+  state: string | null
+  mpi: number | null
+}
+
+export async function searchCustomers(q: string): Promise<CustomerSummary[]> {
+  if (q.length < 2) return []
+  const { data } = await api.get('/api/customers/search', { params: { q } })
+  return (data?.results ?? []) as CustomerSummary[]
+}

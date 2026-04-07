@@ -6,16 +6,16 @@
  * Click any customer → Customer 360 view.
  */
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSales } from '@/contexts/SalesContext'
-import { fetchTopCustomers, type TopCustomer } from '@/lib/api'
+import { fetchTopCustomers, searchCustomers, type TopCustomer, type CustomerSummary } from '@/lib/api'
 import { useChartColors, tooltipStyle } from '@/lib/chart-theme'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Cell,
 } from 'recharts'
-import { Loader2, Users, ExternalLink, ArrowUp, ArrowDown } from 'lucide-react'
+import { Loader2, Users, ExternalLink, ArrowUp, ArrowDown, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const LIMITS = [25, 50, 100] as const
@@ -30,6 +30,118 @@ function fmt(n: number) {
 
 function fmtFull(n: number) {
   return `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+}
+
+/* ── Customer Search Box ─────────────────────────────────────────────────── */
+function CustomerSearchBox() {
+  const navigate = useNavigate()
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<CustomerSummary[]>([])
+  const [searching, setSearching] = useState(false)
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const doSearch = useCallback((q: string) => {
+    if (q.length < 2) { setResults([]); setOpen(false); return }
+    setSearching(true)
+    searchCustomers(q)
+      .then(r => { setResults(r); setOpen(true) })
+      .catch(() => setResults([]))
+      .finally(() => setSearching(false))
+  }, [])
+
+  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value
+    setQuery(v)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => doSearch(v), 350)
+  }
+
+  useEffect(() => {
+    function close(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
+
+  function pick(id: string) {
+    setQuery(''); setResults([]); setOpen(false)
+    navigate(`/customer/${id}`)
+  }
+
+  const COVERAGE_COLOR: Record<string, string> = {
+    PREMIER: 'text-amber-600', PLUS: 'text-blue-600', B: 'text-slate-500',
+  }
+
+  return (
+    <div ref={ref} className="relative w-full max-w-sm">
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-background/80 px-3 py-2 focus-within:ring-1 focus-within:ring-primary/40 focus-within:border-primary/40 transition-all">
+        {searching ? <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground/50 shrink-0" /> : <Search className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />}
+        <input
+          value={query}
+          onChange={onChange}
+          onFocus={() => results.length > 0 && setOpen(true)}
+          placeholder="Search by name, member # or email…"
+          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/40 text-foreground"
+        />
+        {query && (
+          <button onClick={() => { setQuery(''); setResults([]); setOpen(false) }}>
+            <X className="w-3.5 h-3.5 text-muted-foreground/40 hover:text-muted-foreground" />
+          </button>
+        )}
+      </div>
+
+      {open && results.length > 0 && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-xl border border-border bg-popover shadow-xl overflow-hidden max-h-80 overflow-y-auto">
+          {results.map(r => (
+            <button
+              key={r.id}
+              onClick={() => pick(r.id)}
+              className="w-full flex items-start gap-3 px-4 py-3 hover:bg-muted/40 transition-colors text-left border-b border-border/50 last:border-0"
+            >
+              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                <span className="text-[10px] font-bold text-primary">
+                  {(r.name || '?')[0].toUpperCase()}
+                </span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[13px] font-semibold text-foreground truncate">{r.name}</span>
+                  {r.coverage && (
+                    <span className={cn('text-[10px] font-bold', COVERAGE_COLOR[r.coverage] ?? 'text-slate-500')}>
+                      {r.coverage}
+                    </span>
+                  )}
+                  {r.member_status_label && (
+                    <span className={cn(
+                      'text-[9px] px-1.5 py-0.5 rounded-full font-medium',
+                      r.member_status === 'A' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-500/10 text-slate-500',
+                    )}>
+                      {r.member_status_label}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground/60 flex-wrap">
+                  {r.member_id && <span className="font-mono"># {r.member_id}</span>}
+                  {r.email && <span>{r.email}</span>}
+                  {r.city && <span>{r.city}{r.state ? `, ${r.state}` : ''}</span>}
+                </div>
+              </div>
+              <ExternalLink className="w-3 h-3 text-muted-foreground/30 mt-1 shrink-0" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {open && results.length === 0 && query.length >= 2 && !searching && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-xl border border-border bg-popover shadow-xl px-4 py-3 text-sm text-muted-foreground/60">
+          No customers found for "{query}"
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function TopCustomers() {
@@ -103,22 +215,25 @@ export default function TopCustomers() {
           </div>
         </div>
 
-        {/* Limit toggle */}
-        <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
-          {LIMITS.map(l => (
-            <button
-              key={l}
-              onClick={() => setLimit(l)}
-              className={cn(
-                'px-3 py-1 rounded-md text-sm font-medium transition-all',
-                limit === l
-                  ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white'
-                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300',
-              )}
-            >
-              Top {l}
-            </button>
-          ))}
+        <div className="flex items-center gap-3 flex-wrap">
+          <CustomerSearchBox />
+          {/* Limit toggle */}
+          <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
+            {LIMITS.map(l => (
+              <button
+                key={l}
+                onClick={() => setLimit(l)}
+                className={cn(
+                  'px-3 py-1 rounded-md text-sm font-medium transition-all',
+                  limit === l
+                    ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white'
+                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300',
+                )}
+              >
+                Top {l}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

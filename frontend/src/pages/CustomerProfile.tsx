@@ -3,13 +3,14 @@
  * Shows: member card, product radar, last 30 transactions, AI upsell panel.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   ArrowLeft, User, Phone, Mail, MapPin, Shield,
   Car, CreditCard, Plane, Heart, Loader2, Sparkles,
   TrendingUp, AlertCircle, CheckCircle2, Clock, ExternalLink, HelpCircle, Printer,
+  Megaphone, GitMerge,
 } from 'lucide-react'
 import axios from 'axios'
 import { cn } from '@/lib/utils'
@@ -53,6 +54,13 @@ interface Transaction {
   sf_url: string | null
 }
 
+interface Lead {
+  id: string; name: string; status: string; is_converted: boolean
+  converted_date: string | null; created_date: string
+  record_type: string; owner: string | null; lead_source: string | null
+  sf_url: string | null
+}
+
 interface Product360 {
   membership: boolean; travel: boolean; insurance: boolean; medicare: boolean
   membership_services: boolean; financial: boolean; driver: boolean; ers: boolean
@@ -65,6 +73,7 @@ interface Profile {
   product_360: Product360
   transactions: Transaction[]
   opportunities: Record<string, Transaction[]>
+  leads: Lead[]
 }
 
 /* ── Product config ─────────────────────────────────────────────────────── */
@@ -78,13 +87,6 @@ const PRODUCTS = [
   { key: 'driver',              label: 'Driver Pgm',    icon: Car,        color: 'text-orange-500',  bg: 'bg-orange-500/10',  border: 'border-orange-500/30' },
   { key: 'ers',                 label: 'ERS',           icon: AlertCircle,color: 'text-cyan-500',    bg: 'bg-cyan-500/10',    border: 'border-cyan-500/30' },
 ]
-
-const STAGE_COLORS: Record<string, string> = {
-  'Closed Won': 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
-  'Invoice':    'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
-  'Closed Lost':'bg-rose-500/10 text-rose-500 border-rose-500/20',
-  'Dead':       'bg-rose-500/10 text-rose-500 border-rose-500/20',
-}
 
 const RT_COLORS: Record<string, string> = {
   'Travel':              'bg-indigo-500/10 text-indigo-500',
@@ -212,68 +214,183 @@ function Product360Visual({ p360 }: { p360: Product360 }) {
 }
 
 /* ── Transactions table ─────────────────────────────────────────────────── */
-function TransactionsTable({ transactions }: { transactions: Transaction[] }) {
+/* ── Activity Timeline (Leads + Opportunities unified) ───────────────────── */
+type TimelineItem =
+  | { kind: 'opp';  date: string; data: Transaction }
+  | { kind: 'lead'; date: string; data: Lead }
+
+function stageColor(stage: string) {
+  const s = stage?.toLowerCase() ?? ''
+  if (s === 'closed won' || s === 'invoice')  return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
+  if (s === 'closed lost')                    return 'bg-slate-500/15 text-slate-500 border-slate-500/20'
+  if (s.includes('process') || s.includes('proposal') || s.includes('pipeline'))
+                                               return 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
+  if (s.includes('qualifying') || s.includes('qualify')) return 'bg-amber-500/15 text-amber-700 border-amber-500/30'
+  return 'bg-muted/40 text-muted-foreground border-border'
+}
+
+function stageDot(stage: string) {
+  const s = stage?.toLowerCase() ?? ''
+  if (s === 'closed won' || s === 'invoice') return 'bg-emerald-500'
+  if (s === 'closed lost')                   return 'bg-slate-400'
+  return 'bg-blue-500'
+}
+
+function leadStatusColor(status: string, converted: boolean) {
+  if (converted) return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
+  const s = status?.toLowerCase() ?? ''
+  if (s.includes('closed') || s.includes('dead')) return 'bg-slate-500/15 text-slate-500 border-slate-500/20'
+  if (s.includes('qualified')) return 'bg-blue-500/15 text-blue-600 border-blue-500/30'
+  return 'bg-amber-500/15 text-amber-700 border-amber-500/30'
+}
+
+function ActivityTimeline({ transactions, leads }: { transactions: Transaction[]; leads: Lead[] }) {
+  const [filter, setFilter] = useState<'all' | 'opp' | 'lead'>('all')
+
+  const items = useMemo<TimelineItem[]>(() => {
+    const opps: TimelineItem[] = transactions.map(t => ({
+      kind: 'opp',
+      date: t.close_date || t.created_date,
+      data: t,
+    }))
+    const ls: TimelineItem[] = leads.map(l => ({
+      kind: 'lead',
+      date: l.converted_date || l.created_date,
+      data: l,
+    }))
+    return [...opps, ...ls]
+      .filter(i => filter === 'all' || i.kind === filter)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+  }, [transactions, leads, filter])
+
+  const oppCount  = transactions.length
+  const leadCount = leads.length
+
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60">Last 30 Transactions</p>
-        <span className="text-[11px] text-muted-foreground/50">{transactions.length} records</span>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-border bg-muted/20">
-              <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50">Date</th>
-              <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50">Type</th>
-              <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50">Name</th>
-              <th className="px-4 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50">Amount</th>
-              <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50">Stage</th>
-              <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 hidden sm:table-cell">Advisor</th>
-              <th className="px-2 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50">SF</th>
-            </tr>
-          </thead>
-          <tbody>
-            {transactions.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground/50">No transactions found</td></tr>
-            )}
-            {transactions.map((t, i) => (
-              <tr key={t.id} className={cn(
-                'border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors',
-                i % 2 === 0 ? 'bg-background/60' : 'bg-muted/10',
+      <div className="px-5 py-3.5 border-b border-border flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <Clock className="h-3.5 w-3.5 text-muted-foreground/60" />
+          <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60">Activity Timeline</p>
+          <span className="text-[10px] text-muted-foreground/40">{items.length} items</span>
+        </div>
+        <div className="flex gap-1">
+          {(['all', 'opp', 'lead'] as const).map(f => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={cn(
+                'px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors',
+                filter === f
+                  ? 'bg-primary/10 text-primary border border-primary/20'
+                  : 'text-muted-foreground hover:text-foreground border border-transparent',
               )}>
-                <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{t.created_date || '—'}</td>
-                <td className="px-4 py-2.5">
-                  <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', RT_COLORS[t.record_type] ?? 'bg-muted/30 text-muted-foreground')}>
-                    {t.record_type}
-                  </span>
-                </td>
-                <td className="px-4 py-2.5 max-w-[200px]">
-                  <Link to={`/opportunity/${t.id}`} className="text-foreground hover:text-primary transition-colors truncate block">
-                    {t.destination ? `${t.destination}` : t.name}
-                  </Link>
-                </td>
-                <td className="px-4 py-2.5 text-right font-medium text-foreground whitespace-nowrap">{fmt$(t.amount)}</td>
-                <td className="px-4 py-2.5">
-                  <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-medium',
-                    STAGE_COLORS[t.stage] ?? 'bg-muted/20 text-muted-foreground border-border')}>
-                    {t.stage}
-                  </span>
-                </td>
-                <td className="px-4 py-2.5 text-muted-foreground hidden sm:table-cell">{t.owner || '—'}</td>
-                <td className="px-2 py-2.5 text-center">
-                  {t.sf_url && (
-                    <a href={t.sf_url} target="_blank" rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
-                      title="Open in Salesforce">
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+              {f === 'all' ? `All (${oppCount + leadCount})` : f === 'opp' ? `Opportunities (${oppCount})` : `Leads (${leadCount})`}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {items.length === 0 ? (
+        <p className="px-5 py-8 text-center text-[13px] text-muted-foreground/50">No activity found</p>
+      ) : (
+        <div className="relative px-5 py-4">
+          {/* vertical line */}
+          <div className="absolute left-[28px] top-4 bottom-4 w-px bg-border/60" />
+
+          <div className="space-y-4">
+            {items.map((item, idx) => item.kind === 'opp' ? (
+              <div key={item.data.id + idx} className="flex gap-3 items-start">
+                {/* dot */}
+                <div className={cn('mt-1 w-3 h-3 rounded-full border-2 border-background shrink-0 z-10', stageDot(item.data.stage))} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start gap-2 flex-wrap">
+                    {/* date */}
+                    <span className="text-[10px] text-muted-foreground/50 whitespace-nowrap font-mono mt-0.5">
+                      {item.data.close_date || item.data.created_date}
+                    </span>
+                    {/* type badge */}
+                    <span className="text-[9px] font-bold uppercase tracking-wide bg-orange-500/10 text-orange-600 border border-orange-500/20 px-1.5 py-0.5 rounded">
+                      Opportunity
+                    </span>
+                    {/* line badge */}
+                    <span className={cn('text-[9px] px-1.5 py-0.5 rounded font-medium border', RT_COLORS[item.data.record_type] ?? 'bg-muted/30 text-muted-foreground border-border')}>
+                      {item.data.record_type}
+                    </span>
+                    {/* stage */}
+                    <span className={cn('text-[9px] px-1.5 py-0.5 rounded border font-medium', stageColor(item.data.stage))}>
+                      {item.data.stage}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <Link to={`/opportunity/${item.data.id}`}
+                      className="text-[12px] font-medium text-foreground hover:text-primary transition-colors truncate">
+                      {item.data.destination || item.data.name}
+                    </Link>
+                    {item.data.sf_url && (
+                      <a href={item.data.sf_url} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-3 w-3 text-muted-foreground/30 hover:text-primary" />
+                      </a>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground/60">
+                    {item.data.amount != null && (
+                      <span className="font-semibold text-foreground/80">{fmt$(item.data.amount)}</span>
+                    )}
+                    {item.data.commission != null && (
+                      <span>commission {fmt$(item.data.commission)}</span>
+                    )}
+                    {item.data.owner && <span>· {item.data.owner}</span>}
+                    {item.data.created_date && item.data.created_date !== item.date && (
+                      <span>· created {item.data.created_date}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div key={item.data.id + idx} className="flex gap-3 items-start">
+                {/* dot */}
+                <div className={cn(
+                  'mt-1 w-3 h-3 rounded-full border-2 border-background shrink-0 z-10',
+                  item.data.is_converted ? 'bg-emerald-500' : 'bg-amber-400',
+                )} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start gap-2 flex-wrap">
+                    <span className="text-[10px] text-muted-foreground/50 whitespace-nowrap font-mono mt-0.5">
+                      {item.data.converted_date || item.data.created_date}
+                    </span>
+                    <span className="text-[9px] font-bold uppercase tracking-wide bg-violet-500/10 text-violet-600 border border-violet-500/20 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                      <Megaphone className="h-2.5 w-2.5" /> Lead
+                    </span>
+                    <span className={cn('text-[9px] px-1.5 py-0.5 rounded font-medium border', RT_COLORS[item.data.record_type] ?? 'bg-muted/30 text-muted-foreground border-border')}>
+                      {item.data.record_type}
+                    </span>
+                    <span className={cn('text-[9px] px-1.5 py-0.5 rounded border font-medium', leadStatusColor(item.data.status, item.data.is_converted))}>
+                      {item.data.is_converted ? 'Converted ✓' : item.data.status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[12px] font-medium text-foreground truncate">{item.data.name}</span>
+                    {item.data.sf_url && (
+                      <a href={item.data.sf_url} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-3 w-3 text-muted-foreground/30 hover:text-primary" />
+                      </a>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground/60">
+                    {item.data.lead_source && <span>{item.data.lead_source}</span>}
+                    {item.data.owner && <span>· {item.data.owner}</span>}
+                    <span>· created {item.data.created_date}</span>
+                    {item.data.converted_date && (
+                      <span className="flex items-center gap-0.5 text-emerald-600">
+                        <GitMerge className="h-2.5 w-2.5" /> converted {item.data.converted_date}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -375,7 +492,7 @@ export default function CustomerProfile() {
     </div>
   )
 
-  const { account: acct, memberships, vehicles, product_360, transactions } = profile
+  const { account: acct, memberships, vehicles, product_360, transactions, leads = [] } = profile
   const activeMembership = memberships.find(m => m.status === 'A') || memberships[0]
 
   return (
@@ -553,7 +670,7 @@ export default function CustomerProfile() {
       </div>
 
       {/* Transactions */}
-      <TransactionsTable transactions={transactions} />
+      <ActivityTimeline transactions={transactions} leads={leads} />
 
       {/* AI Upsell */}
       {id && <UpsellPanel accountId={id} />}

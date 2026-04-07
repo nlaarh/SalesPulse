@@ -158,6 +158,30 @@ def sf_query_all(query: str) -> list:
     return result.get('records', [])
 
 
+def sf_sosl(sosl_query: str) -> list:
+    """Execute a SOSL full-text search and return the searchRecords list."""
+    token, instance_url = _get_auth()
+    headers = _headers()
+    url = f"{instance_url}/services/data/v59.0/search/"
+    try:
+        resp = _session.get(url, headers=headers, params={'q': sosl_query}, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        records = data.get('searchRecords', [])
+        # Strip 'attributes' metadata like sf_query does
+        clean = []
+        for r in records:
+            cr = {k: v for k, v in r.items() if k != 'attributes'}
+            for k, v in cr.items():
+                if isinstance(v, dict) and 'attributes' in v:
+                    cr[k] = {kk: vv for kk, vv in v.items() if kk != 'attributes'}
+            clean.append(cr)
+        return clean
+    except Exception as e:
+        log.error(f"SOSL error: {e}")
+        return []
+
+
 class SFQueryError(Exception):
     """Raised when one or more Salesforce queries fail, to prevent caching bad data."""
     pass
