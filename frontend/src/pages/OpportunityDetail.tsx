@@ -9,8 +9,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { fetchOpportunityDetail, emailOpportunity } from '@/lib/api'
 import EmailPopover from '@/components/EmailPopover'
 import { printFromDom } from '@/lib/printWindow'
-import { formatCurrency } from '@/lib/utils'
-import { cn } from '@/lib/utils'
+import { formatCurrency, cn } from '@/lib/utils'
+import { fmtDate } from '@/lib/formatters'
 import Markdown from '@/components/Markdown'
 import {
   ArrowLeft, User, Building2,
@@ -91,16 +91,6 @@ function buildStageFlow(history: StageHistory[], currentStage: string): {
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
-
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  try {
-    const s = iso.includes('T') ? iso : iso + 'T00:00:00'
-    const d = new Date(s)
-    if (isNaN(d.getTime())) return iso.slice(0, 10)
-    return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
-  } catch { return iso.slice(0, 10) }
-}
 
 function daysSince(iso: string | null | undefined): number | null {
   if (!iso) return null

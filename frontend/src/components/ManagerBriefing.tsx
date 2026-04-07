@@ -1,4 +1,5 @@
 import { formatCurrency, formatPct, cn } from '@/lib/utils'
+import { fmtDate } from '@/lib/formatters'
 import {
   X, Printer, Copy, Check, AlertTriangle,
   Mail,
@@ -27,7 +28,7 @@ export default function ManagerBriefing({
   const pts = generateFocusAreas(profile)
   const s = profile.summary
   const yoy = profile.yoy
-  const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+  const today = fmtDate(new Date().toISOString().slice(0, 10))
   const overdueTasks = profile.tasks.open_tasks.filter(t => t.overdue)
   const firstName = profile.name.split(/[,\s]+/)[0]
 
@@ -255,7 +256,7 @@ export default function ManagerBriefing({
                     </td>
                     <td className="py-2 pr-2 text-slate-600">{opp.stage}</td>
                     <td className="py-2 pr-2 tabular-nums text-slate-600">
-                      {opp.close_date ? new Date(opp.close_date + 'T00:00:00').toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '—'}
+                      {opp.close_date ? fmtDate(opp.close_date) : '—'}
                     </td>
                     <td className="py-2 text-slate-500">{opp.reasons[0] || '—'}</td>
                   </tr>

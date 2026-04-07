@@ -1,4 +1,5 @@
 import { formatCurrency, cn } from '@/lib/utils'
+import { fmtDate } from '@/lib/formatters'
 import { AlertTriangle, Clock, ExternalLink } from 'lucide-react'
 import type { AgentProfile } from '../AgentDashboard'
 
@@ -86,7 +87,7 @@ export default function SummaryTab({ profile }: SummaryTabProps) {
                 {task.overdue && task.days_overdue != null
                   ? `${task.days_overdue}d overdue`
                   : task.due_date
-                  ? new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+                  ? fmtDate(task.due_date)
                   : '\u2014'}
               </span>
 

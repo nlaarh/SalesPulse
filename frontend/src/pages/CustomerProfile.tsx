@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import axios from 'axios'
 import { cn } from '@/lib/utils'
+import { fmtDate } from '@/lib/formatters'
 import Markdown from '@/components/Markdown'
 import { printFromDom } from '@/lib/printWindow'
 import EmailPopover from '@/components/EmailPopover'
@@ -98,13 +99,6 @@ const RT_COLORS: Record<string, string> = {
 }
 
 function fmt$(n: number | null) { return n != null ? `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—' }
-function fmtDate(d: string | null) {
-  if (!d) return '—'
-  const s = d.includes('T') ? d : d + 'T00:00:00'
-  const dt = new Date(s)
-  if (isNaN(dt.getTime())) return d.slice(0, 10)
-  return dt.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
-}
 
 /* ── Member status badge ────────────────────────────────────────────────── */
 function StatusBadge({ status, label }: { status: string | null; label: string | null }) {
