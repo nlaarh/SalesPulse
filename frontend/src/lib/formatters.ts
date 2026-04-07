@@ -16,11 +16,13 @@ export function fmtAxis(v: number): string {
 
 /* ── Date formatters ─────────────────────────────────────────────────────── */
 
-/** Format an ISO date string (YYYY-MM-DD) to "Mar 15" style */
+/** Format an ISO date string to MM/DD/YYYY */
 export function fmtDate(iso: string | null): string {
   if (!iso) return '\u2014'
-  const d = new Date(iso + 'T00:00:00')
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const s = iso.includes('T') ? iso : iso + 'T00:00:00'
+  const d = new Date(s)
+  if (isNaN(d.getTime())) return iso.slice(0, 10)
+  return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
 }
 
 /** Format a YYYY-MM string to "Jan '25" style */

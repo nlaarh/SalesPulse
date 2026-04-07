@@ -86,7 +86,7 @@ export default function SummaryTab({ profile }: SummaryTabProps) {
                 {task.overdue && task.days_overdue != null
                   ? `${task.days_overdue}d overdue`
                   : task.due_date
-                  ? new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                  ? new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
                   : '\u2014'}
               </span>
 

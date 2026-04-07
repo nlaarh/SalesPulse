@@ -98,7 +98,13 @@ const RT_COLORS: Record<string, string> = {
 }
 
 function fmt$(n: number | null) { return n != null ? `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—' }
-function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—' }
+function fmtDate(d: string | null) {
+  if (!d) return '—'
+  const s = d.includes('T') ? d : d + 'T00:00:00'
+  const dt = new Date(s)
+  if (isNaN(dt.getTime())) return d.slice(0, 10)
+  return dt.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+}
 
 /* ── Member status badge ────────────────────────────────────────────────── */
 function StatusBadge({ status, label }: { status: string | null; label: string | null }) {

@@ -92,14 +92,13 @@ function buildStageFlow(history: StageHistory[], currentStage: string): {
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
-function fmtDate(iso: string | null | undefined, short = false): string {
+function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   try {
-    const d = new Date(iso)
+    const s = iso.includes('T') ? iso : iso + 'T00:00:00'
+    const d = new Date(s)
     if (isNaN(d.getTime())) return iso.slice(0, 10)
-    return d.toLocaleDateString('en-US', short
-      ? { month: 'short', day: 'numeric' }
-      : { year: 'numeric', month: 'short', day: 'numeric' })
+    return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
   } catch { return iso.slice(0, 10) }
 }
 
@@ -181,7 +180,7 @@ function StagePipeline({ history, currentStage }: { history: StageHistory[]; cur
                   </p>
                 )}
                 {s.entered && (
-                  <p className="text-[11px] text-muted-foreground">{fmtDate(s.entered, true)}</p>
+                  <p className="text-[11px] text-muted-foreground">{fmtDate(s.entered)}</p>
                 )}
               </div>
             </div>
