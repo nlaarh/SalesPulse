@@ -75,6 +75,15 @@ def prev_dates(sd: str, ed: str) -> tuple[str, str]:
     return start.isoformat(), end.isoformat()
 
 
+def six_months_ago() -> str:
+    """ISO date for 6 months ago — used to exclude stale pipeline opps.
+
+    Rule: any open/non-won opportunity older than 6 months is considered stale
+    and should be excluded from all pipeline views. Won opps are never stale.
+    """
+    return (date.today() - relativedelta(months=6)).isoformat()
+
+
 # ── SOQL filter builders ────────────────────────────────────────────────────
 
 def line_filter_opp(line: str) -> str:

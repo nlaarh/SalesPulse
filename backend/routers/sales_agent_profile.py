@@ -24,6 +24,7 @@ from shared import (
     escape_soql as _escape,
     val as _val,
     is_sales_agent,
+    six_months_ago,
 )
 from constants import (
     COVERAGE_LOW, COVERAGE_HEALTHY,
@@ -94,6 +95,7 @@ def agent_profile(
     key = f"agent_profile_{name}_{line}_{sd}_{ed}"
 
     def fetch():
+        sma = six_months_ago()
         lf = _line_filter_opp(line)
         lf_lead = _line_filter_lead(line)
         ow = f"Owner.Name = '{safe}'"
@@ -157,6 +159,7 @@ def agent_profile(
             pipeline=f"""
                 SELECT COUNT(Id) cnt, SUM(Amount) rev FROM Opportunity
                 WHERE {ow} AND IsClosed = false AND {lf} AND Amount != null
+                  AND CloseDate >= {sma}
                   AND CloseDate <= NEXT_N_MONTHS:12
             """,
             # Agent: monthly leads current year
@@ -171,22 +174,24 @@ def agent_profile(
                 WHERE {ow} AND {lf} AND CALENDAR_YEAR(CreatedDate) = {cy}
                 GROUP BY CALENDAR_MONTH(CreatedDate)
             """,
-            # Agent: early-stage open opportunities (Qualifying, Quote, New, etc.) — always show all
+            # Agent: early-stage open opportunities (Qualifying, Quote, New, etc.) — within 6 months
             early_opps=f"""
                 SELECT Id, Name, Amount, StageName, Probability, ForecastCategory,
                        CloseDate, LastActivityDate, PushCount
                 FROM Opportunity
                 WHERE {ow} AND IsClosed = false AND {lf}
                   AND StageName NOT IN ('Invoice','Booked','Closed Won')
+                  AND CloseDate >= {sma}
                 ORDER BY Amount DESC NULLS LAST LIMIT 100
             """,
-            # Agent: Invoice/Booked open opportunities — top by amount
+            # Agent: Invoice/Booked open opportunities — within 6 months
             top_opps=f"""
                 SELECT Id, Name, Amount, StageName, Probability, ForecastCategory,
                        CloseDate, LastActivityDate, PushCount
                 FROM Opportunity
                 WHERE {ow} AND IsClosed = false AND {lf}
                   AND StageName IN ('Invoice','Booked')
+                  AND CloseDate >= {sma}
                 ORDER BY Amount DESC NULLS LAST LIMIT 50
             """,
             # Agent: recently won opportunities
@@ -198,17 +203,19 @@ def agent_profile(
                   AND CloseDate >= {sd} AND CloseDate <= {ed} AND Amount != null
                 ORDER BY CloseDate DESC LIMIT 20
             """,
-            # Agent: risk — pushed deals
+            # Agent: risk — pushed deals (within 6 months)
             pushed=f"""
                 SELECT COUNT(Id) cnt, SUM(Amount) rev FROM Opportunity
                 WHERE {ow} AND IsClosed = false AND {lf}
                   AND PushCount >= 2 AND Amount != null
+                  AND CloseDate >= {sma}
             """,
-            # Agent: risk — stale deals
+            # Agent: risk — stale deals (within 6 months)
             stale=f"""
                 SELECT COUNT(Id) cnt FROM Opportunity
                 WHERE {ow} AND IsClosed = false AND {lf}
                   AND LastActivityDate < LAST_N_DAYS:30
+                  AND CloseDate >= {sma}
             """,
             # Team: total won (for comparison)
             t_won=f"""

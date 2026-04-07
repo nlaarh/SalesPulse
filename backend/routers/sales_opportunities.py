@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Query
 from sf_client import sf_query_all
 import cache
-from shared import VALID_LINES, line_filter_opp as _line_filter, resolve_dates as _resolve_dates, is_sales_agent
+from shared import VALID_LINES, line_filter_opp as _line_filter, resolve_dates as _resolve_dates, six_months_ago, is_sales_agent
 from constants import (
     OPP_SCORE_AMOUNT_HIGH, OPP_SCORE_AMOUNT_SIGNIFICANT,
     OPP_SCORE_AMOUNT_MEDIUM, OPP_SCORE_AMOUNT_LOW,
@@ -283,6 +283,7 @@ def top_opportunities(
     key = f"top_opps_{line}_{limit}_{sd}_{ed}"
 
     def fetch_opps():
+        sma = six_months_ago()
         lf = _line_filter(line)
         records = sf_query_all(f"""
             SELECT Id, Name, Amount, StageName, Probability, ForecastCategory,
@@ -291,6 +292,7 @@ def top_opportunities(
             FROM Opportunity
             WHERE IsClosed = false AND {lf}
               AND Amount != null
+              AND CloseDate >= {sma}
               AND CloseDate <= {ed}
             ORDER BY Amount DESC
             LIMIT 500

@@ -11,7 +11,7 @@ from models import User
 from sf_client import sf_parallel, sf_query_all, sf_instance_url, sf_sosl
 from routers.ai_config import call_ai, get_ai_config
 import cache
-from shared import VALID_LINES, line_filter_opp as _line_filter, resolve_dates as _resolve_dates
+from shared import VALID_LINES, line_filter_opp as _line_filter, resolve_dates as _resolve_dates, six_months_ago
 
 router = APIRouter()
 log = logging.getLogger('salesinsight.customer')
@@ -145,6 +145,7 @@ def get_customer_profile(
                        Destination_Region__c, Axis_Trip_ID__c, Owner.Name
                 FROM Opportunity
                 WHERE AccountId = '{account_id}'
+                  AND (StageName IN ('Closed Won','Invoice') OR CloseDate >= {six_months_ago()})
                 ORDER BY CreatedDate DESC LIMIT 60
             """,
             leads=f"""

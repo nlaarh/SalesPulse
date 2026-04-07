@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Query
 from sf_client import sf_query_all
 import cache
-from shared import VALID_LINES, line_filter_opp as _line_filter, resolve_dates as _resolve_dates, is_sales_agent
+from shared import VALID_LINES, line_filter_opp as _line_filter, resolve_dates as _resolve_dates, is_sales_agent, six_months_ago
 
 router = APIRouter()
 log = logging.getLogger('sales.pipeline')
@@ -128,6 +128,7 @@ def pipeline_slipping(line: str = "Travel"):
     key = f"pipeline_slipping_v2_{line}_{today}"
 
     def fetch():
+        sma = six_months_ago()
         lf = _line_filter(line)
         records = sf_query_all(f"""
             SELECT Id, Name, StageName, Amount, CloseDate,
@@ -136,6 +137,7 @@ def pipeline_slipping(line: str = "Travel"):
             FROM Opportunity
             WHERE IsClosed = false AND {lf}
               AND Amount != null
+              AND CloseDate >= {sma}
               AND CloseDate < TODAY
             ORDER BY Amount DESC
             LIMIT 50
