@@ -233,71 +233,114 @@ const TYPE_COLORS: Record<string, string> = {
 function ERDiagram() {
   return (
     <div className="rounded-xl border border-border bg-muted/20 p-4 overflow-x-auto">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-3">Entity Relationships</p>
-      <svg viewBox="0 0 760 300" className="w-full max-w-3xl mx-auto" style={{ minWidth: 480 }}>
-        {/* Account box */}
-        <rect x="10" y="100" width="145" height="100" rx="8" className="fill-cyan-500/10 stroke-cyan-500/40" strokeWidth="1.5" />
-        <text x="82" y="122" textAnchor="middle" fontSize="11" fontWeight="600" className="fill-cyan-600">Account</text>
-        <text x="82" y="138" textAnchor="middle" fontSize="9" className="fill-gray-400">(Person / Member)</text>
-        <text x="82" y="153" textAnchor="middle" fontSize="9" className="fill-gray-400">Member #, Status</text>
-        <text x="82" y="166" textAnchor="middle" fontSize="9" className="fill-gray-400">MPI, LTV, Coverage</text>
-        <text x="82" y="179" textAnchor="middle" fontSize="9" className="fill-gray-400">Insurance Customer #</text>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-3">Entity Relationships — all key Salesforce objects</p>
+      <svg viewBox="0 0 820 430" className="w-full max-w-4xl mx-auto" style={{ minWidth: 520 }}>
 
-        {/* Asset box */}
-        <rect x="10" y="220" width="145" height="70" rx="8" className="fill-violet-500/10 stroke-violet-500/40" strokeWidth="1.5" />
-        <text x="82" y="242" textAnchor="middle" fontSize="11" fontWeight="600" className="fill-violet-500">Asset</text>
-        <text x="82" y="257" textAnchor="middle" fontSize="9" className="fill-gray-400">Membership (1.19M)</text>
-        <text x="82" y="270" textAnchor="middle" fontSize="9" className="fill-gray-400">Vehicle (490K)</text>
+        {/* ── ACCOUNT (hub) ── */}
+        <rect x="10" y="90" width="155" height="120" rx="8" className="fill-cyan-500/10 stroke-cyan-500/40" strokeWidth="1.5" />
+        <text x="87" y="112" textAnchor="middle" fontSize="11" fontWeight="700" className="fill-cyan-600">Account</text>
+        <text x="87" y="127" textAnchor="middle" fontSize="8.5" className="fill-gray-400">3 types: Person / Facility / Business</text>
+        <text x="87" y="141" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Member #, Status, MPI, LTV</text>
+        <text x="87" y="154" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Coverage, Insurance ID</text>
+        <text x="87" y="167" textAnchor="middle" fontSize="8.5" className="fill-gray-400">ERS_Calls_Made_CP__c</text>
+        <text x="87" y="180" textAnchor="middle" fontSize="8.5" className="fill-gray-400">1.2M Person + 2.8K business</text>
 
-        {/* User box */}
-        <rect x="210" y="120" width="120" height="55" rx="8" className="fill-amber-500/10 stroke-amber-500/40" strokeWidth="1.5" />
-        <text x="270" y="143" textAnchor="middle" fontSize="11" fontWeight="600" className="fill-amber-600">User</text>
-        <text x="270" y="159" textAnchor="middle" fontSize="9" className="fill-gray-400">Id, Name, IsActive</text>
+        {/* ── ASSET (Membership + Vehicle) ── */}
+        <rect x="10" y="232" width="155" height="85" rx="8" className="fill-violet-500/10 stroke-violet-500/40" strokeWidth="1.5" />
+        <text x="87" y="253" textAnchor="middle" fontSize="11" fontWeight="700" className="fill-violet-500">Asset</text>
+        <text x="87" y="268" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Membership (1.19M) — Basic/Plus/Premier</text>
+        <text x="87" y="281" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Vehicle (490K) — VIN, make/model</text>
+        <text x="87" y="294" textAnchor="middle" fontSize="8.5" className="fill-gray-400">ERS Truck (fleet vehicles)</text>
+        <text x="87" y="307" textAnchor="middle" fontSize="8.5" className="fill-gray-400">AccountId → Account</text>
 
-        {/* Opportunity box */}
-        <rect x="390" y="20" width="160" height="110" rx="8" className="fill-primary/10 stroke-primary/40" strokeWidth="1.5" />
-        <text x="470" y="43" textAnchor="middle" fontSize="11" fontWeight="600" className="fill-primary">Opportunity</text>
-        <text x="470" y="59" textAnchor="middle" fontSize="9" className="fill-gray-400">Amount, StageName</text>
-        <text x="470" y="72" textAnchor="middle" fontSize="9" className="fill-gray-400">CloseDate, OwnerId</text>
-        <text x="470" y="85" textAnchor="middle" fontSize="9" className="fill-gray-400">RecordTypeId, AccountId</text>
-        <text x="470" y="98" textAnchor="middle" fontSize="9" className="fill-gray-400">Destination_Region__c</text>
-        <text x="470" y="111" textAnchor="middle" fontSize="9" className="fill-gray-400">Axis_Trip_ID__c</text>
+        {/* ── SERVICE APPOINTMENT (ERS/FSL) ── */}
+        <rect x="10" y="338" width="155" height="80" rx="8" className="fill-emerald-500/10 stroke-emerald-500/40" strokeWidth="1.5" />
+        <text x="87" y="358" textAnchor="middle" fontSize="11" fontWeight="700" className="fill-emerald-600">ServiceAppointment</text>
+        <text x="87" y="373" textAnchor="middle" fontSize="8.5" className="fill-gray-400">ERS roadside calls (667K)</text>
+        <text x="87" y="386" textAnchor="middle" fontSize="8.5" className="fill-gray-400">StatusCategory, WorkTypeId</text>
+        <text x="87" y="399" textAnchor="middle" fontSize="8.5" className="fill-gray-400">ERS_PTA__c, ActualStartTime</text>
 
-        {/* Lead box */}
-        <rect x="390" y="155" width="160" height="80" rx="8" className="fill-rose-500/10 stroke-rose-500/40" strokeWidth="1.5" />
-        <text x="470" y="177" textAnchor="middle" fontSize="11" fontWeight="600" className="fill-rose-500">Lead</text>
-        <text x="470" y="193" textAnchor="middle" fontSize="9" className="fill-gray-400">Status, IsConverted</text>
-        <text x="470" y="206" textAnchor="middle" fontSize="9" className="fill-gray-400">OwnerId, RecordTypeId</text>
-        <text x="470" y="219" textAnchor="middle" fontSize="9" className="fill-gray-400">7 record types</text>
+        {/* ── USER ── */}
+        <rect x="225" y="145" width="130" height="65" rx="8" className="fill-amber-500/10 stroke-amber-500/40" strokeWidth="1.5" />
+        <text x="290" y="167" textAnchor="middle" fontSize="11" fontWeight="700" className="fill-amber-600">User</text>
+        <text x="290" y="182" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Sales advisors / managers</text>
+        <text x="290" y="195" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Title, IsActive, Region</text>
 
-        {/* RecordType box */}
-        <rect x="610" y="90" width="140" height="55" rx="8" className="fill-gray-500/10 stroke-gray-500/40" strokeWidth="1.5" />
-        <text x="680" y="113" textAnchor="middle" fontSize="11" fontWeight="600" className="fill-gray-400">RecordType</text>
-        <text x="680" y="129" textAnchor="middle" fontSize="9" className="fill-gray-400">Travel · Insurance · Medicare</text>
+        {/* ── OPPORTUNITY ── */}
+        <rect x="420" y="15" width="175" height="115" rx="8" className="fill-orange-500/10 stroke-orange-500/40" strokeWidth="1.5" />
+        <text x="507" y="37" textAnchor="middle" fontSize="11" fontWeight="700" className="fill-orange-500">Opportunity</text>
+        <text x="507" y="52" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Amount, StageName, CloseDate</text>
+        <text x="507" y="65" textAnchor="middle" fontSize="8.5" className="fill-gray-400">RecordTypeId (7 lines)</text>
+        <text x="507" y="78" textAnchor="middle" fontSize="8.5" className="fill-gray-400">AccountId, OwnerId</text>
+        <text x="507" y="91" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Destination_Region__c</text>
+        <text x="507" y="104" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Earned_Commission_Amount__c</text>
+        <text x="507" y="117" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Won: Closed Won + Invoice stages</text>
 
-        {/* Edges */}
+        {/* ── LEAD ── */}
+        <rect x="420" y="155" width="175" height="85" rx="8" className="fill-rose-500/10 stroke-rose-500/40" strokeWidth="1.5" />
+        <text x="507" y="176" textAnchor="middle" fontSize="11" fontWeight="700" className="fill-rose-500">Lead</text>
+        <text x="507" y="191" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Status, IsConverted, ConvertedDate</text>
+        <text x="507" y="204" textAnchor="middle" fontSize="8.5" className="fill-gray-400">OwnerId, RecordTypeId</text>
+        <text x="507" y="217" textAnchor="middle" fontSize="8.5" className="fill-gray-400">7 record types (Travel, Insurance…)</text>
+        <text x="507" y="230" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Converts → Opportunity + Account</text>
+
+        {/* ── RECORD TYPE ── */}
+        <rect x="645" y="80" width="160" height="75" rx="8" className="fill-slate-500/10 stroke-slate-500/30" strokeWidth="1.5" />
+        <text x="725" y="101" textAnchor="middle" fontSize="11" fontWeight="700" className="fill-slate-500">RecordType</text>
+        <text x="725" y="116" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Travel · Insurance · Medicare</text>
+        <text x="725" y="129" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Membership Svc · Financial</text>
+        <text x="725" y="142" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Driver Programs · Retirement</text>
+
+        {/* ── SURVEY ── */}
+        <rect x="420" y="265" width="175" height="80" rx="8" className="fill-pink-500/10 stroke-pink-500/30" strokeWidth="1.5" />
+        <text x="507" y="286" textAnchor="middle" fontSize="11" fontWeight="700" className="fill-pink-500">Survey_Result__c</text>
+        <text x="507" y="301" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Qualtrics_Data__c (NPS/Sat)</text>
+        <text x="507" y="314" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Total_Satisfied__c (KPI)</text>
+        <text x="507" y="327" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Matched by WO # (arrives days later)</text>
+
+        {/* ── SERVICE TERRITORY (FSL) ── */}
+        <rect x="645" y="310" width="160" height="70" rx="8" className="fill-teal-500/10 stroke-teal-500/30" strokeWidth="1.5" />
+        <text x="725" y="331" textAnchor="middle" fontSize="11" fontWeight="700" className="fill-teal-600">ServiceTerritory</text>
+        <text x="725" y="346" textAnchor="middle" fontSize="8.5" className="fill-gray-400">443 territories (405 active)</text>
+        <text x="725" y="359" textAnchor="middle" fontSize="8.5" className="fill-gray-400">Fleet · ERS dispatch zones</text>
+        <text x="725" y="372" textAnchor="middle" fontSize="8.5" className="fill-gray-400">SA.ServiceTerritoryId → here</text>
+
+        {/* ── EDGES ── */}
+
         {/* Account → Opportunity */}
-        <line x1="155" y1="130" x2="390" y2="70" stroke="rgba(6,182,212,0.4)" strokeWidth="1.5" strokeDasharray="4 2" />
-        <text x="268" y="88" fontSize="9" className="fill-gray-400" textAnchor="middle">AccountId</text>
+        <path d="M 165 130 Q 290 60 420 72" stroke="rgba(6,182,212,0.45)" strokeWidth="1.5" strokeDasharray="4 2" fill="none"/>
+        <text x="285" y="72" fontSize="8.5" className="fill-gray-400" textAnchor="middle">AccountId</text>
 
         {/* Account → Asset */}
-        <line x1="82" y1="200" x2="82" y2="220" stroke="rgba(139,92,246,0.4)" strokeWidth="1.5" strokeDasharray="4 2" />
-        <text x="105" y="214" fontSize="9" className="fill-gray-400">AccountId</text>
+        <line x1="87" y1="210" x2="87" y2="232" stroke="rgba(139,92,246,0.45)" strokeWidth="1.5" strokeDasharray="4 2" />
+        <text x="112" y="225" fontSize="8.5" className="fill-gray-400">AccountId</text>
+
+        {/* Account → ServiceAppointment */}
+        <line x1="87" y1="317" x2="87" y2="338" stroke="rgba(16,185,129,0.45)" strokeWidth="1.5" strokeDasharray="4 2" />
+
+        {/* Account → Survey */}
+        <path d="M 165 185 Q 300 340 420 305" stroke="rgba(236,72,153,0.35)" strokeWidth="1.5" strokeDasharray="4 2" fill="none"/>
+        <text x="300" y="335" fontSize="8.5" className="fill-gray-400" textAnchor="middle">AccountId</text>
 
         {/* User → Opportunity */}
-        <line x1="330" y1="143" x2="390" y2="90" stroke="rgba(245,158,11,0.4)" strokeWidth="1.5" strokeDasharray="4 2" />
-        <text x="366" y="108" fontSize="9" className="fill-gray-400" textAnchor="middle">OwnerId</text>
+        <line x1="355" y1="163" x2="420" y2="90" stroke="rgba(245,158,11,0.45)" strokeWidth="1.5" strokeDasharray="4 2" />
+        <text x="393" y="118" fontSize="8.5" className="fill-gray-400" textAnchor="middle">OwnerId</text>
 
         {/* User → Lead */}
-        <line x1="330" y1="158" x2="390" y2="190" stroke="rgba(245,158,11,0.4)" strokeWidth="1.5" strokeDasharray="4 2" />
-        <text x="362" y="183" fontSize="9" className="fill-gray-400" textAnchor="middle">OwnerId</text>
+        <line x1="355" y1="185" x2="420" y2="198" stroke="rgba(245,158,11,0.45)" strokeWidth="1.5" strokeDasharray="4 2" />
+        <text x="392" y="196" fontSize="8.5" className="fill-gray-400" textAnchor="middle">OwnerId</text>
 
         {/* Opportunity → RecordType */}
-        <line x1="550" y1="75" x2="610" y2="110" stroke="rgba(107,114,128,0.3)" strokeWidth="1.5" strokeDasharray="4 2" />
+        <line x1="595" y1="72" x2="645" y2="110" stroke="rgba(107,114,128,0.3)" strokeWidth="1.5" strokeDasharray="4 2" />
 
         {/* Lead → RecordType */}
-        <line x1="550" y1="190" x2="610" y2="130" stroke="rgba(107,114,128,0.3)" strokeWidth="1.5" strokeDasharray="4 2" />
-        <text x="593" y="165" fontSize="9" className="fill-gray-400" textAnchor="middle">RecordTypeId</text>
+        <line x1="595" y1="190" x2="645" y2="140" stroke="rgba(107,114,128,0.3)" strokeWidth="1.5" strokeDasharray="4 2" />
+        <text x="635" y="175" fontSize="8.5" className="fill-gray-400" textAnchor="middle">RecordTypeId</text>
+
+        {/* ServiceAppointment → ServiceTerritory */}
+        <path d="M 165 375 Q 400 410 645 355" stroke="rgba(20,184,166,0.35)" strokeWidth="1.5" strokeDasharray="4 2" fill="none"/>
+        <text x="410" y="415" fontSize="8.5" className="fill-gray-400" textAnchor="middle">ServiceTerritoryId</text>
+
       </svg>
     </div>
   )
