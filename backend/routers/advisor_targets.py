@@ -14,6 +14,7 @@ from database import get_db
 from models import TargetUpload, AdvisorTarget, MonthlyAdvisorTarget, User
 from auth import get_current_user, require_admin
 from activity_logger import log_activity
+from constants import CACHE_TTL_MEDIUM, CACHE_TTL_12H
 
 router = APIRouter()
 log = logging.getLogger('salesinsight.targets')
@@ -329,7 +330,7 @@ def targets_with_actuals(
             GROUP BY Owner.Name, CALENDAR_YEAR(CloseDate), CALENDAR_MONTH(CloseDate)
         """)
 
-    records = cache.cached_query(cache_key, fetch_actuals, ttl=1800, disk_ttl=43200)
+    records = cache.cached_query(cache_key, fetch_actuals, ttl=CACHE_TTL_MEDIUM, disk_ttl=CACHE_TTL_12H)
 
     # Build actual revenue per agent per month
     agent_months: dict[str, dict[str, float]] = {}

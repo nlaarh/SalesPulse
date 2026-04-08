@@ -6,6 +6,7 @@ from fastapi import APIRouter, Query
 from sf_client import sf_query_all, sf_parallel
 import cache
 from shared import VALID_LINES, resolve_dates as _resolve_dates, line_filter_lead as _line_filter, line_filter_opp as _opp_line_filter, is_sales_agent
+from constants import CACHE_TTL_HOUR, CACHE_TTL_DAY
 
 router = APIRouter()
 log = logging.getLogger('sales.leads')
@@ -76,7 +77,7 @@ def leads_volume(
             "period": period,
         }
 
-    return cache.cached_query(key, fetch, ttl=3600, disk_ttl=86400)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
 
 
 @router.get("/api/sales/leads/conversion")
@@ -128,7 +129,7 @@ def leads_conversion(
         sources.sort(key=lambda x: x['conversion_rate'], reverse=True)
         return {"sources": sources, "line": line, "period": period}
 
-    return cache.cached_query(key, fetch, ttl=3600, disk_ttl=86400)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
 
 
 @router.get("/api/sales/leads/time-to-convert")
@@ -205,7 +206,7 @@ def leads_time_to_convert(
             "line": line, "period": period,
         }
 
-    return cache.cached_query(key, fetch, ttl=3600, disk_ttl=86400)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
 
 
 @router.get("/api/sales/leads/source-effectiveness")
@@ -270,7 +271,7 @@ def leads_source_effectiveness(
         sources.sort(key=lambda x: x['total_opp_value'], reverse=True)
         return {"sources": sources, "line": line, "period": period}
 
-    return cache.cached_query(key, fetch, ttl=3600, disk_ttl=86400)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
 
 
 @router.get("/api/sales/leads/agent-close-speed")
@@ -336,4 +337,4 @@ def agent_close_speed(
         agents.sort(key=lambda a: a['avg_days'])
         return {"agents": agents, "line": line, "period": period}
 
-    return cache.cached_query(key, fetch, ttl=3600, disk_ttl=86400)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)

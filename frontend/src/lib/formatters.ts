@@ -50,6 +50,11 @@ export function scoreBg(s: number): string {
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
 
+/** Format a nullable number as currency ($1,234) or em-dash */
+export function fmt$(n: number | null): string {
+  return n != null ? `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—'
+}
+
 /** Short month labels (0-indexed: Jan=0) */
 export const MONTH_SHORT = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',

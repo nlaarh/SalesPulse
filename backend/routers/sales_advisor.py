@@ -13,6 +13,7 @@ from shared import (
     is_sales_agent,
     get_owner_map,
 )
+from constants import CACHE_TTL_HOUR, CACHE_TTL_DAY
 
 router = APIRouter()
 log = logging.getLogger('sales.advisor')
@@ -116,7 +117,7 @@ def advisor_summary(
             "line": line,
         }
 
-    return cache.cached_query(key, fetch, ttl=3600, disk_ttl=86400)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
 
 
 @router.get("/api/sales/advisors/leaderboard")
@@ -207,7 +208,7 @@ def advisor_leaderboard(
 
         return {"advisors": advisors, "total": len(advisors), "line": line, "period": period}
 
-    return cache.cached_query(key, fetch, ttl=3600, disk_ttl=86400)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
 
 
 @router.get("/api/sales/advisors/yoy")
@@ -314,7 +315,7 @@ def advisor_yoy(line: str = "Travel"):
             'line': line,
         }
 
-    return cache.cached_query(key, fetch, ttl=3600, disk_ttl=86400)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
 
 
 @router.get("/api/sales/advisors/trend")
@@ -358,4 +359,4 @@ def advisor_trend(
 
         return {"months": months, "line": line, "period": period}
 
-    return cache.cached_query(key, fetch, ttl=3600, disk_ttl=86400)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)

@@ -4,6 +4,13 @@ Centralises magic numbers so they can be tuned in one place.
 Grouped by domain.
 """
 
+# ── Cache TTL (seconds) ─────────────────────────────────────────────────────
+CACHE_TTL_SHORT = 900        # 15 minutes
+CACHE_TTL_MEDIUM = 1800      # 30 minutes
+CACHE_TTL_HOUR = 3600        # 1 hour
+CACHE_TTL_12H = 43200        # 12 hours
+CACHE_TTL_DAY = 86400        # 24 hours
+
 # ── Opportunity Scoring (sales_opportunities) ─────────────────────────────
 
 # Deal-value bands → points (max 25)

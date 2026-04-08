@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query
 from sf_client import sf_query_all
 import cache
 from shared import VALID_LINES, line_filter_opp as _line_filter, resolve_dates as _resolve_dates, is_sales_agent, six_months_ago
+from constants import CACHE_TTL_MEDIUM, CACHE_TTL_12H
 
 router = APIRouter()
 log = logging.getLogger('sales.pipeline')
@@ -41,7 +42,7 @@ def pipeline_stages(line: str = "Travel"):
             })
         return {"stages": stages, "line": line}
 
-    return cache.cached_query(key, fetch, ttl=1800, disk_ttl=43200)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_MEDIUM, disk_ttl=CACHE_TTL_12H)
 
 
 @router.get("/api/sales/pipeline/forecast")
@@ -84,7 +85,7 @@ def pipeline_forecast(
             m['close_rate'] = round(m['won_count'] / total * 100, 1) if total > 0 else 0
         return {"months": result, "line": line, "period": period}
 
-    return cache.cached_query(key, fetch, ttl=1800, disk_ttl=43200)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_MEDIUM, disk_ttl=CACHE_TTL_12H)
 
 
 @router.get("/api/sales/pipeline/velocity")
@@ -116,7 +117,7 @@ def pipeline_velocity(line: str = "Travel"):
             })
         return {"stages": stages, "line": line}
 
-    return cache.cached_query(key, fetch, ttl=1800, disk_ttl=43200)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_MEDIUM, disk_ttl=CACHE_TTL_12H)
 
 
 @router.get("/api/sales/pipeline/slipping")
@@ -192,4 +193,4 @@ def pipeline_slipping(line: str = "Travel"):
         total_at_risk = sum(d['amount'] for d in deals)
         return {"deals": deals, "total_at_risk": total_at_risk, "count": len(deals), "line": line}
 
-    return cache.cached_query(key, fetch, ttl=1800, disk_ttl=43200)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_MEDIUM, disk_ttl=CACHE_TTL_12H)

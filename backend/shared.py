@@ -315,3 +315,34 @@ def is_sales_agent(name: str, line: str) -> bool:
         return is_insurance_sales_agent(name)
     # line == 'All': agent is valid if in either list
     return is_travel_sales_agent(name) or is_insurance_sales_agent(name)
+
+
+# ── Data extraction helpers ────────────────────────────────────────────────
+
+def safe_get(obj, *keys, default=''):
+    """Safely traverse nested dicts — replaces (r.get('X') or {}).get('Y')."""
+    current = obj
+    for key in keys:
+        if isinstance(current, dict):
+            current = current.get(key)
+        else:
+            return default
+        if current is None:
+            return default
+    return current
+
+
+def enrich_owner_names(records, owner_field='OwnerId', name_field='OwnerName'):
+    """Add resolved owner names to records using the cached owner map."""
+    om = get_owner_map()
+    for r in records:
+        oid = r.get(owner_field, '')
+        r[name_field] = om.get(oid, oid)
+    return records
+
+
+def date_range_filter(field: str, sd: str, ed: str) -> str:
+    """Build a SOQL DateTime range filter — handles CreatedDate (DateTime) vs Date fields."""
+    if field in ('CreatedDate', 'LastModifiedDate', 'SystemModstamp', 'LastActivityDate_dt'):
+        return f"{field} >= {sd}T00:00:00Z AND {field} <= {ed}T23:59:59Z"
+    return f"{field} >= {sd} AND {field} <= {ed}"

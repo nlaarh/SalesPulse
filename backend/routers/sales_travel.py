@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query
 from sf_client import sf_query_all, sf_parallel
 import cache
 from shared import WON_STAGES, resolve_dates as _resolve_dates, OPP_RT_TRAVEL_ID
+from constants import CACHE_TTL_HOUR, CACHE_TTL_DAY
 
 router = APIRouter()
 log = logging.getLogger('sales.travel')
@@ -77,7 +78,7 @@ def travel_destinations(
 
         return {"destinations": destinations, "period": period}
 
-    return cache.cached_query(key, fetch, ttl=3600, disk_ttl=86400)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
 
 
 @router.get("/api/sales/travel/seasonal")
@@ -112,7 +113,7 @@ def travel_seasonal(
             })
         return {"data": points, "period": period}
 
-    return cache.cached_query(key, fetch, ttl=3600, disk_ttl=86400)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
 
 
 @router.get("/api/sales/travel/party-size")
@@ -145,7 +146,7 @@ def travel_party_size(
             })
         return {"sizes": sizes, "period": period}
 
-    return cache.cached_query(key, fetch, ttl=3600, disk_ttl=86400)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
 
 
 @router.get("/api/sales/travel/destination-trend")
@@ -180,4 +181,4 @@ def destination_trend(
             })
         return {"destination": dest, "months": months, "period": period}
 
-    return cache.cached_query(key, fetch, ttl=3600, disk_ttl=86400)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)

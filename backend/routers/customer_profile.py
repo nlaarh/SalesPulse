@@ -12,6 +12,7 @@ from sf_client import sf_parallel, sf_query_all, sf_instance_url, sf_sosl
 from routers.ai_config import call_ai, get_ai_config
 import cache
 from shared import VALID_LINES, line_filter_opp as _line_filter, resolve_dates as _resolve_dates, six_months_ago
+from constants import CACHE_TTL_HOUR
 
 router = APIRouter()
 log = logging.getLogger('salesinsight.customer')
@@ -75,7 +76,7 @@ def get_top_customers(
             })
         return result
 
-    return cache.cached_query(key, fetch, ttl=3600, disk_ttl=21600)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=21600)
 
 
 # ── Search ──────────────────────────────────────────────────────────────────

@@ -23,7 +23,7 @@ from shared import (
     is_sales_agent,
     get_owner_map,
 )
-from constants import WIN_RATE_COACHING_THRESHOLD, MIN_CLOSED_DEALS_FOR_EVAL, PIPELINE_COVERAGE_HEALTHY
+from constants import WIN_RATE_COACHING_THRESHOLD, MIN_CLOSED_DEALS_FOR_EVAL, PIPELINE_COVERAGE_HEALTHY, CACHE_TTL_HOUR, CACHE_TTL_MEDIUM, CACHE_TTL_DAY, CACHE_TTL_12H
 
 router = APIRouter()
 log = logging.getLogger('sales.performance')
@@ -198,7 +198,7 @@ def performance_monthly(
             'line': line, 'start_date': sd, 'end_date': ed,
         }
 
-    return cache.cached_query(key, fetch, ttl=3600, disk_ttl=86400)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
 
 
 # ── Conversion Funnel ────────────────────────────────────────────────────────
@@ -286,7 +286,7 @@ def performance_funnel(
             'line': line, 'start_date': sd, 'end_date': ed,
         }
 
-    return cache.cached_query(key, fetch, ttl=1800, disk_ttl=43200)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_MEDIUM, disk_ttl=CACHE_TTL_12H)
 
 
 # ── Auto-generated Insights ──────────────────────────────────────────────────
@@ -441,4 +441,4 @@ def performance_insights(
 
         return {'insights': insights, 'line': line, 'start_date': sd, 'end_date': ed}
 
-    return cache.cached_query(key, fetch, ttl=1800, disk_ttl=43200)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_MEDIUM, disk_ttl=CACHE_TTL_12H)
