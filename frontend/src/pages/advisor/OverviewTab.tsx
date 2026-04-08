@@ -128,6 +128,12 @@ export default function OverviewTab({
       priorLost: m.prior_lost ?? 0,
     }))
 
+  // Distinct colors: blue for revenue lines, red for lost opps
+  const CURRENT_COLOR = '#3b82f6' // blue-500
+  const PRIOR_COLOR   = '#94a3b8' // slate-400
+  const LOST_CUR_COLOR = '#ef4444' // red-500
+  const LOST_PRI_COLOR = '#fca5a5' // red-300
+
   const leadsCount = funnel?.steps?.[0]?.count ?? 0
   const oppsCount  = funnel?.steps?.find(s => s.step.toLowerCase().includes('opp'))?.count
                   ?? funnel?.steps?.[1]?.count ?? 0
@@ -232,18 +238,24 @@ export default function OverviewTab({
             {yoy && (
               <div className="ml-auto flex flex-col items-end gap-1.5 self-end pb-0.5">
                 <div className="flex items-center gap-1.5">
-                  <span className="h-0.5 w-4 rounded bg-primary" />
+                  <span className="h-0.5 w-4 rounded" style={{ backgroundColor: CURRENT_COLOR }} />
                   <span className="text-[12px] font-medium text-muted-foreground">{yoy.current_year}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="h-0.5 w-4 rounded" style={{ backgroundColor: '#94a3b8' }} />
+                  <span className="h-0.5 w-4 rounded" style={{ backgroundColor: PRIOR_COLOR }} />
                   <span className="text-[12px] font-medium text-muted-foreground">{yoy.prior_year}</span>
                 </div>
                 {showLost && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="h-0.5 w-4 rounded bg-red-400/70" />
-                    <span className="text-[12px] font-medium text-muted-foreground">Lost Opps</span>
-                  </div>
+                  <>
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-0.5 w-4 rounded" style={{ backgroundColor: LOST_CUR_COLOR }} />
+                      <span className="text-[12px] font-medium text-muted-foreground">Lost {yoy.current_year}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-0.5 w-4 rounded" style={{ backgroundColor: LOST_PRI_COLOR }} />
+                      <span className="text-[12px] font-medium text-muted-foreground">Lost {yoy.prior_year}</span>
+                    </div>
+                  </>
                 )}
               </div>
             )}
@@ -258,7 +270,7 @@ export default function OverviewTab({
                 tick={{ fill: c.tick, fontSize: 10 }} tickFormatter={fmtAxis} width={50} />
               {showLost && (
                 <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false}
-                  tick={{ fill: '#f87171', fontSize: 10 }} width={35} />
+                  tick={{ fill: LOST_CUR_COLOR, fontSize: 10 }} width={35} />
               )}
               <Tooltip
                 contentStyle={tooltipStyle(c)}
@@ -273,21 +285,21 @@ export default function OverviewTab({
                 }}
                 cursor={{ stroke: 'rgba(255,255,255,0.1)' }}
               />
-              {/* Prior year - dashed */}
+              {/* Prior year */}
               {lineData.some(d => d.prior !== null) && (
-                <Line yAxisId="left" type="monotone" dataKey="prior" stroke="#94a3b8" strokeOpacity={0.85}
-                  strokeWidth={2} dot={{ r: 2.5, fill: '#94a3b8', strokeWidth: 0 }} />
+                <Line yAxisId="left" type="monotone" dataKey="prior" stroke={PRIOR_COLOR} strokeOpacity={0.85}
+                  strokeWidth={2} dot={{ r: 2.5, fill: PRIOR_COLOR, strokeWidth: 0 }} />
               )}
-              {/* Current year - solid */}
-              <Line yAxisId="left" type="monotone" dataKey="current" stroke={c.primary} strokeWidth={2.5}
-                dot={{ r: 3, fill: c.primary }} activeDot={{ r: 5 }} />
+              {/* Current year */}
+              <Line yAxisId="left" type="monotone" dataKey="current" stroke={CURRENT_COLOR} strokeWidth={2.5}
+                dot={{ r: 3, fill: CURRENT_COLOR }} activeDot={{ r: 5 }} />
               {/* Lost opps lines */}
               {showLost && (
                 <>
-                  <Line yAxisId="right" type="monotone" dataKey="currentLost" stroke="#f87171" strokeWidth={1.5}
-                    dot={{ r: 2, fill: '#f87171' }} />
-                  <Line yAxisId="right" type="monotone" dataKey="priorLost" stroke="#f87171" strokeOpacity={0.4}
-                    strokeDasharray="4 3" strokeWidth={1.5} dot={false} />
+                  <Line yAxisId="right" type="monotone" dataKey="currentLost" stroke={LOST_CUR_COLOR} strokeWidth={1.5}
+                    dot={{ r: 2, fill: LOST_CUR_COLOR }} />
+                  <Line yAxisId="right" type="monotone" dataKey="priorLost" stroke={LOST_PRI_COLOR} strokeWidth={1.5}
+                    dot={{ r: 2, fill: LOST_PRI_COLOR }} />
                 </>
               )}
             </LineChart>
