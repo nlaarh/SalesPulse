@@ -1,3 +1,5 @@
+// ── Axios Instance & Auth ──────────────────────────────────────────────────
+
 import axios from 'axios'
 
 const TOKEN_KEY = 'si-auth-token'
@@ -78,7 +80,7 @@ export async function fetchAdvisorYoY(line = 'Travel') {
   return data
 }
 
-// ── Performance (NEW — spreadsheet-matching) ────────────────────────────────
+// ── Sales Performance ──────────────────────────────────────────────────────
 
 export async function fetchPerformanceMonthly(
   line = 'Travel', period = 12, startDate?: string | null, endDate?: string | null,
@@ -107,7 +109,7 @@ export async function fetchPerformanceInsights(
   return data
 }
 
-// ── Pipeline & Forecasting ──────────────────────────────────────────────────
+// ── Pipeline & Forecasting ─────────────────────────────────────────────────
 
 export async function fetchPipelineStages(line = 'Travel') {
   const { data } = await api.get('/api/sales/pipeline/stages', { params: { line } })
@@ -171,7 +173,7 @@ export async function fetchDestinationTrend(
   return data
 }
 
-// ── Top Opportunities ────────────────────────────────────────────────────────
+// ── Top Opportunities ──────────────────────────────────────────────────────
 
 export async function fetchTopOpportunities(
   line = 'Travel', limit = 100, ai = true,
@@ -189,7 +191,7 @@ export async function fetchOpportunityDetail(oppId: string) {
   return data
 }
 
-// ── Agent Profile (Drill-down) ──────────────────────────────────────────────
+// ── Agent Profile (Drill-down) ─────────────────────────────────────────────
 
 export async function fetchAgentProfile(
   name: string, line = 'Travel', period = 12,
@@ -202,7 +204,7 @@ export async function fetchAgentProfile(
   return data
 }
 
-// ── Lead Funnel ─────────────────────────────────────────────────────────────
+// ── Lead Funnel ───────────────────────────────────────────────────────────
 
 export async function fetchLeadsVolume(
   line = 'Travel', period = 12, startDate?: string | null, endDate?: string | null,
@@ -249,7 +251,7 @@ export async function fetchAgentCloseSpeed(
   return data
 }
 
-// ── AI Narratives ──────────────────────────────────────────────────────────
+// ── AI Narratives ─────────────────────────────────────────────────────────
 
 export async function fetchNarrative(
   page: string, line = 'Travel', period = 12,
@@ -263,7 +265,6 @@ export async function fetchNarrative(
 }
 
 // ── Activity Logs ─────────────────────────────────────────────────────────
-
 export interface ActivityLogEntry {
   id: number
   user_id: number | null
@@ -298,7 +299,7 @@ export async function fetchActivityLogFilters() {
   return data as { emails: string[]; categories: string[]; actions: string[] }
 }
 
-// ── Advisor Targets ────────────────────────────────────────────────────────
+// ── Advisor Targets ───────────────────────────────────────────────────────
 
 export async function uploadTargetsFile(file: File) {
   const form = new FormData()
@@ -349,7 +350,6 @@ export async function fetchTargetsWithActuals(
 }
 
 // ── Monthly Targets (12-month grid + achievement) ─────────────────────────
-
 export interface MonthlyTargetMonth {
   month: number
   target: number
@@ -452,7 +452,7 @@ export async function emailAgentReport(
   return data as { status: string; to: string }
 }
 
-/* ── Issues / Bug Reporting ─────────────────────────────────────────────── */
+// ── Issues / Bug Reporting ─────────────────────────────────────────────────
 
 export interface GithubIssue {
   number: number
@@ -516,24 +516,25 @@ export async function updateIssue(
   return data as { ok: boolean; state: string; status?: string; severity?: string; labels: string[] }
 }
 
+// ── Admin ─────────────────────────────────────────────────────────────────
+
 export async function flushCache() {
   const { data } = await api.post('/api/admin/cache-reset')
   return data as { ok: boolean; flushed_l1: number; flushed_l2: number; owner_map_size: number }
 }
 
-/* ── Customer Profile email ──────────────────────────────────────────────── */
+// ── Email / Export ────────────────────────────────────────────────────────
+
 export async function emailCustomerProfile(accountId: string, to: string) {
   const { data } = await api.post(`/api/customers/${accountId}/email`, { to })
   return data as { status: string; to: string }
 }
 
-/* ── Opportunity email ───────────────────────────────────────────────────── */
 export async function emailOpportunity(oppId: string, to: string) {
   const { data } = await api.post(`/api/opportunities/${oppId}/email`, { to })
   return data as { status: string; to: string }
 }
 
-/* ── Advisor dashboard email ─────────────────────────────────────────────── */
 export async function emailAdvisorDashboard(
   to: string, line: string, period: number,
   startDate?: string, endDate?: string
@@ -544,7 +545,8 @@ export async function emailAdvisorDashboard(
   return data as { status: string; to: string }
 }
 
-/* ── Top Customers by Revenue ────────────────────────────────────────────── */
+// ── Customers ─────────────────────────────────────────────────────────────
+
 export interface TopCustomer {
   account_id: string
   name: string
@@ -565,7 +567,6 @@ export async function fetchTopCustomers(
   return data as TopCustomer[]
 }
 
-/* ── Customer Search ─────────────────────────────────────────────────────── */
 export interface CustomerSummary {
   id: string
   name: string

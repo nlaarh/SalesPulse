@@ -1,6 +1,8 @@
 import { useChartColors, tooltipStyle } from '@/lib/chart-theme'
 import { formatCurrency, cn } from '@/lib/utils'
 import { Tip, TIPS } from '@/components/MetricTip'
+import CompareBar from '@/components/CompareBar'
+import ProgressRing from '@/components/ProgressRing'
 import type { AgentMonthData } from '@/lib/types'
 import { BarChart3, Download } from 'lucide-react'
 import {
@@ -381,80 +383,6 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
             </tbody>
           </table>
         </div>
-      </div>
-    </div>
-  )
-}
-
-/* ── CompareBar ─────────────────────────────────────────────────────────── */
-
-function CompareBar({ label, agent, team, format, max }: {
-  label: string; agent: number; team: number; format: (v: number) => string; max: number
-}) {
-  const agentPct = max > 0 ? (agent / max) * 100 : 0
-  const teamPct = max > 0 ? (team / max) * 100 : 0
-  const isAbove = agent >= team
-
-  return (
-    <div>
-      <div className="flex items-baseline justify-between">
-        <span className="text-[12px] font-medium text-muted-foreground">{label}</span>
-        <div className="flex items-center gap-1.5">
-          <span className="text-[13px] font-bold tabular-nums">{format(agent)}</span>
-          <span className={cn(
-            'text-[12px] font-semibold',
-            isAbove ? 'text-emerald-500' : 'text-rose-500',
-          )}>
-            {isAbove ? '\u25B2' : '\u25BC'}
-          </span>
-        </div>
-      </div>
-      <div className="relative mt-1.5 h-2 w-full overflow-hidden rounded-full bg-secondary">
-        {/* Team marker line */}
-        <div
-          className="absolute top-0 h-full w-0.5 bg-muted-foreground/50"
-          style={{ left: `${teamPct}%` }}
-        />
-        {/* Agent bar */}
-        <div
-          className={cn('h-full rounded-full transition-all',
-            isAbove ? 'bg-primary' : 'bg-rose-400')}
-          style={{ width: `${agentPct}%` }}
-        />
-      </div>
-      <span className="mt-1 block text-[12px] font-medium text-muted-foreground">
-        Team avg: {format(team)}
-      </span>
-    </div>
-  )
-}
-
-/* ── ProgressRing ──────────────────────────────────────────────────────── */
-
-function ProgressRing({ pct }: { pct: number }) {
-  const clamped = Math.min(pct, 200) // cap visual at 200%
-  const r = 44
-  const circ = 2 * Math.PI * r
-  const offset = circ - (Math.min(clamped, 100) / 100) * circ
-  const color = pct >= 100 ? '#16A34A' : pct >= 80 ? '#D97706' : '#EF4444'
-
-  return (
-    <div className="relative flex h-[110px] w-[110px] shrink-0 items-center justify-center">
-      <svg width="110" height="110" viewBox="0 0 110 110">
-        <circle cx="55" cy="55" r={r} fill="none"
-          stroke="currentColor" strokeWidth="8" className="text-secondary" />
-        <circle cx="55" cy="55" r={r} fill="none"
-          stroke={color} strokeWidth="8" strokeLinecap="round"
-          strokeDasharray={circ} strokeDashoffset={offset}
-          transform="rotate(-90 55 55)"
-          className="transition-all duration-700"
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-[20px] font-bold tabular-nums" style={{ color }}>
-          {pct.toFixed(0)}%
-        </span>
-        <span className="text-[9px] text-muted-foreground">of target</span>
       </div>
     </div>
   )
