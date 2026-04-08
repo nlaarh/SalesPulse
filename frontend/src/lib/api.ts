@@ -75,8 +75,10 @@ export async function fetchAdvisorTrend(
   return data
 }
 
-export async function fetchAdvisorYoY(line = 'Travel') {
-  const { data } = await api.get('/api/sales/advisors/yoy', { params: { line } })
+export async function fetchAdvisorYoY(line = 'Travel', year?: number) {
+  const params: Record<string, unknown> = { line }
+  if (year) params.year = year
+  const { data } = await api.get('/api/sales/advisors/yoy', { params })
   return data
 }
 

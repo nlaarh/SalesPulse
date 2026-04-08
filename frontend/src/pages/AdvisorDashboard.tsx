@@ -94,7 +94,7 @@ export default function AdvisorDashboard() {
       fetchAdvisorSummary(line, period, startDate, endDate),
       fetchAdvisorLeaderboard(line, period, startDate, endDate),
       fetchPerformanceInsights(line, period, startDate, endDate),
-      fetchAdvisorYoY(line),
+      fetchAdvisorYoY(line, viewMode === 'last-year' ? new Date().getFullYear() - 1 : undefined),
       fetchPerformanceFunnel(line, period, startDate, endDate),
       fetchPipelineSlipping(line),
       fetchLeadsVolume(line, period, startDate, endDate),
@@ -138,7 +138,7 @@ export default function AdvisorDashboard() {
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [line, period, startDate, endDate, retryCount])
+  }, [line, period, startDate, endDate, retryCount, viewMode])
 
   if (loading) {
     return <div className="flex h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary/50" /></div>
@@ -290,6 +290,7 @@ export default function AdvisorDashboard() {
           onSelectAdvisor={(name) => navigate(`/agent/${encodeURIComponent(name)}`)}
           onViewSummary={() => setTab('summary')}
           periodLabel={periodLabel}
+          viewMode={viewMode}
         />
       )}
 

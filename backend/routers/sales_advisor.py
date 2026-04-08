@@ -212,17 +212,17 @@ def advisor_leaderboard(
 
 
 @router.get("/api/sales/advisors/yoy")
-def advisor_yoy(line: str = "Travel"):
-    """Calendar year-over-year monthly revenue: current year vs prior year."""
+def advisor_yoy(line: str = "Travel", year: Optional[int] = None):
+    """Calendar year-over-year monthly revenue: selected year vs prior year."""
     if line not in VALID_LINES:
         line = 'Travel'
     from datetime import date as _date
     today = _date.today()
-    key = f"advisor_yoy_{line}_{today.isoformat()}"
+    current_year = year if year else today.year
+    key = f"advisor_yoy_{line}_{current_year}_{today.isoformat()}"
 
     def fetch():
         lf = _line_filter(line)
-        current_year = today.year
         prior_year = current_year - 1
 
         data = sf_parallel(

@@ -43,6 +43,7 @@ export interface OverviewTabProps {
   onSelectAdvisor: (name: string) => void
   onViewSummary?: () => void
   periodLabel: string
+  viewMode: string
 }
 
 /* ── Micro-components (OverviewTab-only) ─────────────────────────────────── */
@@ -101,7 +102,7 @@ function ActivityCell({ icon: Icon, label, value, color, bg, onClick, tip }: {
 export default function OverviewTab({
   summary, isInsurance, dealsYoyPct, pipelineCoverage,
   yoy, funnel, c, leaders, insights, slipping,
-  onSelectAdvisor, onViewSummary, periodLabel,
+  onSelectAdvisor, onViewSummary, periodLabel, viewMode,
 }: OverviewTabProps) {
   const nav = useNavigate()
   const [chartMode, setChartMode] = useState<'revenue' | 'commission'>('revenue')
@@ -114,10 +115,11 @@ export default function OverviewTab({
   const billedPrev  = summary.bookings_prev
   const commValue   = isInsurance ? summary.bookings : summary.commission
 
-  // Line chart from yoy.months
+  // Show all 12 months for PY/1Y, otherwise only up to current month
   const currentMonth = new Date().getMonth() + 1
+  const showAllMonths = viewMode === 'last-year' || viewMode === 'year'
   const lineData = (yoy?.months ?? [])
-    .filter(m => m.month <= currentMonth)
+    .filter(m => showAllMonths || m.month <= currentMonth)
     .map(m => ({
       label: MONTH_SHORT[m.month - 1],
       current: chartMode === 'commission' ? m.current_commission : m.current_revenue,
