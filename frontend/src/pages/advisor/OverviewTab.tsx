@@ -128,11 +128,11 @@ export default function OverviewTab({
       priorLost: chartMode === 'revenue' ? (m.prior_lost_amount ?? 0) : (m.prior_lost ?? 0),
     }))
 
-  // Distinct colors: blue for revenue lines, red for lost opps
+  // Distinct colors: blue for revenue lines, purple for lost opps
   const CURRENT_COLOR = '#3b82f6' // blue-500
   const PRIOR_COLOR   = '#94a3b8' // slate-400
-  const LOST_CUR_COLOR = '#ef4444' // red-500
-  const LOST_PRI_COLOR = '#fca5a5' // red-300
+  const LOST_CUR_COLOR = '#8b5cf6' // violet-500
+  const LOST_PRI_COLOR = '#c4b5fd' // violet-300
 
   const leadsCount = funnel?.steps?.[0]?.count ?? 0
   const oppsCount  = funnel?.steps?.find(s => s.step.toLowerCase().includes('opp'))?.count
@@ -189,7 +189,7 @@ export default function OverviewTab({
                 onClick={() => setShowLost(!showLost)}
                 className={cn(
                   'rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors',
-                  showLost ? 'border-red-400/60 bg-red-500/10 text-red-400' : 'border-border bg-secondary/40 text-muted-foreground hover:bg-secondary/60',
+                  showLost ? 'border-violet-400/60 bg-violet-500/10 text-violet-500' : 'border-border bg-secondary/40 text-muted-foreground hover:bg-secondary/60',
                 )}
               >
                 Lost Opps
