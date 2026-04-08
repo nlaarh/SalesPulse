@@ -128,11 +128,11 @@ export default function OverviewTab({
       priorLost: chartMode === 'revenue' ? (m.prior_lost_amount ?? 0) : (m.prior_lost ?? 0),
     }))
 
-  // Distinct colors: blue for revenue lines, purple for lost opps
-  const CURRENT_COLOR = '#3b82f6' // blue-500
-  const PRIOR_COLOR   = '#94a3b8' // slate-400
-  const LOST_CUR_COLOR = '#8b5cf6' // violet-500
-  const LOST_PRI_COLOR = '#c4b5fd' // violet-300
+  // Distinct colors: blue for revenue, purple current lost, amber prior lost
+  const CURRENT_COLOR = '#3b82f6' // blue-500 — current year revenue
+  const PRIOR_COLOR   = '#94a3b8' // slate-400 — prior year revenue
+  const LOST_CUR_COLOR = '#8b5cf6' // violet-500 — current year lost
+  const LOST_PRI_COLOR = '#f59e0b' // amber-500 — prior year lost
 
   const leadsCount = funnel?.steps?.[0]?.count ?? 0
   const oppsCount  = funnel?.steps?.find(s => s.step.toLowerCase().includes('opp'))?.count
