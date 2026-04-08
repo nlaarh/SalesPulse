@@ -124,8 +124,8 @@ export default function OverviewTab({
       prior: chartMode === 'commission'
         ? (m.prior_commission > 0 ? m.prior_commission : null)
         : (m.prior_revenue > 0 ? m.prior_revenue : null),
-      currentLost: m.current_lost ?? 0,
-      priorLost: m.prior_lost ?? 0,
+      currentLost: chartMode === 'revenue' ? (m.current_lost_amount ?? 0) : (m.current_lost ?? 0),
+      priorLost: chartMode === 'revenue' ? (m.prior_lost_amount ?? 0) : (m.prior_lost ?? 0),
     }))
 
   // Distinct colors: blue for revenue lines, red for lost opps
@@ -249,11 +249,15 @@ export default function OverviewTab({
                   <>
                     <div className="flex items-center gap-1.5">
                       <span className="h-0.5 w-4 rounded" style={{ backgroundColor: LOST_CUR_COLOR }} />
-                      <span className="text-[12px] font-medium text-muted-foreground">Lost {yoy.current_year}</span>
+                      <span className="text-[12px] font-medium text-muted-foreground">
+                        Lost {yoy.current_year} {chartMode === 'revenue' ? '($)' : '(#)'}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span className="h-0.5 w-4 rounded" style={{ backgroundColor: LOST_PRI_COLOR }} />
-                      <span className="text-[12px] font-medium text-muted-foreground">Lost {yoy.prior_year}</span>
+                      <span className="text-[12px] font-medium text-muted-foreground">
+                        Lost {yoy.prior_year} {chartMode === 'revenue' ? '($)' : '(#)'}
+                      </span>
                     </div>
                   </>
                 )}
@@ -270,14 +274,20 @@ export default function OverviewTab({
                 tick={{ fill: c.tick, fontSize: 10 }} tickFormatter={fmtAxis} width={50} />
               {showLost && (
                 <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false}
-                  tick={{ fill: LOST_CUR_COLOR, fontSize: 10 }} width={35} />
+                  tick={{ fill: LOST_CUR_COLOR, fontSize: 10 }}
+                  tickFormatter={chartMode === 'revenue' ? fmtAxis : undefined}
+                  width={chartMode === 'revenue' ? 50 : 35} />
               )}
               <Tooltip
                 contentStyle={tooltipStyle(c)}
                 formatter={(v: unknown, name: unknown) => {
                   const n = name as string
-                  if (n === 'currentLost' || n === 'priorLost')
-                    return [`${v} deals`, n === 'currentLost' ? `Lost ${yoy?.current_year ?? 'Current'}` : `Lost ${yoy?.prior_year ?? 'Prior'}`]
+                  if (n === 'currentLost' || n === 'priorLost') {
+                    const label = n === 'currentLost' ? `Lost ${yoy?.current_year ?? 'Current'}` : `Lost ${yoy?.prior_year ?? 'Prior'}`
+                    return chartMode === 'revenue'
+                      ? [formatCurrency(v as number, true), label]
+                      : [`${v} deals`, label]
+                  }
                   return [
                     formatCurrency(v as number, true),
                     n === 'current' ? (yoy ? String(yoy.current_year) : 'Current') : (yoy ? String(yoy.prior_year) : 'Prior'),
