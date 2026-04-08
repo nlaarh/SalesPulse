@@ -236,7 +236,7 @@ export default function OverviewTab({
                   <span className="text-[12px] font-medium text-muted-foreground">{yoy.current_year}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="h-0.5 w-4 rounded bg-muted-foreground/50" style={{ borderTop: '2px dashed' }} />
+                  <span className="h-0.5 w-4 rounded" style={{ backgroundColor: '#94a3b8' }} />
                   <span className="text-[12px] font-medium text-muted-foreground">{yoy.prior_year}</span>
                 </div>
                 {showLost && (
@@ -275,8 +275,8 @@ export default function OverviewTab({
               />
               {/* Prior year - dashed */}
               {lineData.some(d => d.prior !== null) && (
-                <Line yAxisId="left" type="monotone" dataKey="prior" stroke={c.tick} strokeOpacity={0.5}
-                  strokeDasharray="6 3" strokeWidth={2} dot={false} />
+                <Line yAxisId="left" type="monotone" dataKey="prior" stroke="#94a3b8" strokeOpacity={0.85}
+                  strokeWidth={2} dot={{ r: 2.5, fill: '#94a3b8', strokeWidth: 0 }} />
               )}
               {/* Current year - solid */}
               <Line yAxisId="left" type="monotone" dataKey="current" stroke={c.primary} strokeWidth={2.5}
