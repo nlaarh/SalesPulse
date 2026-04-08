@@ -1,0 +1,214 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - button "Report a bug" [ref=e4]:
+      - img [ref=e5]
+    - complementary [ref=e14]:
+      - generic [ref=e16]:
+        - img [ref=e17]
+        - generic [ref=e22]:
+          - generic [ref=e23]: SalesPulse
+          - generic [ref=e24]: AAA WCNY
+      - generic [ref=e25]:
+        - navigation [ref=e26]:
+          - generic [ref=e27]: Analytics
+          - link "Sales Performance Revenue, pipeline & team" [ref=e28] [cursor=pointer]:
+            - /url: /dashboard
+            - img [ref=e29]
+            - generic [ref=e34]:
+              - generic [ref=e35]: Sales Performance
+              - generic [ref=e36]: Revenue, pipeline & team
+          - link "Top Customers Highest revenue accounts" [ref=e37] [cursor=pointer]:
+            - /url: /customers
+            - img [ref=e38]
+            - generic [ref=e42]:
+              - generic [ref=e43]: Top Customers
+              - generic [ref=e44]: Highest revenue accounts
+          - link "Advisor Monthly Report Agent × month breakdown" [ref=e45] [cursor=pointer]:
+            - /url: /monthly
+            - img [ref=e46]
+            - generic [ref=e48]:
+              - generic [ref=e49]: Advisor Monthly Report
+              - generic [ref=e50]: Agent × month breakdown
+          - link "Pipeline & Forecast Stages, velocity & risk" [ref=e51] [cursor=pointer]:
+            - /url: /pipeline
+            - img [ref=e52]
+            - generic [ref=e56]:
+              - generic [ref=e57]: Pipeline & Forecast
+              - generic [ref=e58]: Stages, velocity & risk
+          - link "Top Opportunities AI-scored deal ranking" [ref=e59] [cursor=pointer]:
+            - /url: /opportunities
+            - img [ref=e60]
+            - generic [ref=e64]:
+              - generic [ref=e65]: Top Opportunities
+              - generic [ref=e66]: AI-scored deal ranking
+          - link "Lead Funnel Conversion & sources" [ref=e67] [cursor=pointer]:
+            - /url: /leads
+            - img [ref=e69]
+            - generic [ref=e72]:
+              - generic [ref=e73]: Lead Funnel
+              - generic [ref=e74]: Conversion & sources
+          - link "Destinations Travel analytics" [ref=e75] [cursor=pointer]:
+            - /url: /travel
+            - img [ref=e76]
+            - generic [ref=e78]:
+              - generic [ref=e79]: Destinations
+              - generic [ref=e80]: Travel analytics
+          - generic [ref=e81]: Resources
+          - link "Help & Guide Lifecycle & terminology" [ref=e82] [cursor=pointer]:
+            - /url: /help
+            - img [ref=e83]
+            - generic [ref=e86]:
+              - generic [ref=e87]: Help & Guide
+              - generic [ref=e88]: Lifecycle & terminology
+          - link "Issues Bug reports & triage" [ref=e89] [cursor=pointer]:
+            - /url: /issues
+            - img [ref=e90]
+            - generic [ref=e99]:
+              - generic [ref=e100]: Issues
+              - generic [ref=e101]: Bug reports & triage
+          - link "Settings User management" [ref=e102] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=e103]
+            - generic [ref=e106]:
+              - generic [ref=e107]: Settings
+              - generic [ref=e108]: User management
+        - generic [ref=e109]:
+          - generic [ref=e110]:
+            - generic [ref=e111]: Business line
+            - button "Travel" [ref=e112] [cursor=pointer]:
+              - text: Travel
+              - img [ref=e113]
+          - generic [ref=e115]:
+            - generic [ref=e116]: Time period
+            - generic [ref=e117]:
+              - button "1M" [ref=e118]
+              - button "3M" [ref=e119]
+              - button "6M" [ref=e120]
+              - button "YTD" [ref=e121]
+              - button "1Y" [ref=e122]
+              - button "PY" [ref=e123]
+            - button "Custom Range" [ref=e124]:
+              - img [ref=e125]
+              - text: Custom Range
+            - generic [ref=e127]:
+              - img [ref=e128]
+              - generic [ref=e130]: 01/01/26
+              - img [ref=e131]
+              - generic [ref=e133]: 04/08/26
+      - generic [ref=e135]:
+        - generic [ref=e136]: NL
+        - generic [ref=e137]:
+          - generic [ref=e138]: Nour Laaroubi
+          - generic [ref=e139]: superadmin
+        - button "Sign out" [ref=e140]:
+          - img [ref=e141]
+    - main [ref=e144]:
+      - generic [ref=e145]:
+        - button "⌘K" [ref=e146]:
+          - img [ref=e147]
+          - generic [ref=e149]: ⌘K
+        - button "Light" [ref=e150]:
+          - img [ref=e151]
+          - text: Light
+      - generic [ref=e159]:
+        - generic [ref=e160]:
+          - generic [ref=e161]:
+            - paragraph [ref=e162]: Travel Division · Last 12 months
+            - heading "Lead Conversion Funnel" [level=1] [ref=e163]
+          - generic [ref=e164]:
+            - button "Charts" [ref=e165]:
+              - img [ref=e166]
+              - text: Charts
+            - button "Details" [ref=e168]:
+              - img [ref=e169]
+              - text: Details
+            - button "Executive Summary" [ref=e171]:
+              - img [ref=e172]
+              - text: Executive Summary
+        - generic [ref=e175]:
+          - generic [ref=e176]:
+            - generic [ref=e177]:
+              - generic [ref=e179]:
+                - generic [ref=e180]:
+                  - text: Total Leads
+                  - img [ref=e182]
+                - img [ref=e186]
+              - generic [ref=e189]: 3,022
+            - generic [ref=e190]:
+              - generic [ref=e192]:
+                - generic [ref=e193]:
+                  - text: Converted
+                  - img [ref=e195]
+                - img [ref=e199]
+              - generic [ref=e203]: "475"
+              - paragraph [ref=e204]: 15.7% conversion
+            - generic [ref=e205]:
+              - generic [ref=e207]:
+                - generic [ref=e208]:
+                  - text: Avg Days to Convert
+                  - img [ref=e210]
+                - img [ref=e214]
+              - generic [ref=e217]: "0"
+            - generic [ref=e218]:
+              - generic [ref=e220]:
+                - generic [ref=e221]:
+                  - text: Expired Rate
+                  - img [ref=e223]
+                - img [ref=e227]
+              - generic [ref=e229]: 0.0%
+          - generic [ref=e230]:
+            - generic [ref=e231]:
+              - heading "Leads by Status" [level=2] [ref=e233]:
+                - text: Leads by Status
+                - img [ref=e235]
+              - application [ref=e241]:
+                - generic [ref=e270]:
+                  - generic [ref=e271]:
+                    - generic [ref=e273]: "0"
+                    - generic [ref=e275]: "450"
+                    - generic [ref=e277]: "900"
+                    - generic [ref=e279]: "1350"
+                    - generic [ref=e281]: "1800"
+                  - generic [ref=e282]:
+                    - generic [ref=e284]: Closed Lost
+                    - generic [ref=e286]: AttemptingContact
+                    - generic [ref=e288]: Accepted
+                    - generic [ref=e290]: Closed
+                    - generic [ref=e292]: Contacted
+                    - generic [ref=e294]: Assigned
+                    - generic [ref=e296]: New
+            - generic [ref=e297]:
+              - heading "Time to Convert Distribution" [level=2] [ref=e299]:
+                - text: Time to Convert Distribution
+                - img [ref=e301]
+              - generic [ref=e305]: No data
+          - generic [ref=e306]:
+            - generic [ref=e307]:
+              - heading "Agent Close Speed" [level=2] [ref=e308]
+              - text: Avg days from opportunity creation to close (Won/Invoice)
+            - application [ref=e312]:
+              - generic [ref=e365]:
+                - generic [ref=e366]:
+                  - generic [ref=e368]: "0"
+                  - generic [ref=e370]: "7"
+                  - generic [ref=e372]: "14"
+                  - generic [ref=e374]: "21"
+                  - generic [ref=e376]: "28"
+                - generic [ref=e377]: Days
+                - generic [ref=e378]:
+                  - generic [ref=e380]: KellyGonseth-Harri…
+                  - generic [ref=e382]: Carla Borgese
+                  - generic [ref=e384]: Jennie Todd
+                  - generic [ref=e386]: Taylor Zidar
+                  - generic [ref=e388]: Katie Gruenauer
+                  - generic [ref=e390]: Jason Ekberg
+                  - generic [ref=e392]: Ted Tomasello
+                  - generic [ref=e394]: Tasha Duffany
+                  - generic [ref=e396]: Tomera Cobado
+                  - generic [ref=e398]: Lydia Burger
+                  - generic [ref=e400]: Micaela Joseph
+                  - generic [ref=e402]: McKenzie O'MalleyC…
+                  - generic [ref=e404]: Robin Smith
+                  - generic [ref=e406]: Patricia Costanzo
+                  - generic [ref=e408]: Penny Kellner
+  - generic [ref=e409]: Kelly Gonseth-Harri…

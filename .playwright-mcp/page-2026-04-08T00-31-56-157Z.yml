@@ -1,0 +1,442 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - button "Report a bug" [ref=e4]:
+      - img [ref=e5]
+    - complementary [ref=e14]:
+      - generic [ref=e16]:
+        - img [ref=e17]
+        - generic [ref=e22]:
+          - generic [ref=e23]: SalesPulse
+          - generic [ref=e24]: AAA WCNY
+      - button "Quick search… ⌘K" [ref=e26]:
+        - img [ref=e27]
+        - generic [ref=e29]: Quick search…
+        - generic [ref=e30]: ⌘K
+      - navigation [ref=e31]:
+        - generic [ref=e32]: Dashboard
+        - link "Sales Performance Revenue, pipeline & team" [ref=e33] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e35]
+          - generic [ref=e40]:
+            - generic [ref=e41]: Sales Performance
+            - generic [ref=e42]: Revenue, pipeline & team
+        - generic [ref=e43]: Analytics
+        - link "Advisor Monthly Report Agent × month breakdown" [ref=e44] [cursor=pointer]:
+          - /url: /monthly
+          - img [ref=e45]
+          - generic [ref=e47]:
+            - generic [ref=e48]: Advisor Monthly Report
+            - generic [ref=e49]: Agent × month breakdown
+        - link "Pipeline & Forecast Stages, velocity & risk" [ref=e50] [cursor=pointer]:
+          - /url: /pipeline
+          - img [ref=e51]
+          - generic [ref=e55]:
+            - generic [ref=e56]: Pipeline & Forecast
+            - generic [ref=e57]: Stages, velocity & risk
+        - link "Top Opportunities AI-scored deal ranking" [ref=e58] [cursor=pointer]:
+          - /url: /opportunities
+          - img [ref=e59]
+          - generic [ref=e63]:
+            - generic [ref=e64]: Top Opportunities
+            - generic [ref=e65]: AI-scored deal ranking
+        - link "Lead Funnel Conversion & sources" [ref=e66] [cursor=pointer]:
+          - /url: /leads
+          - img [ref=e67]
+          - generic [ref=e70]:
+            - generic [ref=e71]: Lead Funnel
+            - generic [ref=e72]: Conversion & sources
+        - link "Destinations Travel analytics" [ref=e73] [cursor=pointer]:
+          - /url: /travel
+          - img [ref=e74]
+          - generic [ref=e76]:
+            - generic [ref=e77]: Destinations
+            - generic [ref=e78]: Travel analytics
+        - generic [ref=e79]: Resources
+        - link "Help & Guide Lifecycle & terminology" [ref=e80] [cursor=pointer]:
+          - /url: /help
+          - img [ref=e81]
+          - generic [ref=e84]:
+            - generic [ref=e85]: Help & Guide
+            - generic [ref=e86]: Lifecycle & terminology
+        - link "Issues Bug reports & triage" [ref=e87] [cursor=pointer]:
+          - /url: /issues
+          - img [ref=e88]
+          - generic [ref=e97]:
+            - generic [ref=e98]: Issues
+            - generic [ref=e99]: Bug reports & triage
+        - link "Settings User management" [ref=e100] [cursor=pointer]:
+          - /url: /settings
+          - img [ref=e101]
+          - generic [ref=e104]:
+            - generic [ref=e105]: Settings
+            - generic [ref=e106]: User management
+      - generic [ref=e107]:
+        - generic [ref=e108]:
+          - generic [ref=e109]: Business line
+          - button "Travel" [ref=e110] [cursor=pointer]:
+            - text: Travel
+            - img [ref=e111]
+        - generic [ref=e113]:
+          - generic [ref=e114]: Time period
+          - generic [ref=e115]:
+            - button "1M" [ref=e116]
+            - button "3M" [ref=e117]
+            - button "6M" [ref=e118]
+            - button "YTD" [ref=e119]
+            - button "1Y" [ref=e120]
+            - button "PY" [ref=e121]
+          - button "Custom Range" [ref=e122]:
+            - img [ref=e123]
+            - text: Custom Range
+          - generic [ref=e125]:
+            - img [ref=e126]
+            - generic [ref=e128]: Jan 1, 26
+            - img [ref=e129]
+            - generic [ref=e131]: Apr 8, 26
+      - generic [ref=e133]:
+        - generic [ref=e134]: NL
+        - generic [ref=e135]:
+          - generic [ref=e136]: Nour Laaroubi
+          - generic [ref=e137]: superadmin
+        - button "Sign out" [ref=e138]:
+          - img [ref=e139]
+    - main [ref=e142]:
+      - generic [ref=e143]:
+        - button "⌘K" [ref=e144]:
+          - img [ref=e145]
+          - generic [ref=e147]: ⌘K
+        - button "Dark" [ref=e148]:
+          - img [ref=e149]
+          - text: Dark
+      - generic [ref=e153]:
+        - generic [ref=e154]:
+          - generic [ref=e155]:
+            - paragraph [ref=e156]: Travel Division · 2026 Year to Date
+            - heading "Sales Performance" [level=1] [ref=e157]
+          - generic [ref=e158]:
+            - button "Overview" [ref=e159]:
+              - img [ref=e160]
+              - text: Overview
+            - button "Rankings & Data" [ref=e162]:
+              - img [ref=e163]
+              - text: Rankings & Data
+            - button "Executive Summary" [ref=e169]:
+              - img [ref=e170]
+              - text: Executive Summary
+        - generic [ref=e173]:
+          - generic [ref=e174]: Target Achievement
+          - generic [ref=e175]:
+            - generic [ref=e176]:
+              - generic [ref=e177]:
+                - generic [ref=e178]: Apr Target
+                - generic [ref=e179]:
+                  - text: $128K
+                  - generic [ref=e180]: / $1.0M
+              - generic [ref=e183]: 12.4%
+              - generic [ref=e185]:
+                - generic [ref=e186]: ▲ Day 7/30 — Behind pace ⚠
+                - generic [ref=e187]: $911K to go
+            - generic [ref=e188]:
+              - generic [ref=e189]:
+                - generic [ref=e190]: 2026 Yearly Target
+                - generic [ref=e191]:
+                  - text: $1.9M
+                  - generic [ref=e192]: / $14.0M
+              - generic [ref=e195]: 13.4%
+              - generic [ref=e197]:
+                - generic [ref=e198]: ▲ Month 4/12 — Behind pace ⚠
+                - generic [ref=e199]: $12.2M to go
+        - generic [ref=e200]:
+          - generic [ref=e201] [cursor=pointer]:
+            - generic [ref=e203]:
+              - img [ref=e205]
+              - generic [ref=e207]: Billed Revenue
+              - img [ref=e209]
+            - paragraph [ref=e212]: $19.8M
+            - generic [ref=e213]:
+              - generic [ref=e214]:
+                - img [ref=e215]
+                - text: "-6.1%"
+              - generic [ref=e218]: vs last year
+          - generic [ref=e219] [cursor=pointer]:
+            - generic [ref=e221]:
+              - img [ref=e223]
+              - generic [ref=e229]: Won Deals
+              - img [ref=e231]
+            - paragraph [ref=e234]: 4,562
+            - generic [ref=e235]:
+              - generic [ref=e236]:
+                - img [ref=e237]
+                - text: "-8.2%"
+              - generic [ref=e240]: from last year
+          - generic [ref=e241] [cursor=pointer]:
+            - generic [ref=e243]:
+              - img [ref=e245]
+              - generic [ref=e249]: Open Pipeline
+              - img [ref=e251]
+            - paragraph [ref=e254]: $6.5M
+            - generic [ref=e256]: 0.1x coverage · 1,422 deals
+          - generic [ref=e257] [cursor=pointer]:
+            - generic [ref=e259]:
+              - img [ref=e261]
+              - generic [ref=e265]: Win Rate
+              - img [ref=e267]
+            - paragraph [ref=e270]: 72.7%
+            - generic [ref=e272]: Avg $4K per deal
+        - generic [ref=e273]:
+          - generic [ref=e274]:
+            - generic [ref=e275]:
+              - heading "Revenue vs Prior Year" [level=3] [ref=e276]:
+                - text: Revenue vs Prior Year
+                - img [ref=e278]
+              - generic [ref=e281]: 2026 vs 2025
+            - generic [ref=e282]:
+              - generic [ref=e283]:
+                - paragraph [ref=e284]: Total Revenue
+                - paragraph [ref=e285]: $19.8M
+                - generic [ref=e286]:
+                  - generic [ref=e287]:
+                    - img [ref=e288]
+                    - text: "-6.1%"
+                  - generic [ref=e291]: "Last year: $21.1M"
+              - generic [ref=e292]:
+                - paragraph [ref=e293]: Commission Earned
+                - paragraph [ref=e294]: $1.9M
+                - paragraph [ref=e295]: Lags 2-3 months
+              - generic [ref=e296]:
+                - generic [ref=e299]: "2026"
+                - generic [ref=e302]: "2025"
+            - application [ref=e305]:
+              - generic [ref=e340]:
+                - generic [ref=e341]:
+                  - generic [ref=e343]: Jan
+                  - generic [ref=e345]: Feb
+                  - generic [ref=e347]: Mar
+                  - generic [ref=e349]: Apr
+                - generic [ref=e350]:
+                  - generic [ref=e352]: $0
+                  - generic [ref=e354]: $2.0M
+                  - generic [ref=e356]: $4.0M
+                  - generic [ref=e358]: $6.0M
+                  - generic [ref=e360]: $8.0M
+          - generic [ref=e362]:
+            - generic [ref=e363]:
+              - heading "At-Risk Pipeline" [level=3] [ref=e364]:
+                - text: At-Risk Pipeline
+                - img [ref=e366]
+              - generic [ref=e369]: 47 deals
+            - generic [ref=e371]:
+              - img [ref=e372]
+              - generic [ref=e374]: $2.7M at risk
+              - generic [ref=e375]: across 47 slipping deals
+            - generic [ref=e376]:
+              - generic [ref=e377] [cursor=pointer]:
+                - generic [ref=e378]:
+                  - paragraph [ref=e379]: Stark - TR - Galapagos - 2027-12-23
+                  - paragraph [ref=e380]: Andrea College · Invoice
+                - generic [ref=e381]: $188K
+                - generic [ref=e382]: 166d overdue
+              - generic [ref=e383] [cursor=pointer]:
+                - generic [ref=e384]:
+                  - paragraph [ref=e385]: Rawe - TR - Europe - 2026-07-25
+                  - paragraph [ref=e386]: Mamie Cimato · Invoice
+                - generic [ref=e387]: $103K
+                - generic [ref=e388]: 150d overdue
+              - generic [ref=e389] [cursor=pointer]:
+                - generic [ref=e390]:
+                  - paragraph [ref=e391]: Gellin - TR - Antarctica - 2027-01-01
+                  - paragraph [ref=e392]: Kevin Bloom · Invoice
+                - generic [ref=e393]: $100K
+                - generic [ref=e394]: 279d overdue
+              - generic [ref=e395] [cursor=pointer]:
+                - generic [ref=e396]:
+                  - paragraph [ref=e397]: Fellner - TR - Mediterranean - 2027-04-13
+                  - paragraph [ref=e398]: Emma Johnson · Invoice
+                - generic [ref=e399]: $94K
+                - generic [ref=e400]: 139d overdue
+              - generic [ref=e401] [cursor=pointer]:
+                - generic [ref=e402]:
+                  - paragraph [ref=e403]: Guerrero - TR - Asia - 2028-03-11
+                  - paragraph [ref=e404]: Renee Pilley · Invoice
+                - generic [ref=e405]: $92K
+                - generic [ref=e406]: 43d overdue
+              - generic [ref=e407] [cursor=pointer]:
+                - generic [ref=e408]:
+                  - paragraph [ref=e409]: Glover - TR - Europe - 2027-02-26
+                  - paragraph [ref=e410]: Robin Mitchell · Invoice
+                - generic [ref=e411]: $84K
+                - generic [ref=e412]: 340d overdue
+              - generic [ref=e413] [cursor=pointer]:
+                - generic [ref=e414]:
+                  - paragraph [ref=e415]: Farrington - TR - Antarctica - 2027-12-16
+                  - paragraph [ref=e416]: Lisa Asito · Invoice
+                - generic [ref=e417]: $79K
+                - generic [ref=e418]: 107d overdue
+              - generic [ref=e419] [cursor=pointer]:
+                - generic [ref=e420]:
+                  - paragraph [ref=e421]: Rosen Dds - TR - Mediterranean - 2026-04-07
+                  - paragraph [ref=e422]: Penny Kellner · Invoice
+                - generic [ref=e423]: $68K
+                - generic [ref=e424]: 118d overdue
+        - generic [ref=e425]:
+          - generic [ref=e427] [cursor=pointer]:
+            - generic [ref=e428]:
+              - generic [ref=e429]:
+                - img [ref=e430]
+                - heading "Sales Funnel" [level=2] [ref=e434]:
+                  - text: Sales Funnel
+                  - img [ref=e436]
+                - generic [ref=e439]: $19.8M won
+              - generic [ref=e440]:
+                - generic [ref=e441]: 72.0% win
+                - img [ref=e442]
+            - img [ref=e445]:
+              - generic [ref=e446]:
+                - generic [ref=e451]: Leads
+                - generic [ref=e452]: 3,022
+                - generic [ref=e453]: 16%
+              - generic [ref=e454]:
+                - generic [ref=e459]: Converted
+                - generic [ref=e460]: "475"
+                - generic [ref=e461]: 16%
+                - generic [ref=e462]: 1471%
+              - generic [ref=e463]:
+                - generic [ref=e468]: Opportunities
+                - generic [ref=e469]: 6,989
+                - generic [ref=e470]: 231%
+                - generic [ref=e471]: 65%
+              - generic [ref=e472]:
+                - generic [ref=e477]: Invoiced
+                - generic [ref=e478]: 4,566
+                - generic [ref=e479]: 151%
+                - generic [ref=e480]: 97%
+              - generic [ref=e481]:
+                - generic [ref=e486]: Won
+                - generic [ref=e487]: 4,414
+                - generic [ref=e488]: 146%
+          - generic [ref=e489]:
+            - heading "Sales Activity" [level=3] [ref=e491]
+            - generic [ref=e492]:
+              - generic [ref=e493] [cursor=pointer]:
+                - img [ref=e495]
+                - generic [ref=e498]:
+                  - paragraph [ref=e499]: 3,022
+                  - paragraph [ref=e500]:
+                    - text: Leads
+                    - img [ref=e502]
+              - generic [ref=e505] [cursor=pointer]:
+                - img [ref=e507]
+                - generic [ref=e511]:
+                  - paragraph [ref=e512]: 6,989
+                  - paragraph [ref=e513]:
+                    - text: Opps
+                    - img [ref=e515]
+              - generic [ref=e518] [cursor=pointer]:
+                - img [ref=e520]
+                - generic [ref=e526]:
+                  - paragraph [ref=e527]: 4,562
+                  - paragraph [ref=e528]:
+                    - text: Won
+                    - img [ref=e530]
+              - generic [ref=e533] [cursor=pointer]:
+                - img [ref=e535]
+                - generic [ref=e537]:
+                  - paragraph [ref=e538]: $4K
+                  - paragraph [ref=e539]:
+                    - text: Avg Deal
+                    - img [ref=e541]
+            - generic [ref=e544] [cursor=pointer]:
+              - generic [ref=e545]:
+                - generic [ref=e546]:
+                  - text: Pipeline Coverage
+                  - img [ref=e548]
+                - generic [ref=e551]: Low
+              - generic [ref=e552]:
+                - paragraph [ref=e553]: 0.1x
+                - paragraph [ref=e557]: 1,422 open opportunities
+        - generic [ref=e558]:
+          - generic [ref=e559]:
+            - generic [ref=e560]:
+              - generic [ref=e561]:
+                - img [ref=e562]
+                - heading "Top Advisors" [level=3] [ref=e567]
+              - generic [ref=e568]: 57 advisors total
+            - table [ref=e569]:
+              - rowgroup [ref=e570]:
+                - row "# Advisor Revenue Deals Win % Pipeline" [ref=e571]:
+                  - columnheader "#" [ref=e572]
+                  - columnheader "Advisor" [ref=e573]
+                  - columnheader "Revenue" [ref=e574]
+                  - columnheader "Deals" [ref=e575]
+                  - columnheader "Win %" [ref=e576]
+                  - columnheader "Pipeline" [ref=e577]
+                  - columnheader [ref=e578]
+              - rowgroup [ref=e579]:
+                - row "1 Mamie Cimato $92K 105 86.8% $253K" [ref=e580] [cursor=pointer]:
+                  - cell "1" [ref=e581]:
+                    - generic [ref=e582]: "1"
+                  - cell "Mamie Cimato" [ref=e583]
+                  - cell "$92K" [ref=e584]
+                  - cell "105" [ref=e585]
+                  - cell "86.8%" [ref=e586]
+                  - cell "$253K" [ref=e587]
+                  - cell [ref=e588]:
+                    - img [ref=e589]
+                - row "2 Robin Mitchell $36K 95 80.5% $178K" [ref=e591] [cursor=pointer]:
+                  - cell "2" [ref=e592]:
+                    - generic [ref=e593]: "2"
+                  - cell "Robin Mitchell" [ref=e594]
+                  - cell "$36K" [ref=e595]
+                  - cell "95" [ref=e596]
+                  - cell "80.5%" [ref=e597]
+                  - cell "$178K" [ref=e598]
+                  - cell [ref=e599]:
+                    - img [ref=e600]
+                - row "3 Meghan Sheehan $64K 120 67.4% $239K" [ref=e602] [cursor=pointer]:
+                  - cell "3" [ref=e603]:
+                    - generic [ref=e604]: "3"
+                  - cell "Meghan Sheehan" [ref=e605]
+                  - cell "$64K" [ref=e606]
+                  - cell "120" [ref=e607]
+                  - cell "67.4%" [ref=e608]
+                  - cell "$239K" [ref=e609]
+                  - cell [ref=e610]:
+                    - img [ref=e611]
+                - row "4 Mary McIntosh $38K 133 92.4% $189K" [ref=e613] [cursor=pointer]:
+                  - cell "4" [ref=e614]:
+                    - generic [ref=e615]: "4"
+                  - cell "Mary McIntosh" [ref=e616]
+                  - cell "$38K" [ref=e617]
+                  - cell "133" [ref=e618]
+                  - cell "92.4%" [ref=e619]
+                  - cell "$189K" [ref=e620]
+                  - cell [ref=e621]:
+                    - img [ref=e622]
+                - row "5 Bethany Steves $63K 122 72.2% $92K" [ref=e624] [cursor=pointer]:
+                  - cell "5" [ref=e625]:
+                    - generic [ref=e626]: "5"
+                  - cell "Bethany Steves" [ref=e627]
+                  - cell "$63K" [ref=e628]
+                  - cell "122" [ref=e629]
+                  - cell "72.2%" [ref=e630]
+                  - cell "$92K" [ref=e631]
+                  - cell [ref=e632]:
+                    - img [ref=e633]
+          - generic [ref=e635]:
+            - generic [ref=e636]:
+              - generic [ref=e637]:
+                - img [ref=e638]
+                - heading "AI Insights" [level=3] [ref=e641]
+              - button "Full briefing →" [ref=e642]
+            - generic [ref=e643]:
+              - generic [ref=e644] [cursor=pointer]:
+                - img [ref=e646]
+                - generic [ref=e649]:
+                  - paragraph [ref=e650]: Top Performer
+                  - paragraph [ref=e651]: Mamie Cimato leads Travel with $1,030,547 in revenue (5% of total, 105 deals).
+              - generic [ref=e652] [cursor=pointer]:
+                - img [ref=e654]
+                - generic [ref=e656]:
+                  - paragraph [ref=e657]: Pipeline Alert
+                  - paragraph [ref=e658]: Pipeline coverage is only 0.3x ($6,486,767 in 1422 deals). Critical — need to generate more pipeline immediately.
+  - generic [ref=e659]: $0

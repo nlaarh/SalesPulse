@@ -1,0 +1,141 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - img [ref=e7]
+        - generic [ref=e12]:
+          - generic [ref=e13]: SalesPulse
+          - generic [ref=e14]: AAA WCNY
+      - generic [ref=e15]:
+        - link "Features" [ref=e16] [cursor=pointer]:
+          - /url: "#features"
+        - link "Security" [ref=e17] [cursor=pointer]:
+          - /url: "#security"
+        - link "Sign In" [ref=e18] [cursor=pointer]:
+          - /url: /login
+          - text: Sign In
+          - img [ref=e19]
+  - generic [ref=e23]:
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - img [ref=e26]
+        - text: Sales Intelligence Platform
+      - heading "Know your numbers. Coach your team." [level=1] [ref=e28]:
+        - text: Know your numbers.
+        - text: Coach your team.
+      - paragraph [ref=e29]: SalesPulse connects to your Salesforce org and delivers real-time revenue dashboards, AI-powered agent briefs, and target tracking — purpose-built for AAA sales leaders.
+      - generic [ref=e30]:
+        - link "Open Dashboard" [ref=e31] [cursor=pointer]:
+          - /url: /login
+          - text: Open Dashboard
+          - img [ref=e32]
+        - link "Learn more ↓" [ref=e34] [cursor=pointer]:
+          - /url: "#features"
+    - generic [ref=e38]:
+      - generic [ref=e44]: SalesPulse — Sales Performance
+      - generic [ref=e45]:
+        - generic [ref=e46]:
+          - text: Commission
+          - paragraph [ref=e47]: $1.2M
+          - text: +18%
+        - generic [ref=e48]:
+          - text: Deals Won
+          - paragraph [ref=e49]: "342"
+          - text: +24%
+        - generic [ref=e50]:
+          - text: Win Rate
+          - paragraph [ref=e51]: 72.4%
+          - text: "-2.1pts"
+        - generic [ref=e52]:
+          - text: Pipeline
+          - paragraph [ref=e53]: $4.8M
+          - text: 2.4x
+  - generic [ref=e82]:
+    - generic [ref=e83]:
+      - img [ref=e84]
+      - generic [ref=e89]: "57"
+      - generic [ref=e90]: Travel Advisors Tracked
+    - generic [ref=e91]:
+      - img [ref=e92]
+      - generic [ref=e95]: "6"
+      - generic [ref=e96]: Analytics Modules
+    - generic [ref=e97]:
+      - img [ref=e98]
+      - generic [ref=e100]: <1s
+      - generic [ref=e101]: Query Response Time
+    - generic [ref=e102]:
+      - img [ref=e103]
+      - generic [ref=e105]: AI
+      - generic [ref=e106]: Powered Insights
+  - generic [ref=e108]:
+    - generic [ref=e109]: Capabilities
+    - heading "Six modules. One platform." [level=2] [ref=e110]
+    - paragraph [ref=e111]: Every metric your sales leaders need — from high-level division KPIs to individual agent coaching briefs.
+    - generic [ref=e112]:
+      - generic [ref=e113]:
+        - img [ref=e115]
+        - heading "Revenue Analytics" [level=3] [ref=e117]
+        - paragraph [ref=e118]: Commission, bookings, and win rate metrics — broken down by agent, branch, and month.
+      - generic [ref=e119]:
+        - img [ref=e121]
+        - heading "Pipeline Intelligence" [level=3] [ref=e125]
+        - paragraph [ref=e126]: Stage velocity, aging alerts, and AI-powered deal scoring to focus manager attention.
+      - generic [ref=e127]:
+        - img [ref=e129]
+        - heading "Target Tracking" [level=3] [ref=e133]
+        - paragraph [ref=e134]: Upload advisor targets and track commission achievement with progress rings and trend lines.
+      - generic [ref=e135]:
+        - img [ref=e137]
+        - heading "Agent Profiles" [level=3] [ref=e142]
+        - paragraph [ref=e143]: Individual performance cards with AI-generated manager briefs, strengths, and coaching areas.
+      - generic [ref=e144]:
+        - img [ref=e146]
+        - heading "Destination Insights" [level=3] [ref=e148]
+        - paragraph [ref=e149]: Travel booking analytics by destination, supplier, and season — spot trends early.
+      - generic [ref=e150]:
+        - img [ref=e152]
+        - heading "Lead Funnel" [level=3] [ref=e155]
+        - paragraph [ref=e156]: Full-funnel visibility from source to close, with conversion rates and time-to-convert analysis.
+  - generic [ref=e159]:
+    - generic [ref=e160]:
+      - generic [ref=e161]:
+        - img [ref=e162]
+        - generic [ref=e164]: Enterprise Security
+      - heading "Built for enterprise. Secured by design." [level=2] [ref=e165]:
+        - text: Built for enterprise.
+        - text: Secured by design.
+      - paragraph [ref=e166]: SalesPulse runs read-only queries against your Salesforce org. No data is stored externally — all metrics are computed on-the-fly with intelligent caching for sub-second response times.
+    - generic [ref=e167]:
+      - generic [ref=e168]:
+        - img [ref=e169]
+        - generic [ref=e172]: Salesforce OAuth 2.0 secured
+      - generic [ref=e173]:
+        - img [ref=e174]
+        - generic [ref=e177]: Real-time SOQL data sync
+      - generic [ref=e178]:
+        - img [ref=e179]
+        - generic [ref=e182]: Role-based access control
+      - generic [ref=e183]:
+        - img [ref=e184]
+        - generic [ref=e187]: Dual-layer caching (L1 + L2)
+      - generic [ref=e188]:
+        - img [ref=e189]
+        - generic [ref=e192]: AI-generated executive briefs
+      - generic [ref=e193]:
+        - img [ref=e194]
+        - generic [ref=e197]: Audit trail for all actions
+  - generic [ref=e199]:
+    - heading "Ready to see your data clearly?" [level=2] [ref=e200]
+    - paragraph [ref=e201]: Sign in with your AAA credentials and start exploring in seconds.
+    - link "Sign In Now" [ref=e202] [cursor=pointer]:
+      - /url: /login
+      - text: Sign In Now
+      - img [ref=e203]
+  - contentinfo [ref=e205]:
+    - generic [ref=e206]:
+      - generic [ref=e207]:
+        - img [ref=e208]
+        - generic [ref=e213]:
+          - generic [ref=e214]: SalesPulse
+          - generic [ref=e215]: AAA WCNY
+      - paragraph [ref=e216]: © 2026 AAA WCNY · Internal Use Only

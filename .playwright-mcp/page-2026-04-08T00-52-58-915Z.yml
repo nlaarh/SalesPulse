@@ -1,0 +1,455 @@
+- generic [ref=e3]:
+  - button "Report a bug" [ref=e4]:
+    - img [ref=e5]
+  - complementary [ref=e14]:
+    - generic [ref=e16]:
+      - img [ref=e17]
+      - generic [ref=e22]:
+        - generic [ref=e23]: SalesPulse
+        - generic [ref=e24]: AAA WCNY
+    - generic [ref=e25]:
+      - navigation [ref=e26]:
+        - generic [ref=e27]: Analytics
+        - link "Sales Performance Revenue, pipeline & team" [ref=e28] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e29]
+          - generic [ref=e34]:
+            - generic [ref=e35]: Sales Performance
+            - generic [ref=e36]: Revenue, pipeline & team
+        - link "Top Customers Highest revenue accounts" [ref=e37] [cursor=pointer]:
+          - /url: /customers
+          - img [ref=e38]
+          - generic [ref=e42]:
+            - generic [ref=e43]: Top Customers
+            - generic [ref=e44]: Highest revenue accounts
+        - link "Advisor Monthly Report Agent × month breakdown" [ref=e45] [cursor=pointer]:
+          - /url: /monthly
+          - img [ref=e46]
+          - generic [ref=e48]:
+            - generic [ref=e49]: Advisor Monthly Report
+            - generic [ref=e50]: Agent × month breakdown
+        - link "Pipeline & Forecast Stages, velocity & risk" [ref=e51] [cursor=pointer]:
+          - /url: /pipeline
+          - img [ref=e52]
+          - generic [ref=e56]:
+            - generic [ref=e57]: Pipeline & Forecast
+            - generic [ref=e58]: Stages, velocity & risk
+        - link "Top Opportunities AI-scored deal ranking" [ref=e59] [cursor=pointer]:
+          - /url: /opportunities
+          - img [ref=e60]
+          - generic [ref=e64]:
+            - generic [ref=e65]: Top Opportunities
+            - generic [ref=e66]: AI-scored deal ranking
+        - link "Lead Funnel Conversion & sources" [ref=e67] [cursor=pointer]:
+          - /url: /leads
+          - img [ref=e68]
+          - generic [ref=e71]:
+            - generic [ref=e72]: Lead Funnel
+            - generic [ref=e73]: Conversion & sources
+        - link "Destinations Travel analytics" [ref=e74] [cursor=pointer]:
+          - /url: /travel
+          - img [ref=e75]
+          - generic [ref=e77]:
+            - generic [ref=e78]: Destinations
+            - generic [ref=e79]: Travel analytics
+        - generic [ref=e80]: Resources
+        - link "Help & Guide Lifecycle & terminology" [ref=e81] [cursor=pointer]:
+          - /url: /help
+          - img [ref=e82]
+          - generic [ref=e85]:
+            - generic [ref=e86]: Help & Guide
+            - generic [ref=e87]: Lifecycle & terminology
+        - link "Issues Bug reports & triage" [ref=e88] [cursor=pointer]:
+          - /url: /issues
+          - img [ref=e89]
+          - generic [ref=e98]:
+            - generic [ref=e99]: Issues
+            - generic [ref=e100]: Bug reports & triage
+        - link "Settings User management" [ref=e101] [cursor=pointer]:
+          - /url: /settings
+          - img [ref=e102]
+          - generic [ref=e105]:
+            - generic [ref=e106]: Settings
+            - generic [ref=e107]: User management
+      - generic [ref=e108]:
+        - generic [ref=e109]:
+          - generic [ref=e110]: Business line
+          - button "Travel" [ref=e111] [cursor=pointer]:
+            - text: Travel
+            - img [ref=e112]
+        - generic [ref=e114]:
+          - generic [ref=e115]: Time period
+          - generic [ref=e116]:
+            - button "1M" [ref=e117]
+            - button "3M" [ref=e118]
+            - button "6M" [ref=e119]
+            - button "YTD" [ref=e120]
+            - button "1Y" [ref=e121]
+            - button "PY" [ref=e122]
+          - button "Custom Range" [ref=e123]:
+            - img [ref=e124]
+            - text: Custom Range
+          - generic [ref=e126]:
+            - img [ref=e127]
+            - generic [ref=e129]: 01/01/26
+            - img [ref=e130]
+            - generic [ref=e132]: 04/08/26
+    - generic [ref=e134]:
+      - generic [ref=e135]: NL
+      - generic [ref=e136]:
+        - generic [ref=e137]: Nour Laaroubi
+        - generic [ref=e138]: superadmin
+      - button "Sign out" [ref=e139]:
+        - img [ref=e140]
+  - main [ref=e143]:
+    - generic [ref=e144]:
+      - button "⌘K" [ref=e145]:
+        - img [ref=e146]
+        - generic [ref=e148]: ⌘K
+      - button "Light" [ref=e149]:
+        - img [ref=e150]
+        - text: Light
+    - generic [ref=e158]:
+      - generic [ref=e159]:
+        - button "Back" [ref=e160]:
+          - img [ref=e161]
+          - text: Back
+        - generic [ref=e163]:
+          - button "PDF / Print" [ref=e164]:
+            - img [ref=e165]
+            - text: PDF / Print
+          - button "Email" [ref=e170]:
+            - img [ref=e171]
+            - text: Email
+      - generic [ref=e174]:
+        - generic [ref=e175]:
+          - img [ref=e177]
+          - generic [ref=e180]:
+            - generic [ref=e181]:
+              - heading "Nina M Smith" [level=1] [ref=e182]
+              - generic [ref=e183]: Active
+              - link "View in SF" [ref=e185] [cursor=pointer]:
+                - /url: https://aaawcny.my.salesforce.com/lightning/r/Account/001Pb00000AC129IAD/view
+                - img [ref=e186]
+                - text: View in SF
+              - generic [ref=e190]:
+                - generic [ref=e191]: "LTV Tier: A"
+                - button "What is LTV Tier?" [ref=e192]:
+                  - img [ref=e193]
+            - generic [ref=e196]:
+              - generic [ref=e197]:
+                - img [ref=e198]
+                - text: "#6200841698232008"
+              - generic [ref=e200]:
+                - img [ref=e201]
+                - text: nms11058@hotmail.com
+              - generic [ref=e204]:
+                - img [ref=e205]
+                - text: "7168637980"
+              - generic [ref=e207]:
+                - img [ref=e208]
+                - text: East Amherst, New York
+          - generic [ref=e211]:
+            - generic [ref=e212]:
+              - paragraph [ref=e213]: Since
+              - paragraph [ref=e214]: "2016"
+            - generic [ref=e215]:
+              - paragraph [ref=e216]: MPI
+              - paragraph [ref=e217]: —
+            - generic [ref=e218]:
+              - paragraph [ref=e219]: Region
+              - paragraph [ref=e220]: —
+        - generic [ref=e221]:
+          - generic [ref=e222]:
+            - img [ref=e223]
+            - generic [ref=e225]:
+              - paragraph [ref=e226]: PREMIER
+              - paragraph [ref=e227]: Expires —
+          - generic [ref=e228]:
+            - img [ref=e229]
+            - generic [ref=e231]:
+              - paragraph [ref=e232]: ERS Calls
+              - paragraph [ref=e233]: 1 used / 4 avail
+          - generic [ref=e234]:
+            - img [ref=e235]
+            - paragraph [ref=e240]: 2011 Toyota Highlander - Black - AWD
+      - generic [ref=e241]:
+        - generic [ref=e242]:
+          - generic [ref=e243]:
+            - paragraph [ref=e244]: Product 360
+            - generic [ref=e245]: 3/8 products
+          - generic [ref=e246]:
+            - generic [ref=e247]:
+              - img [ref=e249]
+              - generic [ref=e251]: Membership
+              - img [ref=e252]
+            - generic [ref=e255]:
+              - img [ref=e257]
+              - generic [ref=e259]: Travel
+              - img [ref=e260]
+            - generic [ref=e263]:
+              - img [ref=e265]
+              - generic [ref=e267]: Insurance
+            - generic [ref=e269]:
+              - img [ref=e271]
+              - generic [ref=e273]: Medicare
+            - generic [ref=e275]:
+              - img [ref=e277]
+              - generic [ref=e280]: Mbr Services
+            - generic [ref=e282]:
+              - img [ref=e284]
+              - generic [ref=e287]: Financial
+            - generic [ref=e289]:
+              - img [ref=e291]
+              - generic [ref=e295]: Driver Pgm
+            - generic [ref=e297]:
+              - img [ref=e299]
+              - generic [ref=e301]: ERS
+              - img [ref=e302]
+          - generic [ref=e306]:
+            - generic [ref=e307]: Product Coverage
+            - generic [ref=e308]: 38%
+        - generic [ref=e311]:
+          - generic [ref=e312]:
+            - paragraph [ref=e313]: Membership History
+            - generic [ref=e315]:
+              - generic [ref=e316]:
+                - generic [ref=e318]: PREMIER
+                - generic [ref=e319]: "#6200841698232008"
+              - generic [ref=e321]:
+                - img [ref=e322]
+                - text: —
+          - generic [ref=e325]:
+            - generic [ref=e326]:
+              - paragraph [ref=e327]: Total Travel
+              - paragraph [ref=e328]: $94,765
+              - paragraph [ref=e329]: 12 bookings
+            - generic [ref=e330]:
+              - paragraph [ref=e331]: Total Insurance
+              - paragraph [ref=e332]: —
+              - paragraph [ref=e333]: 0 policies
+      - generic [ref=e334]:
+        - generic [ref=e335]:
+          - generic [ref=e336]:
+            - img [ref=e337]
+            - paragraph [ref=e340]: Activity Timeline
+            - generic [ref=e341]: 12 items
+          - generic [ref=e342]:
+            - button "All (12)" [ref=e343]
+            - button "Opportunities (12)" [ref=e344]
+            - button "Leads (0)" [ref=e345]
+        - generic [ref=e348]:
+          - generic [ref=e351]:
+            - generic [ref=e352]:
+              - generic [ref=e353]: 05/01/2026
+              - generic [ref=e354]: Opportunity
+              - generic [ref=e355]: Travel
+              - generic [ref=e356]: Invoice
+            - generic [ref=e357]:
+              - link "United States" [ref=e358] [cursor=pointer]:
+                - /url: /opportunity/006Pb00001HiPgMIAV
+              - link [ref=e359] [cursor=pointer]:
+                - /url: https://aaawcny.my.salesforce.com/lightning/r/Opportunity/006Pb00001HiPgMIAV/view
+                - img [ref=e360]
+            - generic [ref=e364]:
+              - generic [ref=e365]: $1,073
+              - generic [ref=e366]: · Andrea College
+              - generic [ref=e367]: · created 04/01/2026
+          - generic [ref=e370]:
+            - generic [ref=e371]:
+              - generic [ref=e372]: 03/26/2026
+              - generic [ref=e373]: Opportunity
+              - generic [ref=e374]: Travel
+              - generic [ref=e375]: Invoice
+            - generic [ref=e376]:
+              - link "France" [ref=e377] [cursor=pointer]:
+                - /url: /opportunity/006Pb00001D1AzpIAF
+              - link [ref=e378] [cursor=pointer]:
+                - /url: https://aaawcny.my.salesforce.com/lightning/r/Opportunity/006Pb00001D1AzpIAF/view
+                - img [ref=e379]
+            - generic [ref=e383]:
+              - generic [ref=e384]: $6,400
+              - generic [ref=e385]: commission $317
+              - generic [ref=e386]: · Andrea College
+              - generic [ref=e387]: · created 02/24/2026
+          - generic [ref=e390]:
+            - generic [ref=e391]:
+              - generic [ref=e392]: 01/25/2026
+              - generic [ref=e393]: Opportunity
+              - generic [ref=e394]: Travel
+              - generic [ref=e395]: Closed Won
+            - generic [ref=e396]:
+              - link "Caribbean" [ref=e397] [cursor=pointer]:
+                - /url: /opportunity/006Pb000015Lp4AIAS
+              - link [ref=e398] [cursor=pointer]:
+                - /url: https://aaawcny.my.salesforce.com/lightning/r/Opportunity/006Pb000015Lp4AIAS/view
+                - img [ref=e399]
+            - generic [ref=e403]:
+              - generic [ref=e404]: $3,388
+              - generic [ref=e405]: commission $269
+              - generic [ref=e406]: · Andrea College
+              - generic [ref=e407]: · created 12/26/2025
+          - generic [ref=e410]:
+            - generic [ref=e411]:
+              - generic [ref=e412]: 12/20/2025
+              - generic [ref=e413]: Opportunity
+              - generic [ref=e414]: Travel
+              - generic [ref=e415]: Closed Won
+            - generic [ref=e416]:
+              - link "United States" [ref=e417] [cursor=pointer]:
+                - /url: /opportunity/006Pb0000115y8vIAA
+              - link [ref=e418] [cursor=pointer]:
+                - /url: https://aaawcny.my.salesforce.com/lightning/r/Opportunity/006Pb0000115y8vIAA/view
+                - img [ref=e419]
+            - generic [ref=e423]:
+              - generic [ref=e424]: $1,708
+              - generic [ref=e425]: · Andrea College
+              - generic [ref=e426]: · created 11/20/2025
+          - generic [ref=e429]:
+            - generic [ref=e430]:
+              - generic [ref=e431]: 11/26/2024
+              - generic [ref=e432]: Opportunity
+              - generic [ref=e433]: Travel
+              - generic [ref=e434]: Closed Won
+            - generic [ref=e435]:
+              - link "Caribbean" [ref=e436] [cursor=pointer]:
+                - /url: /opportunity/006Pb00000JMB9yIAH
+              - link [ref=e437] [cursor=pointer]:
+                - /url: https://aaawcny.my.salesforce.com/lightning/r/Opportunity/006Pb00000JMB9yIAH/view
+                - img [ref=e438]
+            - generic [ref=e442]:
+              - generic [ref=e443]: $13,253
+              - generic [ref=e444]: commission $1,310
+              - generic [ref=e445]: · Andrea College
+              - generic [ref=e446]: · created 11/12/2024
+          - generic [ref=e449]:
+            - generic [ref=e450]:
+              - generic [ref=e451]: 06/29/2024
+              - generic [ref=e452]: Opportunity
+              - generic [ref=e453]: Travel
+              - generic [ref=e454]: Closed Won
+            - generic [ref=e455]:
+              - link "Europe" [ref=e456] [cursor=pointer]:
+                - /url: /opportunity/006Pb00000VBiGoIAL
+              - link [ref=e457] [cursor=pointer]:
+                - /url: https://aaawcny.my.salesforce.com/lightning/r/Opportunity/006Pb00000VBiGoIAL/view
+                - img [ref=e458]
+            - generic [ref=e462]:
+              - generic [ref=e463]: $7,838
+              - generic [ref=e464]: commission $497
+              - generic [ref=e465]: · Andrea College
+              - generic [ref=e466]: · created 03/07/2025
+          - generic [ref=e469]:
+            - generic [ref=e470]:
+              - generic [ref=e471]: 06/29/2024
+              - generic [ref=e472]: Opportunity
+              - generic [ref=e473]: Travel
+              - generic [ref=e474]: Closed Won
+            - generic [ref=e475]:
+              - link "Europe" [ref=e476] [cursor=pointer]:
+                - /url: /opportunity/006Pb000005IKeFIAW
+              - link [ref=e477] [cursor=pointer]:
+                - /url: https://aaawcny.my.salesforce.com/lightning/r/Opportunity/006Pb000005IKeFIAW/view
+                - img [ref=e478]
+            - generic [ref=e482]:
+              - generic [ref=e483]: $75
+              - generic [ref=e484]: commission $195
+              - generic [ref=e485]: · Lynn Galante
+              - generic [ref=e486]: · created 01/19/2024
+          - generic [ref=e489]:
+            - generic [ref=e490]:
+              - generic [ref=e491]: 02/19/2024
+              - generic [ref=e492]: Opportunity
+              - generic [ref=e493]: Travel
+              - generic [ref=e494]: Closed Won
+            - generic [ref=e495]:
+              - link "Caribbean" [ref=e496] [cursor=pointer]:
+                - /url: /opportunity/006Pb000005IKeGIAW
+              - link [ref=e497] [cursor=pointer]:
+                - /url: https://aaawcny.my.salesforce.com/lightning/r/Opportunity/006Pb000005IKeGIAW/view
+                - img [ref=e498]
+            - generic [ref=e502]:
+              - generic [ref=e503]: $15,352
+              - generic [ref=e504]: commission $1,728
+              - generic [ref=e505]: · Lynn Galante
+              - generic [ref=e506]: · created 01/19/2024
+          - generic [ref=e509]:
+            - generic [ref=e510]:
+              - generic [ref=e511]: 06/30/2023
+              - generic [ref=e512]: Opportunity
+              - generic [ref=e513]: Travel
+              - generic [ref=e514]: Closed Won
+            - generic [ref=e515]:
+              - link "Smith - TR - 2023-06-16" [ref=e516] [cursor=pointer]:
+                - /url: /opportunity/006Pb000005ICvnIAG
+              - link [ref=e517] [cursor=pointer]:
+                - /url: https://aaawcny.my.salesforce.com/lightning/r/Opportunity/006Pb000005ICvnIAG/view
+                - img [ref=e518]
+            - generic [ref=e522]:
+              - generic [ref=e523]: $11,002
+              - generic [ref=e524]: commission $540
+              - generic [ref=e525]: · Lynn Galante
+              - generic [ref=e526]: · created 01/19/2024
+          - generic [ref=e529]:
+            - generic [ref=e530]:
+              - generic [ref=e531]: 04/01/2023
+              - generic [ref=e532]: Opportunity
+              - generic [ref=e533]: Travel
+              - generic [ref=e534]: Closed Won
+            - generic [ref=e535]:
+              - link "Smith - TR - 2023-03-24" [ref=e536] [cursor=pointer]:
+                - /url: /opportunity/006Pb000005IKeHIAW
+              - link [ref=e537] [cursor=pointer]:
+                - /url: https://aaawcny.my.salesforce.com/lightning/r/Opportunity/006Pb000005IKeHIAW/view
+                - img [ref=e538]
+            - generic [ref=e542]:
+              - generic [ref=e543]: $12,454
+              - generic [ref=e544]: commission $1,302
+              - generic [ref=e545]: · Lynn Galante
+              - generic [ref=e546]: · created 01/19/2024
+          - generic [ref=e549]:
+            - generic [ref=e550]:
+              - generic [ref=e551]: 02/03/2023
+              - generic [ref=e552]: Opportunity
+              - generic [ref=e553]: Travel
+              - generic [ref=e554]: Closed Won
+            - generic [ref=e555]:
+              - link "Smith - TR - 2023-01-21" [ref=e556] [cursor=pointer]:
+                - /url: /opportunity/006Pb000005ICvmIAG
+              - link [ref=e557] [cursor=pointer]:
+                - /url: https://aaawcny.my.salesforce.com/lightning/r/Opportunity/006Pb000005ICvmIAG/view
+                - img [ref=e558]
+            - generic [ref=e562]:
+              - generic [ref=e563]: $2,575
+              - generic [ref=e564]: commission $60
+              - generic [ref=e565]: · Lynn Galante
+              - generic [ref=e566]: · created 01/19/2024
+          - generic [ref=e569]:
+            - generic [ref=e570]:
+              - generic [ref=e571]: 07/01/2022
+              - generic [ref=e572]: Opportunity
+              - generic [ref=e573]: Travel
+              - generic [ref=e574]: Closed Won
+            - generic [ref=e575]:
+              - link "Smith - TR - 2022-06-19" [ref=e576] [cursor=pointer]:
+                - /url: /opportunity/006Pb000005ICvoIAG
+              - link [ref=e577] [cursor=pointer]:
+                - /url: https://aaawcny.my.salesforce.com/lightning/r/Opportunity/006Pb000005ICvoIAG/view
+                - img [ref=e578]
+            - generic [ref=e582]:
+              - generic [ref=e583]: $19,646
+              - generic [ref=e584]: commission $1,899
+              - generic [ref=e585]: · Lynn Galante
+              - generic [ref=e586]: · created 01/19/2024
+      - generic [ref=e587]:
+        - generic [ref=e588]:
+          - generic [ref=e589]:
+            - img [ref=e590]
+            - paragraph [ref=e593]: AI Upsell Analysis
+          - button "Analyze" [ref=e594]:
+            - img [ref=e595]
+            - text: Analyze
+        - paragraph [ref=e599]:
+          - text: Click
+          - strong [ref=e600]: Analyze
+          - text: to get AI-powered upsell recommendations for this member.

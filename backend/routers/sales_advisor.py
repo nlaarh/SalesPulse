@@ -248,6 +248,24 @@ def advisor_yoy(line: str = "Travel"):
                 GROUP BY CALENDAR_MONTH(CloseDate)
                 ORDER BY CALENDAR_MONTH(CloseDate)
             """,
+            lost_current=f"""
+                SELECT CALENDAR_MONTH(CloseDate) mo, COUNT(Id) cnt, SUM(Amount) rev
+                FROM Opportunity
+                WHERE StageName = 'Closed Lost' AND {lf}
+                  AND CALENDAR_YEAR(CloseDate) = {current_year}
+                  AND CloseDate <= TODAY
+                GROUP BY CALENDAR_MONTH(CloseDate)
+                ORDER BY CALENDAR_MONTH(CloseDate)
+            """,
+            lost_prior=f"""
+                SELECT CALENDAR_MONTH(CloseDate) mo, COUNT(Id) cnt, SUM(Amount) rev
+                FROM Opportunity
+                WHERE StageName = 'Closed Lost' AND {lf}
+                  AND CALENDAR_YEAR(CloseDate) = {prior_year}
+                  AND CloseDate <= TODAY
+                GROUP BY CALENDAR_MONTH(CloseDate)
+                ORDER BY CALENDAR_MONTH(CloseDate)
+            """,
         )
 
         month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -263,6 +281,14 @@ def advisor_yoy(line: str = "Travel"):
             'deals': r.get('cnt', 0) or 0,
             'commission': r.get('comm', 0) or 0,
         } for r in data['prior']}
+        lost_current_map = {r['mo']: {
+            'count': r.get('cnt', 0) or 0,
+            'amount': r.get('rev', 0) or 0,
+        } for r in data.get('lost_current', [])}
+        lost_prior_map = {r['mo']: {
+            'count': r.get('cnt', 0) or 0,
+            'amount': r.get('rev', 0) or 0,
+        } for r in data.get('lost_prior', [])}
 
         months = []
         current_total = 0
@@ -287,6 +313,10 @@ def advisor_yoy(line: str = "Travel"):
                 'prior_commission': pri.get('commission', 0),
                 'current_deals': cur.get('deals', 0),
                 'prior_deals': pri.get('deals', 0),
+                'current_lost': lost_current_map.get(i, {}).get('count', 0),
+                'prior_lost': lost_prior_map.get(i, {}).get('count', 0),
+                'current_lost_amount': lost_current_map.get(i, {}).get('amount', 0),
+                'prior_lost_amount': lost_prior_map.get(i, {}).get('amount', 0),
             })
 
         yoy_pct = round((current_total - prior_total) / prior_total * 100, 1) if prior_total > 0 else 0

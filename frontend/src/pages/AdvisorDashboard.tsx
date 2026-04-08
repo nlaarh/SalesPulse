@@ -289,6 +289,7 @@ export default function AdvisorDashboard() {
           slipping={slipping}
           onSelectAdvisor={(name) => navigate(`/agent/${encodeURIComponent(name)}`)}
           onViewSummary={() => setTab('summary')}
+          periodLabel={periodLabel}
         />
       )}
 

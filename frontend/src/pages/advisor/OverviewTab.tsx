@@ -5,6 +5,7 @@
  * Pure presentation — receives all data via props.
  */
 
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { formatCurrency, formatNumber, formatPct, cn } from '@/lib/utils'
 import { fmtAxis, MONTH_SHORT } from '@/lib/formatters'
@@ -22,7 +23,7 @@ import {
   CheckCircle2, AlertTriangle, Lightbulb,
 } from 'lucide-react'
 import {
-  ResponsiveContainer, BarChart, Bar,
+  ResponsiveContainer, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
 } from 'recharts'
 
@@ -41,6 +42,7 @@ export interface OverviewTabProps {
   slipping: SlippingDeal[]
   onSelectAdvisor: (name: string) => void
   onViewSummary?: () => void
+  periodLabel: string
 }
 
 /* ── Micro-components (OverviewTab-only) ─────────────────────────────────── */
@@ -99,9 +101,11 @@ function ActivityCell({ icon: Icon, label, value, color, bg, onClick, tip }: {
 export default function OverviewTab({
   summary, isInsurance, dealsYoyPct, pipelineCoverage,
   yoy, funnel, c, leaders, insights, slipping,
-  onSelectAdvisor, onViewSummary,
+  onSelectAdvisor, onViewSummary, periodLabel,
 }: OverviewTabProps) {
   const nav = useNavigate()
+  const [chartMode, setChartMode] = useState<'revenue' | 'commission'>('revenue')
+  const [showLost, setShowLost] = useState(false)
 
   // KPI values come from summary (period-filtered by the date picker)
   // yoy is used only for the monthly bar chart context
@@ -110,14 +114,18 @@ export default function OverviewTab({
   const billedPrev  = summary.bookings_prev
   const commValue   = isInsurance ? summary.bookings : summary.commission
 
-  // Bar chart from yoy.months — same source as headline
+  // Line chart from yoy.months
   const currentMonth = new Date().getMonth() + 1
-  const barData = (yoy?.months ?? [])
+  const lineData = (yoy?.months ?? [])
     .filter(m => m.month <= currentMonth)
     .map(m => ({
       label: MONTH_SHORT[m.month - 1],
-      current: m.current_revenue,
-      prior: m.prior_revenue > 0 ? m.prior_revenue : null,
+      current: chartMode === 'commission' ? m.current_commission : m.current_revenue,
+      prior: chartMode === 'commission'
+        ? (m.prior_commission > 0 ? m.prior_commission : null)
+        : (m.prior_revenue > 0 ? m.prior_revenue : null),
+      currentLost: m.current_lost ?? 0,
+      priorLost: m.prior_lost ?? 0,
     }))
 
   const leadsCount = funnel?.steps?.[0]?.count ?? 0
@@ -162,74 +170,127 @@ export default function OverviewTab({
 
       {/* ROW 2 — REVENUE CHART + AT-RISK DEALS */}
       <div className="animate-enter stagger-1 grid gap-3" style={{ gridTemplateColumns: '3fr 2fr' }}>
-        {/* Revenue vs Prior Year */}
+        {/* Revenue / Commission Trend */}
         <div className="card-premium p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Revenue vs Prior Year<Tip text={TIPS.salesOverview} /></h3>
-            <span className="rounded-full border border-border bg-secondary/40 px-2.5 py-0.5 text-[12px] text-muted-foreground">
-              {yoy ? `${yoy.current_year} vs ${yoy.prior_year}` : 'Last 12 Months'}
-            </span>
+            <h3 className="text-sm font-semibold">
+              {chartMode === 'commission' ? 'Commission' : 'Revenue'} Trend · {periodLabel}
+              <Tip text={TIPS.salesOverview} />
+            </h3>
+            <div className="flex items-center gap-2">
+              {/* Lost opps toggle */}
+              <button
+                onClick={() => setShowLost(!showLost)}
+                className={cn(
+                  'rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors',
+                  showLost ? 'border-red-400/60 bg-red-500/10 text-red-400' : 'border-border bg-secondary/40 text-muted-foreground hover:bg-secondary/60',
+                )}
+              >
+                Lost Opps
+              </button>
+              {/* Revenue / Commission toggle */}
+              {!isInsurance && (
+                <div className="flex rounded-full border border-border bg-secondary/40 p-0.5">
+                  <button
+                    onClick={() => setChartMode('revenue')}
+                    className={cn(
+                      'rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors',
+                      chartMode === 'revenue' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >Revenue</button>
+                  <button
+                    onClick={() => setChartMode('commission')}
+                    className={cn(
+                      'rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors',
+                      chartMode === 'commission' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >Commission</button>
+                </div>
+              )}
+              <span className="rounded-full border border-border bg-secondary/40 px-2.5 py-0.5 text-[12px] text-muted-foreground">
+                {yoy ? `${yoy.current_year} vs ${yoy.prior_year}` : 'Last 12 Months'}
+              </span>
+            </div>
           </div>
 
           {/* Headline metrics */}
           <div className="mb-5 flex items-start gap-10">
             <div>
-              <p className="text-[12px] font-medium text-muted-foreground">Total Revenue</p>
+              <p className="text-[12px] font-medium text-muted-foreground">
+                {chartMode === 'commission' ? 'Total Commission' : 'Total Revenue'}
+              </p>
               <p className="mt-0.5 tabular-nums text-[22px] font-bold leading-none">
-                {formatCurrency(billedValue, true)}
+                {formatCurrency(chartMode === 'commission' ? commValue : billedValue, true)}
               </p>
               <div className="mt-1.5 flex items-center gap-2">
-                <DeltaPill value={billedPct} />
+                <DeltaPill value={chartMode === 'commission' ? (summary.commission_yoy_pct ?? billedPct) : billedPct} />
                 <span className="text-[12px] font-medium text-muted-foreground">
-                  Last year: {formatCurrency(billedPrev, true)}
+                  vs prior: {formatCurrency(chartMode === 'commission' ? (summary.commission_prev ?? 0) : billedPrev, true)}
                 </span>
               </div>
             </div>
-            {!isInsurance && (
-              <div>
-                <p className="text-[12px] font-medium text-muted-foreground">Commission Earned</p>
-                <p className="mt-0.5 tabular-nums text-[22px] font-bold leading-none">
-                  {formatCurrency(commValue, true)}
-                </p>
-                <p className="mt-1.5 text-[12px] font-medium text-muted-foreground">
-                  Lags 2-3 months
-                </p>
-              </div>
-            )}
             {yoy && (
               <div className="ml-auto flex flex-col items-end gap-1.5 self-end pb-0.5">
                 <div className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-sm bg-primary/70" />
+                  <span className="h-0.5 w-4 rounded bg-primary" />
                   <span className="text-[12px] font-medium text-muted-foreground">{yoy.current_year}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-sm bg-muted-foreground/25" />
+                  <span className="h-0.5 w-4 rounded bg-muted-foreground/50" style={{ borderTop: '2px dashed' }} />
                   <span className="text-[12px] font-medium text-muted-foreground">{yoy.prior_year}</span>
                 </div>
+                {showLost && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-0.5 w-4 rounded bg-red-400/70" />
+                    <span className="text-[12px] font-medium text-muted-foreground">Lost Opps</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={barData} barGap={3} barCategoryGap="35%">
-              <CartesianGrid strokeDasharray="none" stroke={c.grid} vertical={false} />
+            <LineChart data={lineData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
               <XAxis dataKey="label" axisLine={false} tickLine={false}
                 tick={{ fill: c.tick, fontSize: 10 }} />
-              <YAxis axisLine={false} tickLine={false}
+              <YAxis yAxisId="left" axisLine={false} tickLine={false}
                 tick={{ fill: c.tick, fontSize: 10 }} tickFormatter={fmtAxis} width={50} />
+              {showLost && (
+                <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false}
+                  tick={{ fill: '#f87171', fontSize: 10 }} width={35} />
+              )}
               <Tooltip
                 contentStyle={tooltipStyle(c)}
-                formatter={(v: unknown, name: unknown) => [
-                  formatCurrency(v as number, true),
-                  (name as string) === 'current' ? (yoy ? String(yoy.current_year) : 'Current') : (yoy ? String(yoy.prior_year) : 'Prior'),
-                ]}
-                cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+                formatter={(v: unknown, name: unknown) => {
+                  const n = name as string
+                  if (n === 'currentLost' || n === 'priorLost')
+                    return [`${v} deals`, n === 'currentLost' ? `Lost ${yoy?.current_year ?? 'Current'}` : `Lost ${yoy?.prior_year ?? 'Prior'}`]
+                  return [
+                    formatCurrency(v as number, true),
+                    n === 'current' ? (yoy ? String(yoy.current_year) : 'Current') : (yoy ? String(yoy.prior_year) : 'Prior'),
+                  ]
+                }}
+                cursor={{ stroke: 'rgba(255,255,255,0.1)' }}
               />
-              {barData.some(d => d.prior !== null) && (
-                <Bar dataKey="prior" fill={c.tick} fillOpacity={0.2} radius={[3, 3, 0, 0]} barSize={12} style={{ cursor: 'pointer' }} onClick={() => nav('/monthly')} />
+              {/* Prior year - dashed */}
+              {lineData.some(d => d.prior !== null) && (
+                <Line yAxisId="left" type="monotone" dataKey="prior" stroke={c.tick} strokeOpacity={0.5}
+                  strokeDasharray="6 3" strokeWidth={2} dot={false} />
               )}
-              <Bar dataKey="current" fill={c.primary} fillOpacity={0.85} radius={[3, 3, 0, 0]} barSize={12} style={{ cursor: 'pointer' }} onClick={() => nav('/monthly')} />
-            </BarChart>
+              {/* Current year - solid */}
+              <Line yAxisId="left" type="monotone" dataKey="current" stroke={c.primary} strokeWidth={2.5}
+                dot={{ r: 3, fill: c.primary }} activeDot={{ r: 5 }} />
+              {/* Lost opps lines */}
+              {showLost && (
+                <>
+                  <Line yAxisId="right" type="monotone" dataKey="currentLost" stroke="#f87171" strokeWidth={1.5}
+                    dot={{ r: 2, fill: '#f87171' }} />
+                  <Line yAxisId="right" type="monotone" dataKey="priorLost" stroke="#f87171" strokeOpacity={0.4}
+                    strokeDasharray="4 3" strokeWidth={1.5} dot={false} />
+                </>
+              )}
+            </LineChart>
           </ResponsiveContainer>
         </div>
 

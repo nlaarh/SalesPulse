@@ -25,7 +25,14 @@ export interface Advisor {
 }
 
 export interface YoYData {
-  months: { month: number; label: string; current_revenue: number; prior_revenue: number; current_deals: number; prior_deals: number }[]
+  months: {
+    month: number; label: string
+    current_revenue: number; prior_revenue: number
+    current_commission: number; prior_commission: number
+    current_deals: number; prior_deals: number
+    current_lost: number; prior_lost: number
+    current_lost_amount: number; prior_lost_amount: number
+  }[]
   current_year: number; prior_year: number
   current_total: number; prior_total: number; yoy_pct: number
   ytd_current_total: number; ytd_prior_total: number; ytd_yoy_pct: number

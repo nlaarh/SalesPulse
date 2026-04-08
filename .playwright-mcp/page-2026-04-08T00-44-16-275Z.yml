@@ -1,0 +1,20 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - img [ref=e8]
+    - heading "SalesPulse" [level=1] [ref=e13]
+    - paragraph [ref=e14]: Sign in to your account
+  - generic [ref=e15]:
+    - generic [ref=e16]:
+      - generic [ref=e17]: Email
+      - generic [ref=e18]:
+        - img
+        - textbox "Email" [active] [ref=e19]:
+          - /placeholder: you@company.com
+    - generic [ref=e20]:
+      - generic [ref=e21]: Password
+      - generic [ref=e22]:
+        - img
+        - textbox "Password" [ref=e23]:
+          - /placeholder: Enter your password
+    - button "Sign in" [disabled] [ref=e24]
+  - paragraph [ref=e25]: AAA WCNY · SalesPulse
