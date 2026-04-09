@@ -19,9 +19,9 @@ const WON_STAGES: { stage: string; prob: string; desc: string; color: string; bg
 ]
 
 const COVERAGE_LEVELS: { range: string; label: string; desc: string; color: string; bg: string }[] = [
-  { range: '2x +',      label: 'Strong',   desc: 'Healthy buffer to absorb normal deal attrition and still meet revenue targets.',                     color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+  { range: '2x +',      label: 'Strong',   desc: 'Healthy buffer to absorb normal deal attrition and still meet bookings targets.',                     color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
   { range: '1x – 2x',   label: 'Moderate', desc: 'Serviceable but thin. Team should increase prospecting to build a stronger buffer.',                 color: 'text-amber-500',   bg: 'bg-amber-500/10' },
-  { range: 'Below 1x',  label: 'Critical', desc: 'Pipeline value is less than target revenue. Without immediate pipeline build, targets are at risk.',  color: 'text-rose-500',    bg: 'bg-rose-500/10' },
+  { range: 'Below 1x',  label: 'Critical', desc: 'Pipeline value is less than target bookings. Without immediate pipeline build, targets are at risk.',  color: 'text-rose-500',    bg: 'bg-rose-500/10' },
 ]
 
 const LEAD_STATUSES: { status: string; desc: string; color: string; bg: string; border: string }[] = [
@@ -115,7 +115,7 @@ export default function PipelineSection() {
         <strong className="text-foreground">Pipeline</strong> is the total value of all open,
         not-yet-won Opportunities in Salesforce. Only deals that were created from converted Leads
         (or entered directly) and have not yet been won or lost count as pipeline. It answers
-        the question: <em>"Do we have enough deals in progress to hit our revenue targets?"</em>
+        the question: <em>"Do we have enough deals in progress to hit our bookings targets?"</em>
       </p>
 
       {/* Pipeline Stages */}
@@ -168,7 +168,7 @@ export default function PipelineSection() {
           </div>
         </div>
         <p className="mb-4 text-[12px] leading-relaxed text-foreground/80">
-          Coverage tells you how many "times over" your pipeline could cover your revenue
+          Coverage tells you how many "times over" your pipeline could cover your bookings
           target. At <strong>2x</strong>, you have twice the pipeline you need — a healthy
           buffer because roughly half of all deals fall through. At <strong>0.5x</strong>,
           you would need to close every single deal just to hit half your target.
@@ -196,7 +196,7 @@ export default function PipelineSection() {
           <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
             Travel bookings move through stages very quickly — a trip can go from Prospecting
             to Invoice in days. The "open" pipeline at any snapshot is naturally thin compared
-            to annual revenue. A low coverage number for Travel is expected and does not
+            to annual bookings. A low coverage number for Travel is expected and does not
             necessarily indicate a problem.
           </p>
         </div>

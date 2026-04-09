@@ -63,7 +63,7 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
 
   return (
     <div className="space-y-6">
-      {/* Row 1: Revenue Trend + Team Comparison */}
+      {/* Row 1: Bookings Trend + Team Comparison */}
       <div className="grid grid-cols-3 gap-4">
         {/* Bookings Chart */}
         <div className="col-span-2">
@@ -151,7 +151,7 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
               max={Math.max(s.avg_deal, profile.team.avg_deal) * 1.3}
             />
             <CompareBar
-              label="Commission"
+              label="Commissions"
               agent={s.commission}
               team={profile.team.avg_commission}
               format={(v) => formatCurrency(v, true)}
@@ -280,7 +280,7 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
                 {' · '}Period target: <span className="font-semibold text-foreground">{formatCurrency(targetData.totalTarget, true)}</span>
               </p>
               <p className="text-[12px] text-muted-foreground">
-                Commission earned: <span className="font-semibold text-foreground">{formatCurrency(targetData.totalActual, true)}</span>
+                Commissions earned: <span className="font-semibold text-foreground">{formatCurrency(targetData.totalActual, true)}</span>
               </p>
             </div>
           </div>

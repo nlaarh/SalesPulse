@@ -14,7 +14,7 @@ export default function OverviewSection() {
           <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
             SalesInsight is a real-time analytics platform built on top of Salesforce data
             for AAA Western & Central New York. It provides sales leadership with actionable
-            visibility into advisor performance, pipeline health, lead conversion, and revenue
+            visibility into advisor performance, pipeline health, lead conversion, and bookings
             trends across the Travel and Insurance divisions.
           </p>
         </div>

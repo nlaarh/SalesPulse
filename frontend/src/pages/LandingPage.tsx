@@ -160,7 +160,7 @@ export default function LandingPage() {
                   {/* Mock KPI row */}
                   <div className="grid grid-cols-4 gap-3 p-4">
                     {[
-                      { label: 'Commission', value: '$1.2M', delta: '+18%', up: true },
+                      { label: 'Commissions', value: '$1.2M', delta: '+18%', up: true },
                       { label: 'Deals Won', value: '342', delta: '+24%', up: true },
                       { label: 'Win Rate', value: '72.4%', delta: '-2.1pts', up: false },
                       { label: 'Pipeline', value: '$4.8M', delta: '2.4x', up: true },

@@ -16,7 +16,7 @@ const stagger = (n = 0.05) => ({ hidden: {}, show: { transition: { staggerChildr
 /* ── Metrics data ───────────────────────────────────────────────────────── */
 const METRICS = [
   {
-    name: 'Total Bookings (Revenue)',
+    name: 'Total Bookings',
     icon: DollarSign,
     target: 'Travel ~$44M/yr · Insurance ~$12M/yr',
     what: 'Sum of Amount on all Closed Won + Invoice Opportunities in the selected period. For Travel, this is gross booking value. For Insurance, this is the premium amount.',
@@ -70,7 +70,7 @@ win_rate = won / (won + lost) × 100`,
   {
     name: 'Pipeline Value',
     icon: TrendingDown,
-    target: 'Coverage ≥ 2× revenue',
+    target: 'Coverage ≥ 2× bookings',
     what: 'Total Amount of open Opportunities with a future CloseDate. Bounded to the next 12 months to exclude stale open deals.',
     formula: `SELECT COUNT(Id) cnt, SUM(Amount) rev
 FROM Opportunity
@@ -84,17 +84,17 @@ WHERE IsClosed = false
     name: 'Pipeline Coverage',
     icon: ArrowRightLeft,
     target: '2× = healthy · 1× = moderate · <1× = critical',
-    what: 'Pipeline Value ÷ annualized bookings. A 2× coverage means the pipeline has twice the value of your current revenue run-rate — enough to absorb normal deal attrition and still hit targets.',
+    what: 'Pipeline Value ÷ annualized bookings. A 2× coverage means the pipeline has twice the value of your current bookings run-rate — enough to absorb normal deal attrition and still hit targets.',
     formula: `coverage = pipeline_value / (current_period_revenue × (12 / period_months))
 
-Example: $8M pipeline ÷ $4M revenue (6-month period annualized to $8M)
+Example: $8M pipeline ÷ $4M bookings (6-month period annualized to $8M)
 → $8M ÷ $8M = 1.0× coverage (moderate)`,
   },
   {
     name: 'Average Deal Size',
     icon: Star,
     target: undefined,
-    what: 'Total booking revenue ÷ number of won deals. Tracks whether advisors are moving up-market or down-market over time.',
+    what: 'Total bookings ÷ number of won deals. Tracks whether advisors are moving up-market or down-market over time.',
     formula: `avg_deal_size = SUM(Amount) / COUNT(Id)
   on won opportunities in the period`,
   },
@@ -142,7 +142,7 @@ Both filtered by RecordTypeId and CreatedDate range.`,
     name: 'YoY Growth',
     icon: TrendingDown,
     target: 'Positive = growing',
-    what: 'Compares current period revenue to the same period last year. The app shifts dates back exactly one year (not calendar year) for a fair like-for-like comparison.',
+    what: 'Compares current period bookings to the same period last year. The app shifts dates back exactly one year (not calendar year) for a fair like-for-like comparison.',
     formula: `-- Current period:
 CloseDate >= {sd} AND CloseDate <= {ed}
 
@@ -168,7 +168,7 @@ inv_opp_pct = invoiced_count / opps_created × 100`,
 const RULES = [
   {
     title: 'Won Stages Filter',
-    text: 'SalesInsight counts both "Closed Won" and "Invoice" as won revenue. Invoice = services delivered and billed (Travel only). Closed Won = fully settled deal. Never use IsClosed = true AND IsWon = true alone — Invoice stage is custom and not always flagged as IsWon in SF.',
+    text: 'SalesInsight counts both "Closed Won" and "Invoice" as won bookings. Invoice = services delivered and billed (Travel only). Closed Won = fully settled deal. Never use IsClosed = true AND IsWon = true alone — Invoice stage is custom and not always flagged as IsWon in SF.',
   },
   {
     title: 'RecordTypeId vs RecordType.Name',

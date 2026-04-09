@@ -266,10 +266,10 @@ function buildNarrative(p: NarrativeInput) {
   } else if (metric === 'commission') {
     const commRate = totalSales > 0 ? (totalComm / totalSales * 100) : 0
     const commPerDeal = totalInvoiced > 0 ? totalComm / totalInvoiced : 0
-    const verdict = trendPct > 5 ? '**Commission earnings are growing.**'
-      : trendPct < -10 ? '**Commission earnings are declining** — investigate immediately.'
+    const verdict = trendPct > 5 ? '**Commissions are growing.**'
+      : trendPct < -10 ? '**Commissions are declining** — investigate immediately.'
       : commRate < 6 ? '**Commission rate appears low** — verify for processing delays.'
-      : 'Commission earnings are tracking in line with bookings.'
+      : 'Commissions are tracking in line with bookings.'
     para1 = `${verdict} The ${line} Division earned **${formatCurrency(totalComm, true)}** on **${formatCurrency(totalSales, true)}** in bookings (**${commRate.toFixed(1)}%** rate)${prior3.length > 0 ? `, **${qoqWord} ${Math.abs(trendPct).toFixed(0)}%** QoQ` : ''}.${commPerDeal > 0 ? ` Average commission per deal: **${formatCurrency(commPerDeal, true)}**.` : ''}`
     para2 = `${top1 ? `Top earner: **${top1.name}** at **${formatCurrency(top1Val, true)}**${top2 ? `, followed by **${top2.name}** at **${formatCurrency((top2.totals[metric] || 0) as number, true)}**` : ''}.` : ''} ${topVsMedian > 5 ? `The top earner makes **${topVsMedian.toFixed(0)}x the median** — investigate whether this reflects territory advantage or skill gap.` : ''} ${top3Pct > 40 ? `**Risk:** top 3 earn **${top3Pct.toFixed(0)}%** of all commission. Losing any one of them significantly impacts the division.` : `Commissions are well-distributed (top 3 at ${top3Pct.toFixed(0)}%) — healthy team depth.`}`
     para3 = `**Important:** commission data lags bookings by 2-3 months. Recent months (especially ${latestMonth ? fmtMonth(latestMonth) : 'the latest'}) may be incomplete — do not make staffing or comp decisions based on partial data.${latestMonth && latestVsAvg < -30 ? ` The sharp drop in ${fmtMonth(latestMonth)} (**${formatCurrency(latestVal, true)}**) is almost certainly a lag artifact, not a real decline.` : ''}`

@@ -329,9 +329,9 @@ def compute_insights(*, revenue, avg_deal, wr, rev_yoy, coverage,
 
     if t_avg_rev > 0 and revenue > t_avg_rev:
         pct = round((revenue - t_avg_rev) / t_avg_rev * 100)
-        strengths.append(f"Revenue {pct}% above team average")
+        strengths.append(f"Bookings {pct}% above team average")
     elif t_avg_rev > 0 and revenue < t_avg_rev * REVENUE_BELOW_TEAM_FACTOR:
-        improvements.append(f"Revenue below {int(REVENUE_BELOW_TEAM_FACTOR * 100)}% of team average")
+        improvements.append(f"Bookings below {int(REVENUE_BELOW_TEAM_FACTOR * 100)}% of team average")
 
     if coverage >= COVERAGE_HEALTHY:
         strengths.append(f"Pipeline coverage {coverage}x (healthy)")
@@ -347,7 +347,7 @@ def compute_insights(*, revenue, avg_deal, wr, rev_yoy, coverage,
     if zero_m == 0 and today.month >= 3:
         strengths.append("Consistent monthly production")
     elif zero_m >= 3:
-        improvements.append(f"{zero_m} zero-revenue months this year")
+        improvements.append(f"{zero_m} zero-bookings months this year")
 
     # Task-related insights
     tasks_overdue = task_stats['overdue']

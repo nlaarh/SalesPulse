@@ -94,7 +94,7 @@ export default function TargetGrid({ line }: Props) {
       ? Math.round(amount * commRate / 100)   // bookings → commission
       : commRate > 0 ? Math.round(amount / (commRate / 100)) : 0  // commission → bookings
 
-  const otherLabel = targetBase === 'bookings' ? 'Est. Commission' : 'Est. Bookings'
+  const otherLabel = targetBase === 'bookings' ? 'Est. Commissions' : 'Est. Bookings'
 
   // Convert all target cells when switching basis
   function switchBase(newBase: TargetBase) {
@@ -223,21 +223,21 @@ export default function TargetGrid({ line }: Props) {
         Advisor: r.name,
         Branch: r.branch ?? '',
         [`PY ${year - 1} Bookings`]: r.prior_year_rev,
-        [`PY ${year - 1} Commission`]: r.prior_year,
+        [`PY ${year - 1} Commissions`]: r.prior_year,
       }
       for (let m = 1; m <= 12; m++) {
         const val = r.targets[m] || 0
         const other = toOther(val)
         if (targetBase === 'bookings') {
           row[`${MONTHS[m - 1]} Bookings`] = val
-          row[`${MONTHS[m - 1]} Commission`] = other
+          row[`${MONTHS[m - 1]} Commissions`] = other
         } else {
-          row[`${MONTHS[m - 1]} Commission`] = val
+          row[`${MONTHS[m - 1]} Commissions`] = val
           row[`${MONTHS[m - 1]} Bookings`] = other
         }
       }
       row[`${year} Total Bookings`] = targetBase === 'bookings' ? total : toOther(total)
-      row[`${year} Total Commission`] = targetBase === 'commission' ? total : toOther(total)
+      row[`${year} Total Commissions`] = targetBase === 'commission' ? total : toOther(total)
       return row
     })
     exportToExcel(exportRows, `Advisor_Targets_${line}_${year}`)
@@ -297,7 +297,7 @@ export default function TargetGrid({ line }: Props) {
                     : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                <DollarSign className="h-3.5 w-3.5" /> Commission basis
+                <DollarSign className="h-3.5 w-3.5" /> Commissions basis
               </button>
             </div>
 
@@ -441,7 +441,7 @@ export default function TargetGrid({ line }: Props) {
                 {/* Prior year column */}
                 <th className="px-2 py-2 text-right font-semibold text-muted-foreground min-w-[80px] border-r border-border/50">
                   <div className="text-[10px] uppercase tracking-wide">{year - 1}</div>
-                  <div className="text-[10px] text-muted-foreground/60">{targetBase === 'bookings' ? 'Bookings' : 'Commission'}</div>
+                  <div className="text-[10px] text-muted-foreground/60">{targetBase === 'bookings' ? 'Bookings' : 'Commissions'}</div>
                 </th>
                 {MONTHS.map((m, i) => (
                   <th key={m} className="px-1 py-2 text-center font-semibold text-muted-foreground min-w-[76px]">

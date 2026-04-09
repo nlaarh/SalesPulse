@@ -53,7 +53,7 @@ export default function HeroMetric({
               <Delta pct={commissionYoyPct} label={comparisonLabel} />
             </div>
             <p className="mt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50">
-              Commission
+              Commissions
             </p>
           </div>
         )}

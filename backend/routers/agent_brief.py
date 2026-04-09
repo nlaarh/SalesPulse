@@ -34,12 +34,12 @@ def template_brief(p: dict) -> str:
             parts.append(f"{name} is a strong performer with ${rev:,.0f} in revenue, "
                          f"{pct}% above team average.")
         elif pct > YOY_TRAILING:
-            parts.append(f"{name} is performing at team level with ${rev:,.0f} in revenue.")
+            parts.append(f"{name} is performing at team level with ${rev:,.0f} in bookings.")
         else:
             parts.append(f"{name} is trailing at ${rev:,.0f}, "
                          f"{abs(pct)}% below team average.")
     else:
-        parts.append(f"{name} generated ${rev:,.0f} in revenue this period.")
+        parts.append(f"{name} generated ${rev:,.0f} in bookings this period.")
 
     # YoY
     if yoy['revenue_pct'] > YOY_REVENUE_UP:

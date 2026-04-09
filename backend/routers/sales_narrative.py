@@ -207,9 +207,9 @@ def _gather_travel(line: str, period: int, **kw) -> str:
         yoy_str = f"{yoy:+.1f}% YoY" if yoy is not None else "N/A YoY"
         ctx += f"{i}. {d.get('destination','?')}: ${d.get('revenue',0):,.0f} ({share:.1f}% share), {d.get('volume',0)} bookings, {yoy_str}\n"
 
-    ctx += f"\nTOTAL REVENUE: ${total_rev:,.0f} across {len(dests)} destinations\n"
+    ctx += f"\nTOTAL BOOKINGS: ${total_rev:,.0f} across {len(dests)} destinations\n"
     top3_share = sum(d.get('revenue', 0) for d in dests[:3]) / total_rev * 100 if total_rev else 0
-    ctx += f"TOP 3 CONCENTRATION: {top3_share:.1f}% of total revenue\n"
+    ctx += f"TOP 3 CONCENTRATION: {top3_share:.1f}% of total bookings\n"
 
     return ctx
 

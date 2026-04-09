@@ -285,7 +285,7 @@ export default function AgentDashboard() {
       {/* ── KPI Cards Row ─────────────────────────────────────────────── */}
       <div className={cn('animate-enter stagger-1 grid gap-3', monthlyTarget != null ? 'grid-cols-6' : 'grid-cols-5')}>
         <KPICard
-          label="Commission"
+          label="Commissions"
           value={formatCurrency(s.commission, true)}
           delta={<DeltaPill value={yoy.commission_pct} suffix="% YoY" />}
           sub={`PY: ${formatCurrency(profile.prior.commission, true)}`}
@@ -374,7 +374,7 @@ export default function AgentDashboard() {
                   achBase === 'commission' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                <DollarSign className="h-3 w-3" /> Commission
+                <DollarSign className="h-3 w-3" /> Commissions
               </button>
               <button
                 onClick={() => switchAchBase('bookings')}

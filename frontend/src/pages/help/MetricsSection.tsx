@@ -39,7 +39,7 @@ export default function MetricsSection() {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15">
               <DollarSign className="h-4 w-4 text-amber-500" />
             </div>
-            <h4 className="text-[14px] font-bold text-foreground">Commission</h4>
+            <h4 className="text-[14px] font-bold text-foreground">Commissions</h4>
           </div>
           <div className="space-y-2.5 text-[12px] leading-relaxed text-foreground/80">
             <p>

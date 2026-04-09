@@ -231,7 +231,7 @@ export default function AdvisorDashboard() {
                   achBase === 'commission' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                <DollarSign className="h-3 w-3" /> Commission
+                <DollarSign className="h-3 w-3" /> Commissions
               </button>
               <button
                 onClick={() => switchAchBase('bookings')}

@@ -114,7 +114,7 @@ export default function SummaryTab({
 
   const oppPara = top1 && topShare > 10
     ? `On the opportunity side, our top performer **${top1.name}** contributed **${formatCurrency(top1.bookings, true)}** (${topShare}% of total). ${leaders.length > 10 ? `With ${leaders.length} active advisors, there is significant room to raise the middle of the pack \u2014 even a 10% improvement from the next 5 advisors would meaningfully impact division totals.` : `Documenting and sharing their approach with the broader team could elevate overall performance.`}`
-    : leaders.length > 0 ? `Revenue is well-distributed across the team, with no single advisor dominating \u2014 a healthy sign of team depth and resilience.` : ''
+    : leaders.length > 0 ? `Bookings are well-distributed across the team, with no single advisor dominating \u2014 a healthy sign of team depth and resilience.` : ''
 
   // Paragraph: Close speed
   const agents = closeSpeed?.agents ?? []

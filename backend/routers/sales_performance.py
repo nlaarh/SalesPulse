@@ -367,7 +367,7 @@ def performance_insights(
             insights.append({
                 'type': 'success',
                 'title': 'Top Performer',
-                'text': f"{top_name} leads {line} with ${top_rev:,.0f} in revenue "
+                'text': f"{top_name} leads {line} with ${top_rev:,.0f} in bookings "
                         f"({share}% of total, {top.get('cnt', 0)} deals).",
             })
 

@@ -182,7 +182,7 @@ export default function OverviewTab({
         <div className="card-premium p-5">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-semibold">
-              {chartMode === 'commission' ? 'Commission' : 'Bookings'} Trend · {periodLabel}
+              {chartMode === 'commission' ? 'Commissions' : 'Bookings'} Trend · {periodLabel}
               <Tip text={TIPS.salesOverview} />
             </h3>
             <div className="flex items-center gap-2">
@@ -212,7 +212,7 @@ export default function OverviewTab({
                       'rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors',
                       chartMode === 'commission' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
                     )}
-                  >Commission</button>
+                  >Commissions</button>
                 </div>
               )}
               <span className="rounded-full border border-border bg-secondary/40 px-2.5 py-0.5 text-[12px] text-muted-foreground">
@@ -225,7 +225,7 @@ export default function OverviewTab({
           <div className="mb-5 flex items-start gap-10">
             <div>
               <p className="text-[12px] font-medium text-muted-foreground">
-                {chartMode === 'commission' ? 'Total Commission' : 'Total Bookings'}
+                {chartMode === 'commission' ? 'Total Commissions' : 'Total Bookings'}
               </p>
               <p className="mt-0.5 tabular-nums text-[22px] font-bold leading-none">
                 {formatCurrency(chartMode === 'commission' ? commValue : billedValue, true)}
