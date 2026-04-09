@@ -73,7 +73,7 @@ export default function SummaryTab({ totalPipeline, totalDeals, slipping, stages
   const para1 = `The ${line} Division currently holds **${formatCurrency(totalPipeline, true)}** in active pipeline across **${formatNumber(totalDeals)} deals**, with an average deal size of **${formatCurrency(avgDeal, true)}**. ${recentMonths.length > 0 ? `Over the recent period (${periodLabel.toLowerCase()}), the team converted **${formatCurrency(totalWonRecent, true)}** in won revenue at a **${avgCloseRate.toFixed(1)}% close rate**${wonTrend !== 0 ? ` — **${wonTrend > 0 ? 'up' : 'down'} ${Math.abs(wonTrend).toFixed(0)}%** compared to the prior period` : ''}.` : ''}`
 
   const para2 = earlyPct > 60
-    ? `**Pipeline composition is a concern:** **${earlyPct.toFixed(0)}%** of value sits in early stages (Prospecting, Qualification, Needs Analysis), meaning near-term revenue depends on a small portion of closable deals. The team needs to accelerate progression of early-stage deals through better qualification and more structured follow-up cadences.`
+    ? `**Pipeline composition is a concern:** **${earlyPct.toFixed(0)}%** of value sits in early stages (Prospecting, Qualification, Needs Analysis), meaning near-term bookings depends on a small portion of closable deals. The team needs to accelerate progression of early-stage deals through better qualification and more structured follow-up cadences.`
     : lateValue > earlyValue
     ? `**Pipeline maturity looks favorable** — the majority of value is in later stages, indicating a healthy volume of near-term closable deals. ${topStage ? `The largest concentration is in **${topStage.stage}** at **${formatCurrency(topStage.amount, true)}** (${topStage.count} deals).` : ''}`
     : `**Pipeline is balanced** across early and late stages, providing both near-term closing opportunities and a developing bench for the next quarter.`
@@ -98,7 +98,7 @@ export default function SummaryTab({ totalPipeline, totalDeals, slipping, stages
   const maturityHealth: Health = earlyPct <= 40 ? 'strong' : earlyPct <= 60 ? 'moderate' : 'weak'
 
   const healthCards = [
-    { label: 'Won Revenue (QoQ)', value: `${wonTrend > 0 ? '+' : ''}${wonTrend.toFixed(0)}%`, health: wonTrendHealth, detail: `${formatCurrency(totalWonRecent, true)} last 3mo`, icon: GitBranch, tip: TIPS.activePipeline },
+    { label: 'Won Bookings (QoQ)', value: `${wonTrend > 0 ? '+' : ''}${wonTrend.toFixed(0)}%`, health: wonTrendHealth, detail: `${formatCurrency(totalWonRecent, true)} last 3mo`, icon: GitBranch, tip: TIPS.activePipeline },
     { label: 'Close Rate', value: `${avgCloseRate.toFixed(1)}%`, health: closeRateHealth, detail: priorCloseRate > 0 ? `${priorCloseRate > avgCloseRate ? 'down' : 'up'} from ${priorCloseRate.toFixed(1)}%` : '3-month average', icon: Target, tip: TIPS.closeRate },
     { label: 'Pipeline Risk', value: overdueCount > 0 ? `${riskPct.toFixed(0)}%` : 'Clean', health: riskHealth, detail: overdueCount > 0 ? `${overdueCount} deals (${formatCurrency(totalAtRisk, true)})` : 'No overdue deals', icon: Shield, tip: TIPS.pastDue },
     { label: 'Pipeline Maturity', value: earlyPct <= 40 ? 'Closable' : earlyPct <= 60 ? 'Mixed' : 'Early', health: maturityHealth, detail: `${earlyPct.toFixed(0)}% in early stages`, icon: DollarSign, tip: TIPS.avgDealValue },
@@ -109,10 +109,10 @@ export default function SummaryTab({ totalPipeline, totalDeals, slipping, stages
   if (severeOverdue.length > 0) actions.push({ priority: 'high', label: `${formatCurrency(severeValue, true)} Severely Overdue`, action: `${severeOverdue.length} deals are 90+ days past close date. These are likely dead — run a pipeline scrub and either reclassify or close them out. Keeping them inflates pipeline reporting.` })
   else if (overdueCount > 0) actions.push({ priority: 'high', label: `${formatCurrency(totalAtRisk, true)} Past Due`, action: `${overdueCount} deals have missed their close date (${riskPct.toFixed(0)}% of pipeline). Require each owner to provide updated close dates with justification this week.` })
   if (avgCloseRate < 25 && recentMonths.length > 0) actions.push({ priority: 'high', label: `${avgCloseRate.toFixed(1)}% Close Rate`, action: `Close rate is significantly below healthy benchmarks. Review deal qualification standards — the team may be advancing unqualified deals into the pipeline.` })
-  if (wonTrend < -15 && priorMonths.length > 0) actions.push({ priority: 'high', label: 'Revenue Decline', action: `Won revenue dropped ${Math.abs(wonTrend).toFixed(0)}% quarter-over-quarter. Investigate: is this a pipeline supply issue (not enough deals) or a conversion issue (deals not closing)?` })
-  if (earlyPct > 60) actions.push({ priority: 'medium', label: 'Early-Stage Heavy', action: `${earlyPct.toFixed(0)}% of pipeline is in early stages. Near-term revenue may be thin — accelerate deal progression and ensure proper qualification before advancing.` })
+  if (wonTrend < -15 && priorMonths.length > 0) actions.push({ priority: 'high', label: 'Bookings Decline', action: `Won bookings dropped ${Math.abs(wonTrend).toFixed(0)}% quarter-over-quarter. Investigate: is this a pipeline supply issue (not enough deals) or a conversion issue (deals not closing)?` })
+  if (earlyPct > 60) actions.push({ priority: 'medium', label: 'Early-Stage Heavy', action: `${earlyPct.toFixed(0)}% of pipeline is in early stages. Near-term bookings may be thin — accelerate deal progression and ensure proper qualification before advancing.` })
   if (overdueCount === 0 && avgCloseRate >= 35) actions.push({ priority: 'low', label: 'Healthy Pipeline', action: `Pipeline hygiene is strong with a ${avgCloseRate.toFixed(1)}% close rate and no overdue deals. Focus on maintaining deal velocity and filling the top of the funnel.` })
-  if (wonTrend > 15) actions.push({ priority: 'low', label: 'Closing Momentum', action: `Won revenue grew ${wonTrend.toFixed(0)}% QoQ. The team is converting well — ensure pipeline replenishment keeps pace with closings.` })
+  if (wonTrend > 15) actions.push({ priority: 'low', label: 'Closing Momentum', action: `Won bookings grew ${wonTrend.toFixed(0)}% QoQ. The team is converting well — ensure pipeline replenishment keeps pace with closings.` })
 
   return (
     <>

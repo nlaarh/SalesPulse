@@ -13,7 +13,7 @@ import {
 const CAPABILITIES = [
   {
     icon: BarChart3,
-    title: 'Revenue Analytics',
+    title: 'Bookings & Commission Analytics',
     desc: 'Commission, bookings, and win rate metrics — broken down by agent, branch, and month.',
   },
   {

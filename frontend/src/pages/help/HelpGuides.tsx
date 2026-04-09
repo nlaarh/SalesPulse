@@ -167,10 +167,10 @@ export function OverviewSection() {
 
 /* ── Scoring dimensions ─────────────────────────────────────────────────── */
 const RANK_DIMENSIONS = [
-  { key: 'revenue',    label: 'Total Revenue (Bookings)', weight: '—',   note: 'Primary sort key for the leaderboard. Higher bookings = higher rank.' },
+  { key: 'revenue',    label: 'Total Bookings', weight: '—',   note: 'Primary sort key for the leaderboard. Higher bookings = higher rank.' },
   { key: 'deals',      label: 'Deal Count',               weight: 'context', note: 'Number of Closed Won + Invoice deals in the period.' },
   { key: 'win_rate',   label: 'Win Rate',                 weight: 'context', note: 'Won ÷ (Won + Lost). Open deals are excluded.' },
-  { key: 'avg_deal',   label: 'Avg Deal Size',            weight: 'context', note: 'Revenue ÷ Deals. Higher = advisor closes more valuable clients.' },
+  { key: 'avg_deal',   label: 'Avg Deal Size',            weight: 'context', note: 'Bookings ÷ Deals. Higher = advisor closes more valuable clients.' },
   { key: 'pipeline',   label: 'Pipeline Value',           weight: 'context', note: 'Open deals with future close dates. Shows growth trajectory.' },
 ]
 

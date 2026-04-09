@@ -148,7 +148,7 @@ export default function OverviewTab({
       <div className="animate-enter grid grid-cols-4 gap-3">
         <KPITile
           icon={DollarSign} iconBg="bg-primary/10" iconColor="text-primary"
-          title="Billed Revenue" tip={TIPS.billedRevenue}
+          title="Billed Bookings" tip={TIPS.billedRevenue}
           value={formatCurrency(billedValue, true)}
           delta={billedPct} deltaLabel="vs last year"
           onClick={() => nav('/monthly')}
@@ -178,11 +178,11 @@ export default function OverviewTab({
 
       {/* ROW 2 — REVENUE CHART + AT-RISK DEALS */}
       <div className="animate-enter stagger-1 grid gap-3" style={{ gridTemplateColumns: '3fr 2fr' }}>
-        {/* Revenue / Commission Trend */}
+        {/* Bookings / Commission Trend */}
         <div className="card-premium p-5">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-semibold">
-              {chartMode === 'commission' ? 'Commission' : 'Revenue'} Trend · {periodLabel}
+              {chartMode === 'commission' ? 'Commission' : 'Bookings'} Trend · {periodLabel}
               <Tip text={TIPS.salesOverview} />
             </h3>
             <div className="flex items-center gap-2">
@@ -196,7 +196,7 @@ export default function OverviewTab({
               >
                 Lost Opps
               </button>
-              {/* Revenue / Commission toggle */}
+              {/* Bookings / Commission toggle */}
               {!isInsurance && (
                 <div className="flex rounded-full border border-border bg-secondary/40 p-0.5">
                   <button
@@ -205,7 +205,7 @@ export default function OverviewTab({
                       'rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors',
                       chartMode === 'revenue' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
                     )}
-                  >Revenue</button>
+                  >Bookings</button>
                   <button
                     onClick={() => setChartMode('commission')}
                     className={cn(
@@ -225,7 +225,7 @@ export default function OverviewTab({
           <div className="mb-5 flex items-start gap-10">
             <div>
               <p className="text-[12px] font-medium text-muted-foreground">
-                {chartMode === 'commission' ? 'Total Commission' : 'Total Revenue'}
+                {chartMode === 'commission' ? 'Total Commission' : 'Total Bookings'}
               </p>
               <p className="mt-0.5 tabular-nums text-[22px] font-bold leading-none">
                 {formatCurrency(chartMode === 'commission' ? commValue : billedValue, true)}
@@ -390,7 +390,7 @@ export default function OverviewTab({
               <tr className="border-b border-border bg-secondary/20">
                 <th className="w-10 px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">#</th>
                 <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Advisor</th>
-                <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Revenue</th>
+                <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Bookings</th>
                 <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Deals</th>
                 <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Win %</th>
                 <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Pipeline</th>

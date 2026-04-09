@@ -106,7 +106,7 @@ export default function TrendWithOverlay({ trend, yoy }: TrendWithOverlayProps) 
                 formatter={(v, name) => {
                   if (v == null) return [null, null]
                   const isPrior = String(name).includes('Prior')
-                  const label = isPrior ? `${priorYearLabel} (Prior Year)` : `${currentYearLabel} Revenue`
+                  const label = isPrior ? `${priorYearLabel} (Prior Year)` : `${currentYearLabel} Bookings`
                   return [formatCurrency(Number(v), true), label]
                 }}
                 labelFormatter={(l) => String(l)}
@@ -135,7 +135,7 @@ export default function TrendWithOverlay({ trend, yoy }: TrendWithOverlayProps) 
               <Area
                 type="monotone"
                 dataKey="revenue"
-                name={priorMap.size > 0 ? 'Current' : 'Revenue'}
+                name={priorMap.size > 0 ? 'Current' : 'Bookings'}
                 stroke={c.primary}
                 strokeWidth={2}
                 fill="url(#trendGradient)"

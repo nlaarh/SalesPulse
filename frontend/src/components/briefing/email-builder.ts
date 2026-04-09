@@ -40,7 +40,7 @@ export function buildAdvisorEmailHtml(
   html += `<h3 style="font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:#94a3b8;margin:0 0 8px;border-bottom:2px solid #1e293b;padding-bottom:4px;">Your Numbers</h3>`
   html += `<table style="border-collapse:collapse;width:100%;margin-bottom:20px;">`
   html += `<tr><th style="${headerStyle}">Metric</th><th style="${headerStyle}text-align:right;">Value</th><th style="${headerStyle}text-align:right;">YoY / Benchmark</th></tr>`
-  html += `<tr><td style="${cellStyle}">Revenue</td><td style="${numStyle}font-weight:600;">${esc(formatCurrency(s.revenue, true))}</td><td style="${numStyle}color:${yoyColor(yoy.revenue_pct)};font-weight:600;">${fmtYoy(yoy.revenue_pct)}</td></tr>`
+  html += `<tr><td style="${cellStyle}">Bookings</td><td style="${numStyle}font-weight:600;">${esc(formatCurrency(s.revenue, true))}</td><td style="${numStyle}color:${yoyColor(yoy.revenue_pct)};font-weight:600;">${fmtYoy(yoy.revenue_pct)}</td></tr>`
   html += `<tr><td style="${cellStyle}">Deals Won</td><td style="${numStyle}">${s.deals}</td><td style="${numStyle}color:${yoyColor(yoy.deals_pct)};">${fmtYoy(yoy.deals_pct)}</td></tr>`
   html += `<tr><td style="${cellStyle}">Win Rate</td><td style="${numStyle}">${esc(formatPct(s.win_rate))}</td><td style="${numStyle}color:#64748b;">Team: ${esc(formatPct(p.team.win_rate))}</td></tr>`
   html += `<tr><td style="${cellStyle}">Avg Deal</td><td style="${numStyle}">${esc(formatCurrency(s.avg_deal, true))}</td><td style="${numStyle}color:#64748b;">Team: ${esc(formatCurrency(p.team.avg_deal, true))}</td></tr>`

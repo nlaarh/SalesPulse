@@ -45,7 +45,7 @@ export function Tip({ text, className }: { text: string; className?: string }) {
 
 /** Metric calculation explanations — reusable across all pages. */
 export const TIPS = {
-  // Revenue
+  // Bookings
   billedRevenue: 'Sum of the Amount field on Closed Won & Invoice opportunities in the selected period. Represents total booking value before commission.',
   commission: 'Sum of Earned_Commission_Amount__c on won deals. Commission is paid 2–3 months after booking, so recent months may be incomplete.',
   bookings: 'Sum of the Amount field (total booking value). Travel = gross bookings; Insurance = premium.',
@@ -89,7 +89,7 @@ export const TIPS = {
   salesOverview: 'Monthly bookings (Amount) side-by-side for current vs prior year. Both years compared for the same calendar months.',
   revenueByMonth: 'Monthly bookings trend with prior-year overlay. Uses the Amount field for fair comparison.',
   dealsByMonth: 'Won deals per month. Shows seasonal patterns and production consistency.',
-  wonBookingsCloseRate: 'Combined chart: bars = monthly won revenue (Amount), line = close rate (Won ÷ total closed). Shows revenue alongside conversion efficiency.',
+  wonBookingsCloseRate: 'Combined chart: bars = monthly won bookings (Amount), line = close rate (Won ÷ total closed). Shows bookings alongside conversion efficiency.',
 
   // Monthly Report
   monthlyComm: 'Earned commission per advisor per month (Earned_Commission_Amount__c). Recent months may lag.',

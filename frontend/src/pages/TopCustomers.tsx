@@ -251,7 +251,7 @@ export default function TopCustomers() {
           {/* Bar Chart — top 10 */}
           <div className="bg-white dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
             <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-4">
-              Top 10 by Revenue
+              Top 10 by Bookings
             </h2>
             <ResponsiveContainer width="100%" height={320}>
               <BarChart
@@ -311,7 +311,7 @@ export default function TopCustomers() {
                       className="px-5 py-3 text-right cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 select-none"
                       onClick={() => toggleSort('total_rev')}
                     >
-                      Revenue <SortIcon field="total_rev" />
+                      Bookings <SortIcon field="total_rev" />
                     </th>
                     <th
                       className="px-5 py-3 text-right cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 select-none"

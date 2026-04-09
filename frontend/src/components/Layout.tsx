@@ -17,8 +17,8 @@ import DateRangeSummary from '@/components/DateRangeSummary'
 import { useState, useEffect, useCallback } from 'react'
 
 const NAV_ANALYTICS = [
-  { to: '/dashboard', label: 'Sales Performance', icon: Users, desc: 'Revenue, pipeline & team' },
-  { to: '/customers', label: 'Top Customers', icon: UserCheck, desc: 'Highest revenue accounts' },
+  { to: '/dashboard', label: 'Sales Performance', icon: Users, desc: 'Bookings, pipeline & team' },
+  { to: '/customers', label: 'Top Customers', icon: UserCheck, desc: 'Highest bookings accounts' },
   { to: '/monthly', label: 'Advisor Monthly Report', icon: Table2, desc: 'Agent × month breakdown' },
   { to: '/pipeline', label: 'Pipeline & Forecast', icon: GitBranch, desc: 'Stages, velocity & risk' },
   { to: '/opportunities', label: 'Top Opportunities', icon: Target, desc: 'AI-scored deal ranking' },

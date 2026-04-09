@@ -44,7 +44,7 @@ function pushRecent(id: string) {
 
 /* ── Static nav items (used outside of hook too) ────────────────────────── */
 export const NAV_COMMANDS = [
-  { id: 'nav-dashboard',     label: 'Sales Dashboard',        sub: 'Revenue, KPIs & leaderboard',        to: '/dashboard',     icon: <LayoutDashboard className="w-4 h-4" />, keywords: 'home overview' },
+  { id: 'nav-dashboard',     label: 'Sales Dashboard',        sub: 'Bookings, KPIs & leaderboard',        to: '/dashboard',     icon: <LayoutDashboard className="w-4 h-4" />, keywords: 'home overview' },
   { id: 'nav-monthly',       label: 'Monthly Report',         sub: 'Agent × month breakdown',             to: '/monthly',       icon: <Table2    className="w-4 h-4" />, keywords: 'advisors table' },
   { id: 'nav-pipeline',      label: 'Pipeline & Forecast',    sub: 'Stages, velocity & risk',             to: '/pipeline',      icon: <GitBranch className="w-4 h-4" />, keywords: 'funnel stages forecast coverage' },
   { id: 'nav-opportunities', label: 'Top Opportunities',      sub: 'AI-scored deal ranking',              to: '/opportunities', icon: <Target    className="w-4 h-4" />, keywords: 'deals score opps' },

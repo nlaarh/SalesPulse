@@ -140,7 +140,7 @@ export default function ManagerBriefing({
             Your Numbers
           </h2>
           <div className="grid grid-cols-4 gap-4">
-            <MetricBox label="Revenue" value={formatCurrency(s.revenue, true)} delta={`${yoy.revenue_pct > 0 ? '+' : ''}${yoy.revenue_pct.toFixed(1)}% YoY`} positive={yoy.revenue_pct > 0} />
+            <MetricBox label="Bookings" value={formatCurrency(s.revenue, true)} delta={`${yoy.revenue_pct > 0 ? '+' : ''}${yoy.revenue_pct.toFixed(1)}% YoY`} positive={yoy.revenue_pct > 0} />
             <MetricBox label="Deals Won" value={String(s.deals)} delta={`${yoy.deals_pct > 0 ? '+' : ''}${yoy.deals_pct.toFixed(1)}% YoY`} positive={yoy.deals_pct > 0} />
             <MetricBox label="Win Rate" value={formatPct(s.win_rate)} delta={`Team: ${formatPct(profile.team.win_rate)}`} positive={s.win_rate >= profile.team.win_rate} />
             <MetricBox label="Pipeline" value={formatCurrency(s.pipeline_value, true)} delta={s.coverage >= 2 ? 'Healthy' : 'Needs more deals'} positive={s.coverage >= 2} />

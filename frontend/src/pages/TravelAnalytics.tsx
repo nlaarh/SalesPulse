@@ -138,15 +138,15 @@ function ChartsTab({ dests, topDest, fastestGrowing, totalRev, totalVol, growthV
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KPICard title="Top Destination" value={topDest?.destination ?? '—'} icon={<MapPin className="h-4 w-4" />} className="stagger-1" />
         <KPICard title="Fastest Growing" value={fastestGrowing?.destination ?? '—'} delta={growthVal} icon={<TrendingUp className="h-4 w-4" />} className="stagger-2" />
-        <KPICard title="Total Revenue" value={formatCurrency(totalRev, true)} icon={<DollarSign className="h-4 w-4" />} className="stagger-3" />
+        <KPICard title="Total Bookings" value={formatCurrency(totalRev, true)} icon={<DollarSign className="h-4 w-4" />} className="stagger-3" />
         <KPICard title="Bookings" value={formatNumber(totalVol)} icon={<Users className="h-4 w-4" />} className="stagger-4" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Top Destinations Revenue */}
+        {/* Top Destinations Bookings */}
         <div className="card-premium animate-enter">
           <div className="border-b border-border px-6 py-4">
-            <h2 className="text-sm font-semibold tracking-tight">Revenue by Destination</h2>
+            <h2 className="text-sm font-semibold tracking-tight">Bookings by Destination</h2>
           </div>
           <div className="p-5">
             <ResponsiveContainer width="100%" height={300}>
@@ -155,7 +155,7 @@ function ChartsTab({ dests, topDest, fastestGrowing, totalRev, totalVol, growthV
                 <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }}
                   tickFormatter={(v: number) => v >= 1e6 ? `$${(v/1e6).toFixed(1)}M` : `$${(v/1e3).toFixed(0)}K`} />
                 <YAxis type="category" dataKey="name" width={100} axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} />
-                <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [formatCurrency(Number(v), true), 'Revenue']} />
+                <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [formatCurrency(Number(v), true), 'Bookings']} />
                 <Bar dataKey="revenue" fill={c.primary} radius={[0, 6, 6, 0]} barSize={18}
                   onClick={(_: any, idx: number) => { if (top10Dests[idx]) setSelectedDest(top10Dests[idx].name) }} cursor="pointer" />
               </BarChart>
@@ -183,7 +183,7 @@ function ChartsTab({ dests, topDest, fastestGrowing, totalRev, totalVol, growthV
                     tickFormatter={(v: string) => { const p = v.split('-'); return `${p[1]}/${p[0]?.slice(2)}` }} interval="preserveStartEnd" />
                   <YAxis axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }}
                     tickFormatter={(v: number) => `$${(v / 1_000).toFixed(0)}K`} width={50} />
-                  <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [formatCurrency(Number(v), true), 'Revenue']} />
+                  <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [formatCurrency(Number(v), true), 'Bookings']} />
                   <Area type="monotone" dataKey="revenue" stroke={c.primary} strokeWidth={2} fill="url(#destGrad)" dot={false} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -228,7 +228,7 @@ function DetailsTab({ dests, selectedDest, setSelectedDest, destTrend, c }: {
       <div className="card-premium animate-enter overflow-hidden">
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div>
-            <h2 className="text-sm font-semibold tracking-tight">Destination Revenue</h2>
+            <h2 className="text-sm font-semibold tracking-tight">Destination Bookings</h2>
             <span className="text-[11px] text-muted-foreground">Click a row to view trend</span>
           </div>
           <button
@@ -246,7 +246,7 @@ function DetailsTab({ dests, selectedDest, setSelectedDest, destTrend, c }: {
           <table className="w-full">
             <thead className="sticky top-0 bg-card">
               <tr className="border-b border-border">
-                {['Destination', 'Revenue', 'Avg Booking', 'YoY'].map(h => (
+                {['Destination', 'Bookings', 'Avg Booking', 'YoY'].map(h => (
                   <th key={h} className={cn('px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60', h === 'Destination' ? 'text-left' : 'text-right')}>{h}</th>
                 ))}
               </tr>
@@ -295,7 +295,7 @@ function DetailsTab({ dests, selectedDest, setSelectedDest, destTrend, c }: {
                   tickFormatter={(v: string) => { const p = v.split('-'); return `${p[1]}/${p[0]?.slice(2)}` }} interval="preserveStartEnd" />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }}
                   tickFormatter={(v: number) => `$${(v / 1_000).toFixed(0)}K`} width={50} />
-                <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [formatCurrency(Number(v), true), 'Revenue']} />
+                <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [formatCurrency(Number(v), true), 'Bookings']} />
                 <Area type="monotone" dataKey="revenue" stroke={c.primary} strokeWidth={2} fill="url(#destGrad2)" dot={false} />
               </AreaChart>
             </ResponsiveContainer>

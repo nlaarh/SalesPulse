@@ -9,14 +9,14 @@ export function generateFocusAreas(p: AgentProfile): FocusArea[] {
   const yoy = p.yoy
   const team = p.team
 
-  // 1. Revenue — how are sales compared to last year?
+  // 1. Bookings — how are sales compared to last year?
   const revVsTeam = team.avg_revenue > 0
     ? Math.round((s.revenue - team.avg_revenue) / team.avg_revenue * 100)
     : 0
   if (yoy.revenue_pct < -20) {
     pts.push({
       priority: 'high',
-      title: `Revenue Is Down ${Math.abs(yoy.revenue_pct).toFixed(0)}% Compared to Last Year`,
+      title: `Bookings Are Down ${Math.abs(yoy.revenue_pct).toFixed(0)}% Compared to Last Year`,
       detail: `You brought in ${formatCurrency(s.revenue, true)} this period. Last year in the same timeframe it was ${formatCurrency(p.prior.revenue, true)}. `
         + (yoy.deals_pct < -10
           ? `You're also working fewer deals (down ${Math.abs(yoy.deals_pct).toFixed(0)}%), which means fewer chances to close.`
@@ -28,14 +28,14 @@ export function generateFocusAreas(p: AgentProfile): FocusArea[] {
   } else if (yoy.revenue_pct > 15) {
     pts.push({
       priority: 'low',
-      title: `Great Job — Revenue Up ${yoy.revenue_pct.toFixed(0)}% Over Last Year`,
+      title: `Great Job — Bookings Up ${yoy.revenue_pct.toFixed(0)}% Over Last Year`,
       detail: `You brought in ${formatCurrency(s.revenue, true)} this period, up from ${formatCurrency(p.prior.revenue, true)} last year. ${revVsTeam > 0 ? `That puts you ${revVsTeam}% above the team average.` : ''}`,
       action: 'Keep doing what you\'re doing. Let\'s talk about what\'s working so we can keep it going.',
     })
   } else if (revVsTeam < -25) {
     pts.push({
       priority: 'high',
-      title: `Revenue Is ${Math.abs(revVsTeam)}% Below the Team Average`,
+      title: `Bookings Are ${Math.abs(revVsTeam)}% Below the Team Average`,
       detail: `You've brought in ${formatCurrency(s.revenue, true)} so far. The average across the team is ${formatCurrency(team.avg_revenue, true)}.`,
       action: 'Let\'s figure out together what\'s causing the gap and how to close it.',
     })

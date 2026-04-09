@@ -22,7 +22,7 @@ const GLOSSARY_CATEGORIES: { category: string; terms: TermDef[] }[] = [
     ],
   },
   {
-    category: 'Revenue & Financials',
+    category: 'Bookings & Financials',
     terms: [
       { term: 'Bookings (Amount)', definition: 'Total booking value of a deal. Travel = gross bookings; Insurance = premium. Recorded at close.', icon: CircleDollarSign, color: 'text-primary', bg: 'bg-primary/10' },
       { term: 'Commission', definition: 'Earned commission on delivered deals (Earned_Commission_Amount__c). Lags 2-3 months after booking.', icon: DollarSign, color: 'text-amber-500', bg: 'bg-amber-500/10' },

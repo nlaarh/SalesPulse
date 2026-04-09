@@ -30,7 +30,7 @@ function buildPrintHtml(p: AgentProfile, startDate: string, endDate: string): st
   const yoy = p.yoy
 
   const kpiCells = ([
-    ['Revenue',    fmt(s.revenue, true),    `${yoy.revenue_pct >= 0 ? '+' : ''}${yoy.revenue_pct.toFixed(1)}% YoY`],
+    ['Bookings',   fmt(s.revenue, true),    `${yoy.revenue_pct >= 0 ? '+' : ''}${yoy.revenue_pct.toFixed(1)}% YoY`],
     ['Commission', fmt(s.commission, true), `PY: ${fmt(p.prior.commission, true)}`],
     ['Deals',      String(s.deals),         `${yoy.deals_pct >= 0 ? '+' : ''}${yoy.deals_pct.toFixed(1)}% YoY`],
     ['Win Rate',   pct(s.win_rate),         `Team: ${pct(p.team.win_rate)}`],

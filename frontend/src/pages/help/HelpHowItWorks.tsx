@@ -94,7 +94,7 @@ const PIPELINE_STEPS = [
   { label: 'Proposal',      sub: 'Deal in Progress', color: 'bg-amber-500',   fields: ['Amount', 'CloseDate', 'StageName'] },
   { label: 'Closed Won',    sub: 'Booking Captured', color: 'bg-emerald-500', fields: ['Amount', 'StageName'] },
   { label: 'Invoice',       sub: 'Service Delivered',color: 'bg-emerald-600', fields: ['Earned_Commission_Amount__c'] },
-  { label: 'Commission',    sub: 'Revenue Earned',   color: 'bg-primary',     fields: ['Earned_Comm…', '+2-3 mo lag'] },
+  { label: 'Commission',    sub: 'Commission Earned', color: 'bg-primary',     fields: ['Earned_Comm…', '+2-3 mo lag'] },
 ]
 
 /* ── Expandable Topics ──────────────────────────────────────────────────── */
@@ -180,9 +180,9 @@ function TopicContent({ id }: { id: string }) {
           <code className="text-[9px] text-blue-400/70 mt-1 block">RecordTypeId = '012Pb0000006hIjIAI'</code>
         </div>
         <div className="p-4 space-y-2.5 text-xs text-muted-foreground">
-          <p><span className="font-medium text-foreground">Revenue metric:</span> <FieldTag name="Amount" /> = gross booking value (trips, tours, packages). Typically <strong>~$44M/yr</strong>.</p>
+          <p><span className="font-medium text-foreground">Bookings metric:</span> <FieldTag name="Amount" /> = gross booking value (trips, tours, packages). Typically <strong>~$44M/yr</strong>.</p>
           <p><span className="font-medium text-foreground">Commission:</span> <FieldTag name="Earned_Commission_Amount__c" /> ≈ 18.7% of bookings. Lags 2-3 months — populated at Invoice stage.</p>
-          <p><span className="font-medium text-foreground">Won stages:</span> <FieldTag name="Closed Won" /> and <FieldTag name="Invoice" /> both count as revenue.</p>
+          <p><span className="font-medium text-foreground">Won stages:</span> <FieldTag name="Closed Won" /> and <FieldTag name="Invoice" /> both count as bookings.</p>
           <p><span className="font-medium text-foreground">Agents:</span> Profile IN (Travel User, Support User) filtered by title keywords (TSC, Travel Advisor).</p>
         </div>
       </div>
@@ -192,8 +192,8 @@ function TopicContent({ id }: { id: string }) {
           <code className="text-[9px] text-emerald-500/70 mt-1 block">RecordTypeId = '012Pb0000006hIgIAI'</code>
         </div>
         <div className="p-4 space-y-2.5 text-xs text-muted-foreground">
-          <p><span className="font-medium text-foreground">Revenue metric:</span> <FieldTag name="Amount" /> = insurance premium. Typically <strong>~$12M/yr</strong>.</p>
-          <p><span className="font-medium text-foreground">Commission:</span> Not tracked via <FieldTag name="Earned_Commission_Amount__c" /> (always $0). Amount IS the revenue.</p>
+          <p><span className="font-medium text-foreground">Bookings metric:</span> <FieldTag name="Amount" /> = insurance premium. Typically <strong>~$12M/yr</strong>.</p>
+          <p><span className="font-medium text-foreground">Commission:</span> Not tracked via <FieldTag name="Earned_Commission_Amount__c" /> (always $0). Amount IS the bookings.</p>
           <p><span className="font-medium text-foreground">Won stages:</span> Only <FieldTag name="Closed Won" /> — the "Invoice" stage is Travel-only.</p>
           <p><span className="font-medium text-foreground">Agents:</span> Profile = Insurance User, excluding manager/supervisor/QC/training titles.</p>
         </div>
@@ -302,7 +302,7 @@ export default function HowItWorksSection() {
       {/* ── Sales Pipeline Visual ─────────────────────────────────────── */}
       <div className="rounded-xl border border-border bg-card/50 p-5 mt-4 mb-6 overflow-x-auto">
         <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-4">
-          Sales Pipeline — Lead to Revenue
+          Sales Pipeline — Lead to Bookings
         </h3>
         <motion.div className="flex items-start gap-0 min-w-[860px]" variants={stagger(0.08)} initial="hidden" animate="show">
           {PIPELINE_STEPS.map((step, i, arr) => (

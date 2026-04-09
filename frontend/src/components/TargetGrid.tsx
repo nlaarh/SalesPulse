@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { fetchMonthlyTargets, saveMonthlyTargets } from '@/lib/api'
 import type { MonthlyTargetAdvisor } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { Loader2, Save, CopyCheck, ArrowDownToLine, DollarSign, BookOpen } from 'lucide-react'
+import { Loader2, Save, CopyCheck, ArrowDownToLine, DollarSign, BookOpen, Download } from 'lucide-react'
+import { exportToExcel } from '@/lib/exportExcel'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -215,6 +216,33 @@ export default function TargetGrid({ line }: Props) {
     return Object.values(row.targets).reduce((s, v) => s + v, 0)
   }
 
+  function handleExport() {
+    const exportRows = rows.map(r => {
+      const total = rowTotal(r)
+      const row: Record<string, unknown> = {
+        Advisor: r.name,
+        Branch: r.branch ?? '',
+        [`PY ${year - 1} Bookings`]: r.prior_year_rev,
+        [`PY ${year - 1} Commission`]: r.prior_year,
+      }
+      for (let m = 1; m <= 12; m++) {
+        const val = r.targets[m] || 0
+        const other = toOther(val)
+        if (targetBase === 'bookings') {
+          row[`${MONTHS[m - 1]} Bookings`] = val
+          row[`${MONTHS[m - 1]} Commission`] = other
+        } else {
+          row[`${MONTHS[m - 1]} Commission`] = val
+          row[`${MONTHS[m - 1]} Bookings`] = other
+        }
+      }
+      row[`${year} Total Bookings`] = targetBase === 'bookings' ? total : toOther(total)
+      row[`${year} Total Commission`] = targetBase === 'commission' ? total : toOther(total)
+      return row
+    })
+    exportToExcel(exportRows, `Advisor_Targets_${line}_${year}`)
+  }
+
   const fmt  = (v: number) => v > 0 ? v.toLocaleString('en-US', { maximumFractionDigits: 0 }) : '0'
   const fmtC = (v: number) => `$${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
   const fmtK = (v: number) => {
@@ -375,6 +403,12 @@ export default function TargetGrid({ line }: Props) {
         <div className="flex items-center gap-2">
           {saved && <span className="text-[11px] font-medium text-emerald-500">Saved ✓</span>}
           {error && <span className="text-[11px] font-medium text-destructive">{error}</span>}
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Download className="h-3.5 w-3.5" />Export
+          </button>
           <button
             onClick={handleSave}
             disabled={!isDirty || saving}

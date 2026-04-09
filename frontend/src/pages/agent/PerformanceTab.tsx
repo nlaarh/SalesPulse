@@ -65,10 +65,10 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
     <div className="space-y-6">
       {/* Row 1: Revenue Trend + Team Comparison */}
       <div className="grid grid-cols-3 gap-4">
-        {/* Revenue Chart */}
+        {/* Bookings Chart */}
         <div className="col-span-2">
           <div className="mb-3">
-            <h3 className="text-sm font-semibold">{profile.has_separate_bookings ? 'Bookings' : 'Revenue'} by Month<Tip text={TIPS.revenueByMonth} /></h3>
+            <h3 className="text-sm font-semibold">Bookings by Month<Tip text={TIPS.revenueByMonth} /></h3>
             <span className="text-[11px] text-muted-foreground">
               Solid: {profile.current_year} &middot; Dashed: {profile.prior_year}
             </span>
