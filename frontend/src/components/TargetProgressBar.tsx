@@ -77,11 +77,11 @@ export default function TargetProgressBar({ label, actual, target, pacePct, pace
           style={{ left: `${Math.min(pacePct, 100)}%` }}
         />
       </div>
-      <div className="mt-1.5 flex items-center justify-between text-[12px]">
-        <span className={cn('font-semibold', pace.cls)} style={{ marginLeft: `${Math.max(Math.min(pacePct, 100) - 5, 0)}%` }}>
+      <div className="mt-1.5 flex items-center justify-between gap-2 text-[12px] whitespace-nowrap overflow-hidden">
+        <span className={cn('font-semibold truncate min-w-0', pace.cls)}>
           ▲ {paceLabel} — {pace.text}
         </span>
-        <span className="font-medium text-muted-foreground tabular-nums">
+        <span className="font-medium text-muted-foreground tabular-nums shrink-0">
           {isOver ? `${pctText} of target 🎉` : `${formatCurrency(remaining, true)} to go`}
         </span>
       </div>
