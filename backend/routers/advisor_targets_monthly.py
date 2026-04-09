@@ -432,10 +432,14 @@ def reseed_monthly_targets(
     db: Session = Depends(get_db),
 ):
     """Delete all system-seeded targets for a year so they get re-seeded with current growth."""
+    from sqlalchemy import or_
     deleted = db.query(MonthlyAdvisorTarget).filter(
         MonthlyAdvisorTarget.year == year,
-        MonthlyAdvisorTarget.updated_by_email == 'system-seed',
-    ).delete()
+        or_(
+            MonthlyAdvisorTarget.updated_by_email == 'system-seed',
+            MonthlyAdvisorTarget.updated_by_email.is_(None),
+        ),
+    ).delete(synchronize_session=False)
     db.commit()
     log_activity(
         db, action='monthly_targets_reseeded', category='targets',
