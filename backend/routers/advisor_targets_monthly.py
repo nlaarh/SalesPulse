@@ -126,15 +126,23 @@ def _ensure_advisor_targets(db: Session, sf_names: list[str]):
     return {at.sf_name.strip().lower(): at.id for at in existing_map.values()}
 
 
+DEFAULT_SEED_GROWTH = 1.10  # 10% growth over prior year when seeding targets
+
+
 def _ensure_monthly_targets(db: Session, year: int, advisor_ids: dict[str, int],
                             prior_earnings: dict[str, float],
                             py_monthly: dict[str, dict[int, float]] | None = None):
-    """Seed MonthlyAdvisorTarget rows using prior year's seasonal shape."""
-    existing = db.query(MonthlyAdvisorTarget).filter(
-        MonthlyAdvisorTarget.year == year
-    ).first()
-    if existing:
-        return
+    """Seed missing MonthlyAdvisorTarget rows using prior year's seasonal shape + default growth."""
+    # Check which advisor+month combos already exist (user-edited or previously seeded)
+    existing_keys: set[tuple[int, int]] = set()
+    existing_rows = db.query(
+        MonthlyAdvisorTarget.advisor_target_id, MonthlyAdvisorTarget.month
+    ).filter(MonthlyAdvisorTarget.year == year).all()
+    for at_id, month in existing_rows:
+        existing_keys.add((at_id, month))
+
+    if len(existing_keys) >= len(advisor_ids) * 12:
+        return  # All rows exist, nothing to seed
 
     vals = [v for v in prior_earnings.values() if v > 0]
     median = sorted(vals)[len(vals) // 2] if vals else 0
@@ -147,23 +155,25 @@ def _ensure_monthly_targets(db: Session, year: int, advisor_ids: dict[str, int],
             company_shape[m - 1] += v
     company_total = sum(company_shape)
 
+    seeded = 0
     for name_lower, at_id in advisor_ids.items():
         base = prior_earnings.get(name_lower, 0)
         if base <= 0:
             base = median
         if base <= 0:
             continue
+        # Apply default growth so seeds aren't identical to prior year
+        base = round(base * DEFAULT_SEED_GROWTH)
 
-        # Use this advisor's prior year monthly shape
         adv_months = py_monthly.get(name_lower, {})
         adv_total = sum(adv_months.values())
 
         for m in range(1, 13):
+            if (at_id, m) in existing_keys:
+                continue  # Don't overwrite user-edited values
             if adv_total > 0:
-                # Seasonal: proportional to prior year pattern
                 target = round(base * (adv_months.get(m, 0) / adv_total))
             elif company_total > 0:
-                # New advisor: use company-wide seasonal shape
                 target = round(base * (company_shape[m - 1] / company_total))
             else:
                 target = round(base / 12)
@@ -171,8 +181,11 @@ def _ensure_monthly_targets(db: Session, year: int, advisor_ids: dict[str, int],
                 advisor_target_id=at_id, year=year, month=m,
                 target_amount=target, updated_by_email='system-seed',
             ))
-    db.commit()
-    log.info(f"Seeded {year} monthly targets (seasonal) for {len(advisor_ids)} advisors")
+            seeded += 1
+    if seeded > 0:
+        db.commit()
+        log.info(f"Seeded {seeded} monthly targets (+{int((DEFAULT_SEED_GROWTH-1)*100)}%% growth) "
+                 f"for {year} ({len(existing_keys)} existing rows preserved)")
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -362,9 +375,11 @@ def get_monthly_targets(
             'prior_year': prior_year,
             'prior_year_bookings': total_py_bookings,
             'prior_year_commission': total_py_earnings,
+            'default_seed_growth': int((DEFAULT_SEED_GROWTH - 1) * 100),
             'note': f'Estimated commission = Bookings x {round(comm_rate * 100, 1)}% avg commission rate. '
                     f'Rate from {prior_year} deals with recorded commission. '
-                    f'Many invoiced deals have no commission in Salesforce — this estimates the full picture.',
+                    f'Initial targets seeded at +{int((DEFAULT_SEED_GROWTH - 1) * 100)}% over prior year (seasonal shape). '
+                    f'Edit cells or use Apply Growth to customize.',
         },
     }
 
@@ -408,3 +423,24 @@ def save_monthly_targets(
         metadata={'year': body.year, 'advisor_count': len(body.updates), 'cell_count': count},
     )
     return {'status': 'saved', 'count': count}
+
+
+@router.delete("/api/admin/targets/monthly/{year}/reseed")
+def reseed_monthly_targets(
+    year: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Delete all system-seeded targets for a year so they get re-seeded with current growth."""
+    deleted = db.query(MonthlyAdvisorTarget).filter(
+        MonthlyAdvisorTarget.year == year,
+        MonthlyAdvisorTarget.updated_by_email == 'system-seed',
+    ).delete()
+    db.commit()
+    log_activity(
+        db, action='monthly_targets_reseeded', category='targets',
+        user=admin,
+        detail=f"Cleared {deleted} system-seeded targets for {year} — will re-seed on next load",
+        metadata={'year': year, 'deleted': deleted},
+    )
+    return {'status': 'reseeded', 'deleted': deleted}

@@ -184,7 +184,8 @@ export default function TargetGrid({ line }: Props) {
         }))
       if (updates.length > 0) await saveMonthlyTargets(year, updates)
       setSaved(true)
-      setOriginal(JSON.parse(JSON.stringify(rows)))
+      // Reload from server to confirm DB persistence
+      await loadData()
     } catch {
       setError('Failed to save targets')
     } finally {
