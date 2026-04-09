@@ -255,14 +255,40 @@ def get_upsell_analysis(
     member_since = acct.get('member_since', 'Unknown')
     mpi = acct.get('mpi') or 0
 
+    # Calculate age from birthdate for age-appropriate recommendations
+    from datetime import date
+    birthdate_str = acct.get('birthdate')
+    member_age = None
+    if birthdate_str:
+        try:
+            bd = date.fromisoformat(birthdate_str[:10])
+            today = date.today()
+            member_age = today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
+        except (ValueError, TypeError):
+            pass
+
     cfg = get_ai_config()
     if not cfg.get('api_key'):
         return {'analysis': None, 'error': 'AI not configured'}
+
+    age_line = f"- Age: {member_age}" if member_age else "- Age: Unknown"
+    # Build age-appropriateness rules
+    age_rules = []
+    if member_age is not None:
+        if member_age < 60:
+            age_rules.append("- Do NOT recommend Medicare products — member is under 60 and not yet eligible.")
+        if member_age < 25:
+            age_rules.append("- Emphasize driver training and roadside assistance — relevant for younger members.")
+        if member_age >= 60:
+            age_rules.append("- Medicare is age-appropriate — recommend if not already held.")
+            age_rules.append("- Consider low-risk financial products and travel insurance.")
+    age_instructions = '\n'.join(age_rules) if age_rules else "- No age data available; omit age-specific products like Medicare unless the member already holds them."
 
     prompt = f"""You are a AAA sales advisor analyzing a member profile to identify upsell and cross-sell opportunities.
 
 ## Member Profile
 - Name: {acct['name']}
+{age_line}
 - Member Since: {member_since}
 - Membership Level: {current_membership}
 - Member Product Index (MPI): {mpi} (higher = more engaged, max ~5)
@@ -275,13 +301,18 @@ def get_upsell_analysis(
 ## Recent Transactions (last 10)
 {recent_txns if recent_txns else 'No transactions found'}
 
+## Age-Appropriateness Rules (MUST follow)
+{age_instructions}
+
 ## Your Task
 Provide concise upsell/cross-sell recommendations. Use ## headers and bullet points.
 Focus on:
 1. **Membership upgrade** if on Basic/Plus (upgrade to Plus/Premier)
-2. **Missing products** the member doesn't have yet
+2. **Missing products** the member doesn't have yet — only recommend products appropriate for the member's age
 3. **Specific next actions** for the advisor based on transaction history
 4. **Risk signals** — any signs of churn or disengagement
+
+IMPORTANT: All product recommendations MUST be age-appropriate. Never suggest Medicare to someone under 60. Tailor financial and insurance product suggestions to the member's life stage.
 
 Be specific, actionable, and brief. Max 300 words."""
 

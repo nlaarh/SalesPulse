@@ -37,6 +37,7 @@ export default function TravelAnalytics() {
   const [destTrend, setDestTrend] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('charts')
+  const [topN, setTopN] = useState(10)
 
   const periodLabel = viewMode === 'custom' && startDate && endDate
     ? `${startDate} → ${endDate}`
@@ -99,18 +100,30 @@ export default function TravelAnalytics() {
             )
           })}
         </div>
+        <div className="flex items-center gap-2">
+          <label className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">Show top</label>
+          <input
+            type="number"
+            min={1}
+            max={dests.length || 50}
+            value={topN}
+            onChange={(e) => { const v = parseInt(e.target.value, 10); if (v > 0) setTopN(v) }}
+            className="w-16 rounded-md border border-border bg-secondary/50 px-2 py-1 text-center text-[12px] font-semibold tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <span className="text-[11px] text-muted-foreground">of {dests.length}</span>
+        </div>
       </div>
 
       {tab === 'charts' && (
         <ChartsTab
-          dests={dests} topDest={topDest} fastestGrowing={fastestGrowing}
+          dests={dests.slice(0, topN)} topDest={topDest} fastestGrowing={fastestGrowing}
           totalRev={totalRev} totalVol={totalVol} growthVal={growthVal}
           partySize={partySize} destTrend={destTrend} selectedDest={selectedDest}
           setSelectedDest={setSelectedDest} c={c}
         />
       )}
       {tab === 'details' && (
-        <DetailsTab dests={dests} selectedDest={selectedDest} setSelectedDest={setSelectedDest} destTrend={destTrend} c={c} />
+        <DetailsTab dests={dests.slice(0, topN)} selectedDest={selectedDest} setSelectedDest={setSelectedDest} destTrend={destTrend} c={c} />
       )}
       {tab === 'summary' && (
         <SummaryTab dests={dests} topDest={topDest} fastestGrowing={fastestGrowing} totalRev={totalRev} totalVol={totalVol} partySize={partySize} periodLabel={periodLabel} />
@@ -128,8 +141,8 @@ function ChartsTab({ dests, topDest, fastestGrowing, totalRev, totalVol, growthV
   partySize: any; destTrend: any; selectedDest: string; setSelectedDest: (v: string) => void
   c: ReturnType<typeof useChartColors>
 }) {
-  // Revenue by destination bar chart
-  const top10Dests = dests.slice(0, 10).map((d: any) => ({
+  // Revenue by destination bar chart (already sliced by topN from parent)
+  const chartDests = dests.map((d: any) => ({
     name: d.destination, revenue: d.revenue || 0,
   }))
 
@@ -149,15 +162,15 @@ function ChartsTab({ dests, topDest, fastestGrowing, totalRev, totalVol, growthV
             <h2 className="text-sm font-semibold tracking-tight">Bookings by Destination</h2>
           </div>
           <div className="p-5">
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={top10Dests} layout="vertical">
+            <ResponsiveContainer width="100%" height={Math.max(300, chartDests.length * 30)}>
+              <BarChart data={chartDests} layout="vertical">
                 <CartesianGrid strokeDasharray="none" stroke={c.grid} horizontal={false} />
                 <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }}
                   tickFormatter={(v: number) => v >= 1e6 ? `$${(v/1e6).toFixed(1)}M` : `$${(v/1e3).toFixed(0)}K`} />
                 <YAxis type="category" dataKey="name" width={100} axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} />
                 <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [formatCurrency(Number(v), true), 'Bookings']} />
                 <Bar dataKey="revenue" fill={c.primary} radius={[0, 6, 6, 0]} barSize={18}
-                  onClick={(_: any, idx: number) => { if (top10Dests[idx]) setSelectedDest(top10Dests[idx].name) }} cursor="pointer" />
+                  onClick={(_: any, idx: number) => { if (chartDests[idx]) setSelectedDest(chartDests[idx].name) }} cursor="pointer" />
               </BarChart>
             </ResponsiveContainer>
           </div>
