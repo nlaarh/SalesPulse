@@ -54,8 +54,26 @@ SEED_USERS = [
 ]
 
 
+def _migrate_target_bookings():
+    """Add target_bookings column if missing (one-time migration)."""
+    import sqlite3
+    conn = sqlite3.connect(str(DB_PATH))
+    cur = conn.cursor()
+    try:
+        cur.execute("PRAGMA table_info(monthly_advisor_targets)")
+        cols = {row[1] for row in cur.fetchall()}
+        if 'target_bookings' not in cols and 'target_amount' in cols:
+            cur.execute("ALTER TABLE monthly_advisor_targets ADD COLUMN target_bookings REAL")
+            conn.commit()
+            log.info("Migration: added target_bookings column to monthly_advisor_targets")
+    except Exception as e:
+        log.warning(f"Migration target_bookings skipped: {e}")
+    finally:
+        conn.close()
+
+
 def init_db():
-    """Create tables (idempotent) + seed/upsert users."""
+    """Create tables (idempotent) + seed/upsert users + run migrations."""
     from models import User
     import bcrypt
 
@@ -64,6 +82,9 @@ def init_db():
     except Exception as e:
         log.warning(f'create_all warning (likely race with another worker): {e}')
     log.info(f'Database initialized at {DB_PATH}')
+
+    # Migrate: add target_bookings column if missing
+    _migrate_target_bookings()
 
     db = SessionLocal()
     try:

@@ -54,7 +54,12 @@ export default function TargetGrid({ line }: Props) {
       }
       const gridRows: GridRow[] = data.advisors.map((a: MonthlyTargetAdvisor) => {
         const targets: Record<number, number> = {}
-        for (const m of a.months) targets[m.month] = m.target
+        for (const m of a.months) {
+          // Use the right field for the current view
+          targets[m.month] = targetBase === 'bookings'
+            ? (m.target_bookings ?? m.target)
+            : m.target
+        }
         return {
           advisor_target_id: a.advisor_target_id,
           name: a.name,
@@ -73,7 +78,7 @@ export default function TargetGrid({ line }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [year, line])
+  }, [year, line, targetBase])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -195,7 +200,7 @@ export default function TargetGrid({ line }: Props) {
           advisor_target_id: r.advisor_target_id,
           months: Object.fromEntries(Object.entries(r.targets).map(([k, v]) => [k, v])),
         }))
-      if (updates.length > 0) await saveMonthlyTargets(year, updates)
+      if (updates.length > 0) await saveMonthlyTargets(year, updates, targetBase, line)
       setSaved(true)
       // Reload from server to confirm DB persistence
       await loadData()

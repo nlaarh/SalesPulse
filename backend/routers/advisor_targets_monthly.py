@@ -131,8 +131,10 @@ DEFAULT_SEED_GROWTH = 1.10  # 10% growth over prior year when seeding targets
 
 def _ensure_monthly_targets(db: Session, year: int, advisor_ids: dict[str, int],
                             prior_earnings: dict[str, float],
-                            py_monthly: dict[str, dict[int, float]] | None = None):
-    """Seed missing MonthlyAdvisorTarget rows using prior year's seasonal shape + default growth."""
+                            py_monthly: dict[str, dict[int, float]] | None = None,
+                            comm_rate: float = 0):
+    """Seed missing MonthlyAdvisorTarget rows using prior year's seasonal shape + default growth.
+    Stores both commission (target_amount) and bookings (target_bookings)."""
     # Check which advisor+month combos already exist (user-edited or previously seeded)
     existing_keys: set[tuple[int, int]] = set()
     existing_rows = db.query(
@@ -179,7 +181,9 @@ def _ensure_monthly_targets(db: Session, year: int, advisor_ids: dict[str, int],
                 target = round(base / 12)
             db.add(MonthlyAdvisorTarget(
                 advisor_target_id=at_id, year=year, month=m,
-                target_amount=target, updated_by_email='system-seed',
+                target_amount=target,
+                target_bookings=round(target / comm_rate) if comm_rate > 0 else target,
+                updated_by_email='system-seed',
             ))
             seeded += 1
     if seeded > 0:
@@ -197,6 +201,8 @@ class MonthlyTargetUpdate(BaseModel):
 class MonthlyTargetSaveRequest(BaseModel):
     year: int
     updates: list[MonthlyTargetUpdate]
+    base: str = 'commission'   # 'bookings' or 'commission' — unit of the submitted values
+    line: str = 'Travel'       # needed to look up comm_rate when base='bookings'
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -272,15 +278,33 @@ def get_monthly_targets(
         py_monthly_map.setdefault(name, {})[r.get('mo', 0)] = val
 
     # 7. Ensure monthly targets are seeded (seasonal shape)
-    _ensure_monthly_targets(db, year, advisor_ids, prior_earnings, py_monthly=py_monthly_map)
+    _ensure_monthly_targets(db, year, advisor_ids, prior_earnings, py_monthly=py_monthly_map,
+                            comm_rate=comm_rate)
 
     # 8. Load monthly target rows
     monthly_rows = db.query(MonthlyAdvisorTarget).filter(
         MonthlyAdvisorTarget.year == year
     ).all()
-    monthly_map: dict[int, dict[int, float]] = {}
+    monthly_comm_map: dict[int, dict[int, float]] = {}
+    monthly_book_map: dict[int, dict[int, float]] = {}
     for mr in monthly_rows:
-        monthly_map.setdefault(mr.advisor_target_id, {})[mr.month] = mr.target_amount
+        raw_amount = mr.target_amount
+        raw_bookings = mr.target_bookings
+
+        if raw_bookings is not None and raw_bookings > 0:
+            comm_val = raw_amount
+            book_val = raw_bookings
+        elif mr.updated_by_email and mr.updated_by_email != 'system-seed':
+            # Legacy: user-saved without target_bookings → amount is bookings
+            book_val = raw_amount
+            comm_val = round(raw_amount * comm_rate) if comm_rate > 0 else raw_amount
+        else:
+            # System-seeded → amount is commission
+            comm_val = raw_amount
+            book_val = round(raw_amount / comm_rate) if comm_rate > 0 else raw_amount
+
+        monthly_comm_map.setdefault(mr.advisor_target_id, {})[mr.month] = comm_val
+        monthly_book_map.setdefault(mr.advisor_target_id, {})[mr.month] = book_val
 
     # 8. Current year actuals per advisor per month
     cur_monthly_key = f"targets_monthly_actuals_{line}_{year}"
@@ -307,8 +331,8 @@ def get_monthly_targets(
         val = round(rev * comm_rate) if line == 'Travel' else rev
         actuals_map.setdefault(name, {})[r.get('mo', 0)] = val
 
-    # 9. Build response
-    company_months = [{'month': m, 'target': 0.0, 'actual': 0.0, 'achievement_pct': None}
+    # 9. Build response — return both commission and bookings targets
+    company_months = [{'month': m, 'target': 0.0, 'target_bookings': 0.0, 'actual': 0.0, 'achievement_pct': None}
                       for m in range(1, 13)]
 
     advisors = []
@@ -316,20 +340,25 @@ def get_monthly_targets(
         at_id = advisor_ids.get(name_lower)
         if not at_id:
             continue
-        targets_by_month = monthly_map.get(at_id, {})
+        comm_by_month = monthly_comm_map.get(at_id, {})
+        book_by_month = monthly_book_map.get(at_id, {})
         actuals_by_month = actuals_map.get(name_lower, {})
 
         months = []
         total_target = 0.0
+        total_target_book = 0.0
         total_actual = 0.0
         for m in range(1, 13):
-            t = targets_by_month.get(m, 0)
+            t = comm_by_month.get(m, 0)
+            tb = book_by_month.get(m, 0)
             a = actuals_by_month.get(m, 0)
             total_target += t
+            total_target_book += tb
             total_actual += a
             pct = round(a / t * 100, 1) if t > 0 else None
-            months.append({'month': m, 'target': t, 'actual': a, 'achievement_pct': pct})
+            months.append({'month': m, 'target': t, 'target_bookings': tb, 'actual': a, 'achievement_pct': pct})
             company_months[m - 1]['target'] += t
+            company_months[m - 1]['target_bookings'] += tb
             company_months[m - 1]['actual'] += a
 
         overall_pct = round(total_actual / total_target * 100, 1) if total_target > 0 else None
@@ -344,6 +373,7 @@ def get_monthly_targets(
             'title': None,
             'months': months,
             'total_target': total_target,
+            'total_target_bookings': total_target_book,
             'total_actual': total_actual,
             'achievement_pct': overall_pct,
             'prior_year_actual': prior_earnings.get(name_lower, 0),
@@ -390,27 +420,51 @@ def save_monthly_targets(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Batch upsert monthly targets for one or more advisors."""
+    """Batch upsert monthly targets for one or more advisors.
+    Stores both commission and bookings targets using comm_rate."""
+    from shared import WON_STAGES, line_filter_opp
+    from sf_client import sf_query_all
+    import cache
+
+    # Get commission rate so we can store both units
+    lf = line_filter_opp(body.line)
+    comm_rate = _get_comm_rate_accurate(
+        body.line, body.year - 1, cache, sf_query_all, WON_STAGES, lf
+    )
+    if comm_rate <= 0:
+        comm_rate = 0.10  # fallback 10%
+
     count = 0
     for update in body.updates:
         for month_str, amount in update.months.items():
             month_int = int(month_str)
             if month_int < 1 or month_int > 12:
                 continue
+
+            # Compute both units from the submitted value
+            if body.base == 'bookings':
+                bookings_val = round(amount)
+                commission_val = round(amount * comm_rate)
+            else:
+                commission_val = round(amount)
+                bookings_val = round(amount / comm_rate) if comm_rate > 0 else round(amount)
+
             existing = db.query(MonthlyAdvisorTarget).filter(
                 MonthlyAdvisorTarget.advisor_target_id == update.advisor_target_id,
                 MonthlyAdvisorTarget.year == body.year,
                 MonthlyAdvisorTarget.month == month_int,
             ).first()
             if existing:
-                existing.target_amount = amount
+                existing.target_amount = commission_val
+                existing.target_bookings = bookings_val
                 existing.updated_by_email = admin.email
                 existing.updated_at = datetime.utcnow()
             else:
                 db.add(MonthlyAdvisorTarget(
                     advisor_target_id=update.advisor_target_id,
                     year=body.year, month=month_int,
-                    target_amount=amount,
+                    target_amount=commission_val,
+                    target_bookings=bookings_val,
                     updated_by_email=admin.email,
                 ))
             count += 1
@@ -419,8 +473,9 @@ def save_monthly_targets(
     log_activity(
         db, action='monthly_targets_saved', category='targets',
         user=admin,
-        detail=f"Saved {count} monthly target entries for {body.year}",
-        metadata={'year': body.year, 'advisor_count': len(body.updates), 'cell_count': count},
+        detail=f"Saved {count} monthly target entries for {body.year} (base={body.base}, rate={comm_rate:.4f})",
+        metadata={'year': body.year, 'advisor_count': len(body.updates), 'cell_count': count,
+                  'base': body.base, 'comm_rate': round(comm_rate, 4)},
     )
     return {'status': 'saved', 'count': count}
 

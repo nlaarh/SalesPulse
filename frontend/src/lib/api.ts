@@ -355,6 +355,7 @@ export async function fetchTargetsWithActuals(
 export interface MonthlyTargetMonth {
   month: number
   target: number
+  target_bookings?: number
   actual: number
   achievement_pct: number | null
 }
@@ -430,8 +431,13 @@ export async function fetchTargetAchievement(line = 'Travel', advisorName?: stri
   return data as AchievementResponse
 }
 
-export async function saveMonthlyTargets(year: number, updates: { advisor_target_id: number; months: Record<string, number> }[]) {
-  const { data } = await api.put('/api/admin/targets/monthly', { year, updates })
+export async function saveMonthlyTargets(
+  year: number,
+  updates: { advisor_target_id: number; months: Record<string, number> }[],
+  base: 'bookings' | 'commission' = 'commission',
+  line: string = 'Travel',
+) {
+  const { data } = await api.put('/api/admin/targets/monthly', { year, updates, base, line })
   return data as { status: string; count: number }
 }
 

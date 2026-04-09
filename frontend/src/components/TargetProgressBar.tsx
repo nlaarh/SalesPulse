@@ -20,14 +20,22 @@ function paceStatus(achievementPct: number, pacePct: number) {
 export default function TargetProgressBar({ label, actual, target, pacePct, paceLabel, color }: TargetProgressBarProps) {
   if (target <= 0) return null
 
-  const achievementPct = Math.min((actual / target) * 100, 100)
-  const pace = paceStatus(achievementPct, pacePct)
+  const rawPct = (actual / target) * 100
+  const achievementPct = Math.min(rawPct, 150)
+  const barWidthPct = Math.min(achievementPct, 100)
+  const pace = paceStatus(rawPct, pacePct)
   const remaining = Math.max(target - actual, 0)
+  const isOver = rawPct > 100
 
   const barBg = color === 'indigo' ? 'bg-indigo-500/10' : 'bg-emerald-500/10'
-  const barFill = color === 'indigo'
-    ? 'bg-gradient-to-r from-indigo-500/50 to-indigo-500/90'
-    : 'bg-gradient-to-r from-emerald-500/50 to-emerald-500/90'
+  const barFill = isOver
+    ? 'bg-gradient-to-r from-emerald-400 to-emerald-500'
+    : color === 'indigo'
+      ? 'bg-gradient-to-r from-indigo-500/50 to-indigo-500/90'
+      : 'bg-gradient-to-r from-emerald-500/50 to-emerald-500/90'
+
+  const pctText = `${rawPct >= 100 ? Math.round(rawPct) : rawPct.toFixed(1)}%`
+  const showInside = barWidthPct >= 12
 
   return (
     <div>
@@ -44,27 +52,37 @@ export default function TargetProgressBar({ label, actual, target, pacePct, pace
       </div>
       <div className={cn('relative h-7 overflow-hidden rounded-full', barBg)}>
         <div
-          className={cn('absolute inset-y-0 left-0 rounded-full flex items-center justify-end pr-2.5 transition-all duration-700', barFill)}
-          style={{ width: `${Math.max(achievementPct, 3)}%` }}
+          className={cn('absolute inset-y-0 left-0 rounded-full flex items-center transition-all duration-700', barFill, showInside ? 'justify-end pr-2.5' : 'justify-start')}
+          style={{ width: `${Math.max(barWidthPct, 2)}%` }}
         >
-          {achievementPct >= 12 && (
+          {showInside && (
             <span className="text-[13px] font-bold text-white drop-shadow-sm tabular-nums">
-              {achievementPct.toFixed(1)}%
+              {pctText}
             </span>
           )}
         </div>
+        {/* Achievement % outside the bar when fill is too small */}
+        {!showInside && (
+          <span
+            className={cn('absolute top-1/2 -translate-y-1/2 text-[12px] font-bold tabular-nums',
+              color === 'indigo' ? 'text-indigo-600' : 'text-emerald-600')}
+            style={{ left: `${Math.max(barWidthPct, 2) + 1}%` }}
+          >
+            {pctText}
+          </span>
+        )}
         {/* Pace marker */}
         <div
-          className="absolute inset-y-0 w-0.5 bg-white/50 z-10"
-          style={{ left: `${pacePct}%` }}
+          className="absolute inset-y-0 w-0.5 z-10 bg-foreground/30"
+          style={{ left: `${Math.min(pacePct, 100)}%` }}
         />
       </div>
       <div className="mt-1.5 flex items-center justify-between text-[12px]">
-        <span className={cn('font-semibold', pace.cls)} style={{ marginLeft: `${Math.max(pacePct - 5, 0)}%` }}>
+        <span className={cn('font-semibold', pace.cls)} style={{ marginLeft: `${Math.max(Math.min(pacePct, 100) - 5, 0)}%` }}>
           ▲ {paceLabel} — {pace.text}
         </span>
         <span className="font-medium text-muted-foreground tabular-nums">
-          {formatCurrency(remaining, true)} to go
+          {isOver ? `${pctText} of target 🎉` : `${formatCurrency(remaining, true)} to go`}
         </span>
       </div>
     </div>

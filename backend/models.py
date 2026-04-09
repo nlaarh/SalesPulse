@@ -91,7 +91,8 @@ class MonthlyAdvisorTarget(Base):
     advisor_target_id = Column(Integer, nullable=False, index=True)
     year = Column(Integer, nullable=False)
     month = Column(Integer, nullable=False)  # 1-12
-    target_amount = Column(Float, nullable=False)
+    target_amount = Column(Float, nullable=False)       # commission target
+    target_bookings = Column(Float, nullable=True)      # bookings/revenue target
     updated_by_email = Column(String, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
@@ -102,6 +103,7 @@ class MonthlyAdvisorTarget(Base):
             'year': self.year,
             'month': self.month,
             'target_amount': self.target_amount,
+            'target_bookings': self.target_bookings,
             'updated_by_email': self.updated_by_email,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
