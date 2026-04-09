@@ -140,6 +140,8 @@ export default function TargetGrid({ line }: Props) {
   }
 
   function applyGrowthPct(pct: number) {
+    const now = new Date()
+    const currentMonth = year === now.getFullYear() ? now.getMonth() + 1 : 0 // 1-based; 0 = past year, recalc all
     const companyShape = Array(12).fill(0)
     rows.forEach(r => r.prior_year_months.forEach((v, i) => { companyShape[i] += v }))
     const companyTotal = companyShape.reduce((s, v) => s + v, 0)
@@ -153,19 +155,30 @@ export default function TargetGrid({ line }: Props) {
       const base = priorYearBase(r) > 0 ? priorYearBase(r) : medianPrior
       const yearlyTarget = Math.round(base * (1 + pct / 100))
 
-      // Use bookings monthly shape for seasonality (same either way)
       const pyMonths = r.prior_year_months
       const pyTotal = pyMonths.reduce((s, v) => s + v, 0)
 
-      const targets: Record<number, number> = {}
-      if (pyTotal > 0) {
-        for (let m = 1; m <= 12; m++)
-          targets[m] = Math.round(yearlyTarget * (pyMonths[m - 1] / pyTotal))
-      } else if (companyTotal > 0) {
-        for (let m = 1; m <= 12; m++)
-          targets[m] = Math.round(yearlyTarget * (companyShape[m - 1] / companyTotal))
-      } else {
-        for (let m = 1; m <= 12; m++) targets[m] = Math.round(yearlyTarget / 12)
+      const targets: Record<number, number> = { ...r.targets }
+
+      // Sum already-locked months (past + current)
+      let lockedSum = 0
+      for (let m = 1; m <= currentMonth; m++) lockedSum += (targets[m] || 0)
+
+      // Distribute remaining target across future months using seasonal shape
+      const remaining = Math.max(0, yearlyTarget - lockedSum)
+      let futureShapeTotal = 0
+      for (let m = currentMonth + 1; m <= 12; m++) {
+        futureShapeTotal += pyTotal > 0 ? pyMonths[m - 1] : (companyTotal > 0 ? companyShape[m - 1] : 1)
+      }
+
+      for (let m = currentMonth + 1; m <= 12; m++) {
+        if (futureShapeTotal > 0) {
+          const shape = pyTotal > 0 ? pyMonths[m - 1] : (companyTotal > 0 ? companyShape[m - 1] : 1)
+          targets[m] = Math.round(remaining * (shape / futureShapeTotal))
+        } else {
+          const futureCount = 12 - currentMonth
+          targets[m] = futureCount > 0 ? Math.round(remaining / futureCount) : 0
+        }
       }
       return { ...r, targets }
     }))
