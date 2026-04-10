@@ -43,6 +43,7 @@ jobs:
         # Azure Oryx installs requirements.txt server-side
         zip -r ../deploy.zip \
           *.py \
+          *.json \
           routers/ \
           startup.sh \
           requirements.txt \

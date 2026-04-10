@@ -5,13 +5,14 @@ regions (Western, Rochester, Central) with hover tooltips for detailed
 per-zip metrics.
 """
 
+import json
 import logging
+import os
 from datetime import date
 from typing import Optional
 from collections import defaultdict
 
 from fastapi import APIRouter, Query
-import pgeocode
 
 from sf_client import sf_parallel
 from shared import (
@@ -31,16 +32,17 @@ REGION_FILTER = "Billing_Region__c IN ('Western','Rochester','Central')"
 MIN_MEMBERS = 50  # skip noise zips
 NY_STATE = "BillingState = 'New York'"
 
-# pgeocode US lookup (cached at module level)
-_nomi = pgeocode.Nominatim('us')
+# Static zip centroid lookup (no numpy/pandas dependency)
+_CENTROID_FILE = os.path.join(os.path.dirname(__file__), '..', 'ny_zip_centroids.json')
+with open(_CENTROID_FILE) as _f:
+    _ZIP_CENTROIDS: dict[str, list] = json.load(_f)
 
 
 def _zip_centroid(zip_code: str) -> tuple:
-    """Return (lat, lng, city) for a US zip code via pgeocode."""
-    r = _nomi.query_postal_code(zip_code)
-    if r is not None and not (r.latitude != r.latitude):  # NaN check
-        city = str(r.place_name) if r.place_name and str(r.place_name) != 'nan' else ''
-        return round(float(r.latitude), 4), round(float(r.longitude), 4), city
+    """Return (lat, lng, city) for a US zip code from static lookup."""
+    entry = _ZIP_CENTROIDS.get(zip_code)
+    if entry:
+        return entry[0], entry[1], entry[2]
     return None, None, ''
 
 
