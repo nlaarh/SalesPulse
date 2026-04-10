@@ -328,7 +328,7 @@ export default function TargetGrid({ line }: Props) {
         <div className="py-12 text-center space-y-3">
           <Calculator className="h-8 w-8 mx-auto text-muted-foreground/30" />
           <div className="text-[13px] text-muted-foreground">
-            Base estimates not yet calculated. Select base year(s) above and click <span className="font-semibold text-primary">Calculate Estimates</span>.
+            Base estimates not yet calculated. Select base year(s) above and click <span className="font-semibold text-primary">Lookup Base Estimates</span>.
           </div>
         </div>
       )
@@ -506,7 +506,7 @@ export default function TargetGrid({ line }: Props) {
             )}
           >
             {estimating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Calculator className="h-3.5 w-3.5" />}
-            Calculate Estimates
+            Lookup Base Estimates
           </button>
 
           <span className="text-[11px] text-muted-foreground">{rows.length} advisors</span>
@@ -549,7 +549,7 @@ export default function TargetGrid({ line }: Props) {
                   : 'bg-secondary text-muted-foreground cursor-not-allowed opacity-50',
               )}
             >
-              Apply Growth to Bookings
+              Calculate Target Estimates
             </button>
           </div>
         </div>
