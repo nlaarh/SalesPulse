@@ -13,6 +13,8 @@ import SalesPulseLogo from '@/components/SalesPulseLogo'
 import CommandPalette from '@/components/CommandPalette'
 import ReportIssue from '@/components/ReportIssue'
 import Dropdown from '@/components/Dropdown'
+
+const APP_VERSION = __APP_VERSION__
 import DateRangeSummary from '@/components/DateRangeSummary'
 import { useState, useEffect, useCallback } from 'react'
 
@@ -414,6 +416,18 @@ export default function Layout() {
             </div>
           </div>
         )}
+
+        {/* Version */}
+        <div className="px-4 pb-3 pt-1 text-center">
+          <span className="text-[10px] text-muted-foreground/40">
+            v{APP_VERSION.replace('-beta', '')}
+          </span>
+          {APP_VERSION.includes('beta') && (
+            <span className="ml-1.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-500">
+              Beta
+            </span>
+          )}
+        </div>
       </aside>
 
       {/* ── Main ── */}
