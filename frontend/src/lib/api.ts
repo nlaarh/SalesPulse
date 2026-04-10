@@ -623,66 +623,43 @@ export async function searchCustomers(q: string): Promise<CustomerSummary[]> {
 
 // ── Cross-Sell Insights ───────────────────────────────────────────────────────
 
-export interface CrossSellOpportunity {
+export interface CrossSellCustomer {
   account_id: string
   account_name: string
-  opportunity_id: string
-  trip_name: string
-  amount: number
-  close_date: string
-  days_ago: number
-  advisor: string
-  owner_id: string
+  phone: string
+  email: string
+  city: string
+  ltv: string
+  products_owned: string[]
+  gap: string
+  gap_type: 'needs_insurance' | 'needs_travel'
+  total_spend: number
+  transaction_count: number
   score: number
   priority: 'high' | 'medium' | 'low'
   reason: string
-}
-
-export interface CrossSellAdvisorSummary {
-  advisor: string
-  uninsured_count: number
-  total_value: number
-  top_amount: number
-  top_trip: string
-}
-
-export interface CrossSellTrend {
-  month: string
-  total: number
-  insured: number
-  uninsured: number
-  coverage_rate: number
+  sf_link: string
 }
 
 export interface CrossSellInsights {
   summary: {
-    total_travel_trips: number
-    total_insured: number
-    total_uninsured: number
-    value_at_risk: number
-    coverage_rate: number
-    avg_trip_value: number
+    total_travel_customers: number
+    total_insurance_customers: number
+    customers_with_both: number
+    needs_insurance_count: number
+    needs_travel_count: number
+    needs_insurance_value: number
+    needs_travel_value: number
+    total_travel_revenue: number
+    total_insurance_revenue: number
   }
-  top_opportunities: CrossSellOpportunity[]
-  by_advisor: CrossSellAdvisorSummary[]
-  trend: CrossSellTrend[]
-  date_range: { start: string; end: string }
-}
-
-export interface AdvisorCrossSell {
-  advisor: string
-  summary: {
-    total_trips: number
-    total_uninsured: number
-    coverage_rate: number
-    value_at_risk: number
-  }
-  opportunities: CrossSellOpportunity[]
+  needs_insurance: CrossSellCustomer[]
+  needs_travel: CrossSellCustomer[]
   date_range: { start: string; end: string }
 }
 
 export async function fetchCrossSellInsights(
-  period = 6,
+  period = 12,
   startDate?: string | null,
   endDate?: string | null,
 ): Promise<CrossSellInsights> {
@@ -690,18 +667,6 @@ export async function fetchCrossSellInsights(
     params: withDates({ period }, startDate, endDate),
   })
   return data as CrossSellInsights
-}
-
-export async function fetchAdvisorCrossSell(
-  advisorName: string,
-  period = 6,
-  startDate?: string | null,
-  endDate?: string | null,
-): Promise<AdvisorCrossSell> {
-  const { data } = await api.get(`/api/cross-sell/advisor/${encodeURIComponent(advisorName)}`, {
-    params: withDates({ period }, startDate, endDate),
-  })
-  return data as AdvisorCrossSell
 }
 
 // ── Market Pulse ──────────────────────────────────────────────────────────────

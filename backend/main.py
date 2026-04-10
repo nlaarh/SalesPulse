@@ -21,8 +21,10 @@ log = logging.getLogger('main')
 async def lifespan(app: FastAPI):
     """On startup: flush disk cache only if code changed since last run (new deployment).
     On a plain restart (same code), the cache is preserved.
+    Starts a 3 AM daily cache warm-up for heavy endpoints.
     """
-    import cache, hashlib
+    import cache, hashlib, asyncio
+    from datetime import datetime, timedelta
 
     # Hash the key backend files that affect query logic / response shape
     backend_dir = Path(__file__).resolve().parent
@@ -44,7 +46,37 @@ async def lifespan(app: FastAPI):
     else:
         log.info("Restart detected (same code): keeping existing cache")
 
+    # Background scheduler: warm caches at 3 AM ET daily
+    async def cache_warmer():
+        from zoneinfo import ZoneInfo
+        et = ZoneInfo('America/New_York')
+        while True:
+            now = datetime.now(et)
+            next_run = now.replace(hour=3, minute=0, second=0, microsecond=0)
+            if next_run <= now:
+                next_run += timedelta(days=1)
+            wait_secs = (next_run - now).total_seconds()
+            log.info(f"Cache warmer: next run at {next_run.isoformat()} ({wait_secs/3600:.1f}h)")
+            await asyncio.sleep(wait_secs)
+            log.info("Cache warmer: flushing stale caches for daily refresh")
+            try:
+                # Clear L1 memory cache — next request will rebuild from SF
+                cache._l1.clear()
+                # Clear expired L2 disk entries so they refresh
+                for f in cache._CACHE_DIR.glob('*.json'):
+                    try:
+                        f.unlink()
+                    except OSError:
+                        pass
+                log.info("Cache warmer: caches cleared, next requests will fetch fresh data")
+            except Exception as e:
+                log.warning(f"Cache warmer failed: {e}")
+
+    warmer_task = asyncio.create_task(cache_warmer())
+
     yield  # app runs here
+
+    warmer_task.cancel()
 
 
 app = FastAPI(title="SalesInsight", version="1.0.0", lifespan=lifespan)

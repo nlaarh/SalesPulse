@@ -183,15 +183,30 @@ function ZoomTracker({ onZoom }: { onZoom: (z: number) => void }) {
   return null
 }
 
-function FitBounds({ zips }: { zips: TerritoryZip[] }) {
+const REGION_CENTERS: Record<string, { lat: number; lng: number; zoom: number }> = {
+  Western:   { lat: 42.89, lng: -78.85, zoom: 11 },
+  Rochester: { lat: 43.16, lng: -77.61, zoom: 11 },
+  Central:   { lat: 43.05, lng: -76.15, zoom: 11 },
+  All:       { lat: 43.0,  lng: -77.50, zoom: 9 },
+}
+
+function FlyToRegion({ region, zips }: { region: RegionFilter; zips: TerritoryZip[] }) {
   const map = useMap()
-  const fitted = useRef(false)
+  const prevRegion = useRef(region)
   useEffect(() => {
-    if (zips.length === 0 || fitted.current) return
-    fitted.current = true
-    const bounds: [number, number][] = zips.map((z) => [z.lat, z.lng])
-    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 12 })
-  }, [zips, map])
+    if (region === prevRegion.current) return
+    prevRegion.current = region
+    if (region !== 'All') {
+      const regionZips = zips.filter((z) => z.region === region)
+      if (regionZips.length) {
+        const bounds: [number, number][] = regionZips.map((z) => [z.lat, z.lng])
+        map.fitBounds(bounds, { padding: [30, 30], maxZoom: 13 })
+        return
+      }
+    }
+    const center = REGION_CENTERS[region] || REGION_CENTERS.All
+    map.flyTo([center.lat, center.lng], center.zoom, { duration: 0.8 })
+  }, [region, zips, map])
   return null
 }
 
@@ -367,7 +382,7 @@ export default function TerritoryMap() {
   const { theme } = useTheme()
   const [layer, setLayer] = useState<LayerMode>('combined')
   const [region, setRegion] = useState<RegionFilter>('All')
-  const [zoom, setZoom] = useState(11)
+  const [zoom, setZoom] = useState(12)
 
   const level = zoomToLevel(zoom)
 
@@ -535,15 +550,15 @@ export default function TerritoryMap() {
       {/* Map */}
       <div className="relative rounded-xl overflow-hidden border border-border" style={{ height: 'calc(100vh - 340px)', minHeight: '500px' }}>
         <MapContainer
-          center={[42.89, -78.85]}
-          zoom={11}
+          center={[43.1, -77.75]}
+          zoom={12}
           className="h-full w-full"
           zoomControl={true}
           attributionControl={false}
         >
           <TileLayer url={tileUrl} />
           <ZoomTracker onZoom={handleZoom} />
-          <FitBounds zips={filteredZips} />
+          <FlyToRegion region={region} zips={data?.zips ?? []} />
 
           {/* Region / City bubbles */}
           {level !== 'zip' && bubbles.map((b) => {

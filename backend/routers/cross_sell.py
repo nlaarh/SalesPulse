@@ -1,20 +1,21 @@
-"""Cross-Sell Insights — Travel → Insurance gap detection.
+"""Cross-Sell Insights — Product gap detection.
 
-Identifies travel customers who booked trips but have no insurance purchase
-within ±30 days, creating actionable cross-sell opportunities for advisors.
+Identifies customers who have one product line but not another:
+  • Travel customers with no insurance → sell insurance
+  • Insurance customers with no travel → sell travel packages
+Shows contact info, spend, and Salesforce links for actionable outreach.
 """
 
 import logging
-from datetime import date, datetime, timedelta
 from typing import Optional
 from collections import defaultdict
 
 from fastapi import APIRouter, Query
 
-from sf_client import sf_query_all, sf_parallel
+from sf_client import sf_query_all, sf_parallel, sf_instance_url
 from shared import (
-    VALID_LINES, WON_STAGES, resolve_dates as _resolve_dates,
-    get_owner_map, is_sales_agent, escape_soql,
+    WON_STAGES, resolve_dates as _resolve_dates,
+    get_owner_map, is_sales_agent,
     OPP_RT_TRAVEL_ID, OPP_RT_INSURANCE_ID,
 )
 from constants import CACHE_TTL_HOUR, CACHE_TTL_DAY
@@ -23,47 +24,51 @@ import cache
 router = APIRouter()
 log = logging.getLogger(__name__)
 
-# ── Constants ────────────────────────────────────────────────────────────────
-
-INSURANCE_WINDOW_DAYS = 30  # ±days to check for matching insurance purchase
+# Max customers to return per category
+TOP_N = 100
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _score_opportunity(amount: float, days_ago: int) -> tuple[int, str]:
-    """Score a cross-sell opportunity 0-100 and assign priority label.
+def _score_customer(total_spend: float, opp_count: int, ltv: str) -> tuple[int, str]:
+    """Score a cross-sell opportunity 0-100 based on spend + engagement + LTV.
 
-    Factors:
-    - Trip value (60%): bigger trips = more insurance premium potential
-    - Recency (40%): recent trips = customer still engaged
+    - Total spend (50%): higher spenders = higher value cross-sell
+    - Engagement (25%): more transactions = more engaged
+    - LTV tier (25%): A=best through E=lowest
     """
-    # Value score (0-60)
-    if amount >= 10_000:
-        val_score = 60
-    elif amount >= 5_000:
-        val_score = 48
-    elif amount >= 2_500:
-        val_score = 36
-    elif amount >= 1_000:
-        val_score = 24
+    # Spend score (0-50)
+    if total_spend >= 20_000:
+        spend_score = 50
+    elif total_spend >= 10_000:
+        spend_score = 40
+    elif total_spend >= 5_000:
+        spend_score = 30
+    elif total_spend >= 2_000:
+        spend_score = 20
+    elif total_spend >= 500:
+        spend_score = 10
     else:
-        val_score = 12
+        spend_score = 5
 
-    # Recency score (0-40)
-    if days_ago <= 7:
-        rec_score = 40
-    elif days_ago <= 14:
-        rec_score = 32
-    elif days_ago <= 30:
-        rec_score = 24
-    elif days_ago <= 60:
-        rec_score = 16
-    elif days_ago <= 90:
-        rec_score = 8
+    # Engagement score (0-25)
+    if opp_count >= 10:
+        eng_score = 25
+    elif opp_count >= 5:
+        eng_score = 20
+    elif opp_count >= 3:
+        eng_score = 15
+    elif opp_count >= 2:
+        eng_score = 10
     else:
-        rec_score = 4
+        eng_score = 5
 
-    total = val_score + rec_score
+    # LTV score (0-25)
+    ltv_scores = {'A': 25, 'B': 20, 'C': 15, 'D': 10, 'E': 5}
+    ltv_clean = (ltv or '').strip().upper()[:1]
+    ltv_score = ltv_scores.get(ltv_clean, 8)
+
+    total = spend_score + eng_score + ltv_score
     if total >= 70:
         priority = 'high'
     elif total >= 45:
@@ -74,329 +79,195 @@ def _score_opportunity(amount: float, days_ago: int) -> tuple[int, str]:
     return total, priority
 
 
-def _build_reason(amount: float, days_ago: int, trip_name: str) -> str:
-    """Build a human-readable reason for the cross-sell recommendation."""
-    value_str = f"${amount:,.0f}"
-    if days_ago <= 7:
-        time_str = "booked this week"
-    elif days_ago <= 14:
-        time_str = "booked last week"
-    elif days_ago <= 30:
-        time_str = "booked this month"
-    elif days_ago <= 60:
-        time_str = f"booked {days_ago} days ago"
+def _build_reason(gap_type: str, total_spend: float, opp_count: int) -> str:
+    """Build human-readable reason for the cross-sell recommendation."""
+    spend_str = f"${total_spend:,.0f}"
+    if gap_type == 'needs_insurance':
+        return (
+            f"Spent {spend_str} on travel ({opp_count} booking{'s' if opp_count != 1 else ''}) "
+            f"— no insurance products on file"
+        )
     else:
-        time_str = f"booked {days_ago} days ago"
-
-    return f"{value_str} trip {time_str} — no travel insurance on file"
-
-
-# ── Core matching logic ──────────────────────────────────────────────────────
-
-def _find_uninsured_trips(travel_opps: list, insurance_opps: list) -> list[dict]:
-    """Match travel opps against insurance opps by AccountId + date proximity.
-
-    Returns list of uninsured travel opps (no insurance within ±30 days).
-    """
-    # Build insurance lookup: AccountId → list of CloseDates
-    ins_by_account: dict[str, list[date]] = defaultdict(list)
-    for ins in insurance_opps:
-        acct = ins.get('AccountId')
-        cd = ins.get('CloseDate')
-        if acct and cd:
-            try:
-                ins_by_account[acct].append(date.fromisoformat(cd))
-            except (ValueError, TypeError):
-                continue
-
-    today = date.today()
-    window = timedelta(days=INSURANCE_WINDOW_DAYS)
-    results = []
-
-    for trip in travel_opps:
-        acct = trip.get('AccountId')
-        cd_str = trip.get('CloseDate')
-        if not acct or not cd_str:
-            continue
-        try:
-            trip_date = date.fromisoformat(cd_str)
-        except (ValueError, TypeError):
-            continue
-
-        # Check if any insurance opp exists within ±window
-        ins_dates = ins_by_account.get(acct, [])
-        has_insurance = any(
-            abs((ins_d - trip_date).days) <= INSURANCE_WINDOW_DAYS
-            for ins_d in ins_dates
+        return (
+            f"Has {opp_count} insurance polic{'ies' if opp_count != 1 else 'y'} ({spend_str}) "
+            f"— no travel bookings on file"
         )
 
-        if not has_insurance:
-            days_ago = (today - trip_date).days
-            amount = trip.get('Amount') or 0
-            score, priority = _score_opportunity(amount, days_ago)
 
-            results.append({
-                'account_id': acct,
-                'opportunity_id': trip.get('Id', ''),
-                'trip_name': trip.get('Name', ''),
-                'amount': round(amount, 2),
-                'close_date': cd_str,
-                'days_ago': days_ago,
-                'owner_id': trip.get('OwnerId', ''),
-                'score': score,
-                'priority': priority,
-                'reason': _build_reason(amount, days_ago, trip.get('Name', '')),
-            })
-
-    # Sort by score descending
-    results.sort(key=lambda x: x['score'], reverse=True)
-    return results
+def _enrich_accounts(account_ids: list[str]) -> dict[str, dict]:
+    """Fetch Account details (name, phone, email, city, LTV) in batches."""
+    result: dict[str, dict] = {}
+    for i in range(0, len(account_ids), 200):
+        batch = account_ids[i:i + 200]
+        ids_csv = ','.join(f"'{aid}'" for aid in batch)
+        rows = sf_query_all(
+            f"SELECT Id, Name, Phone, PersonEmail, BillingCity, LTV__c "
+            f"FROM Account WHERE Id IN ({ids_csv})"
+        )
+        for r in rows:
+            result[r['Id']] = {
+                'name': r.get('Name', ''),
+                'phone': r.get('Phone', ''),
+                'email': r.get('PersonEmail', ''),
+                'city': r.get('BillingCity', ''),
+                'ltv': r.get('LTV__c', ''),
+            }
+    return result
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.get("/api/cross-sell/insights")
 def cross_sell_insights(
-    period: int = 6,
+    period: int = 12,
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
 ):
-    """Aggregated cross-sell dashboard: uninsured trips, top opportunities, by-advisor."""
+    """Product gap cross-sell: who can buy what they don't have yet."""
     sd, ed = _resolve_dates(start_date, end_date, period)
-    key = f"cross_sell_insights_{sd}_{ed}"
+    key = f"cross_sell_v2_{sd}_{ed}"
 
     def fetch():
-        # Parallel: all Travel won opps + all Insurance won opps in date range
+        # Fetch raw opportunity records (no GROUP BY to avoid queryMore limit)
         data = sf_parallel(
-            travel=f"""
-                SELECT Id, Name, AccountId, Amount, CloseDate, OwnerId
+            travel_raw=f"""
+                SELECT AccountId, Amount
                 FROM Opportunity
                 WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
                   AND {WON_STAGES}
                   AND CloseDate >= {sd} AND CloseDate <= {ed}
-                  AND Amount != null
-                ORDER BY CloseDate DESC
+                  AND Amount != null AND AccountId != null
             """,
-            insurance=f"""
-                SELECT Id, AccountId, CloseDate
+            insurance_raw=f"""
+                SELECT AccountId, Amount
                 FROM Opportunity
                 WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
                   AND {WON_STAGES}
                   AND CloseDate >= {sd} AND CloseDate <= {ed}
-            """,
-            # Also get account names for top opportunities
-            travel_total=f"""
-                SELECT COUNT(Id) cnt, SUM(Amount) total
-                FROM Opportunity
-                WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
-                  AND {WON_STAGES}
-                  AND CloseDate >= {sd} AND CloseDate <= {ed}
-                  AND Amount != null
+                  AND Amount != null AND AccountId != null
             """,
         )
 
-        travel_opps = data.get('travel', [])
-        insurance_opps = data.get('insurance', [])
-        total_row = data.get('travel_total', [{}])
+        # Aggregate in Python: AccountId → {total, cnt}
+        travel_by_acct: dict[str, dict] = {}
+        for r in data.get('travel_raw', []):
+            aid = r.get('AccountId')
+            amt = r.get('Amount') or 0
+            if aid:
+                if aid not in travel_by_acct:
+                    travel_by_acct[aid] = {'total': 0, 'cnt': 0}
+                travel_by_acct[aid]['total'] += amt
+                travel_by_acct[aid]['cnt'] += 1
 
-        total_travel = (total_row[0] if total_row else {}).get('cnt', 0) or 0
-        total_travel_value = (total_row[0] if total_row else {}).get('total', 0) or 0
+        ins_by_acct: dict[str, dict] = {}
+        for r in data.get('insurance_raw', []):
+            aid = r.get('AccountId')
+            amt = r.get('Amount') or 0
+            if aid:
+                if aid not in ins_by_acct:
+                    ins_by_acct[aid] = {'total': 0, 'cnt': 0}
+                ins_by_acct[aid]['total'] += amt
+                ins_by_acct[aid]['cnt'] += 1
 
-        # Find uninsured trips
-        uninsured = _find_uninsured_trips(travel_opps, insurance_opps)
-        total_uninsured = len(uninsured)
-        total_insured = total_travel - total_uninsured
+        travel_account_ids = set(travel_by_acct.keys())
+        ins_account_ids = set(ins_by_acct.keys())
 
-        # Enrich with owner names
-        owner_map = get_owner_map()
-        for opp in uninsured:
-            opp['advisor'] = owner_map.get(opp['owner_id'], 'Unknown')
+        # Customers with travel but NO insurance
+        needs_insurance_ids = travel_account_ids - ins_account_ids
+        # Customers with insurance but NO travel
+        needs_travel_ids = ins_account_ids - travel_account_ids
+        # Customers with both (for summary stats)
+        have_both_ids = travel_account_ids & ins_account_ids
 
-        # Fetch account names for top 50 opportunities
-        top_account_ids = list({o['account_id'] for o in uninsured[:50]})
-        account_names = {}
-        if top_account_ids:
-            ids_csv = ','.join(f"'{aid}'" for aid in top_account_ids)
-            name_rows = sf_query_all(
-                f"SELECT Id, Name FROM Account WHERE Id IN ({ids_csv})"
-            )
-            account_names = {r['Id']: r.get('Name', '') for r in name_rows}
-
-        for opp in uninsured[:50]:
-            opp['account_name'] = account_names.get(opp['account_id'], '')
-
-        # By-advisor aggregation
-        advisor_agg: dict[str, dict] = {}
-        for opp in uninsured:
-            name = opp['advisor']
-            if not is_sales_agent(name, 'Travel'):
-                continue
-            if name not in advisor_agg:
-                advisor_agg[name] = {
-                    'advisor': name,
-                    'uninsured_count': 0,
-                    'total_value': 0,
-                    'top_amount': 0,
-                    'top_trip': '',
-                }
-            agg = advisor_agg[name]
-            agg['uninsured_count'] += 1
-            agg['total_value'] = round(agg['total_value'] + opp['amount'], 2)
-            if opp['amount'] > agg['top_amount']:
-                agg['top_amount'] = opp['amount']
-                agg['top_trip'] = opp['trip_name']
-
-        by_advisor = sorted(
-            advisor_agg.values(),
-            key=lambda x: x['total_value'],
+        # Sort by spend descending, take top N for each
+        needs_ins_sorted = sorted(
+            needs_insurance_ids,
+            key=lambda a: travel_by_acct[a]['total'],
             reverse=True,
-        )
+        )[:TOP_N]
 
-        # Monthly trend (coverage rate by month)
-        month_insured: dict[str, int] = defaultdict(int)
-        month_total: dict[str, int] = defaultdict(int)
+        needs_travel_sorted = sorted(
+            needs_travel_ids,
+            key=lambda a: ins_by_acct[a]['total'],
+            reverse=True,
+        )[:TOP_N]
 
-        for trip in travel_opps:
-            cd = trip.get('CloseDate', '')[:7]  # YYYY-MM
-            if cd:
-                month_total[cd] += 1
+        # Enrich top customers with Account details
+        all_enrich_ids = list(set(needs_ins_sorted) | set(needs_travel_sorted))
+        account_details = _enrich_accounts(all_enrich_ids) if all_enrich_ids else {}
 
-        # Mark insured trips in monthly buckets
-        insured_ids = set()
-        ins_by_account: dict[str, list] = defaultdict(list)
-        for ins in insurance_opps:
-            acct = ins.get('AccountId')
-            cd = ins.get('CloseDate')
-            if acct and cd:
-                try:
-                    ins_by_account[acct].append(date.fromisoformat(cd))
-                except (ValueError, TypeError):
-                    pass
+        sf_base = sf_instance_url()
 
-        window = timedelta(days=INSURANCE_WINDOW_DAYS)
-        for trip in travel_opps:
-            acct = trip.get('AccountId')
-            cd_str = trip.get('CloseDate', '')
-            if not acct or not cd_str:
-                continue
-            try:
-                trip_date = date.fromisoformat(cd_str)
-            except (ValueError, TypeError):
-                continue
-            ins_dates = ins_by_account.get(acct, [])
-            if any(abs((d - trip_date).days) <= INSURANCE_WINDOW_DAYS for d in ins_dates):
-                month_key = cd_str[:7]
-                month_insured[month_key] += 1
-
-        trend = []
-        for ym in sorted(month_total.keys()):
-            t = month_total[ym]
-            i = month_insured.get(ym, 0)
-            trend.append({
-                'month': ym,
-                'total': t,
-                'insured': i,
-                'uninsured': t - i,
-                'coverage_rate': round(i / t * 100, 1) if t > 0 else 0,
+        # Build "needs insurance" opportunities
+        needs_insurance = []
+        for aid in needs_ins_sorted:
+            spend = travel_by_acct[aid]
+            acct = account_details.get(aid, {})
+            score, priority = _score_customer(spend['total'], spend['cnt'], acct.get('ltv', ''))
+            needs_insurance.append({
+                'account_id': aid,
+                'account_name': acct.get('name', ''),
+                'phone': acct.get('phone', ''),
+                'email': acct.get('email', ''),
+                'city': acct.get('city', ''),
+                'ltv': acct.get('ltv', ''),
+                'products_owned': ['Travel'],
+                'gap': 'Insurance',
+                'gap_type': 'needs_insurance',
+                'total_spend': round(spend['total'], 2),
+                'transaction_count': spend['cnt'],
+                'score': score,
+                'priority': priority,
+                'reason': _build_reason('needs_insurance', spend['total'], spend['cnt']),
+                'sf_link': f"{sf_base}/{aid}",
             })
 
-        # Summary
-        value_at_risk = sum(o['amount'] for o in uninsured)
-        coverage_rate = round(total_insured / total_travel * 100, 1) if total_travel > 0 else 0
+        # Build "needs travel" opportunities
+        needs_travel = []
+        for aid in needs_travel_sorted:
+            spend = ins_by_acct[aid]
+            acct = account_details.get(aid, {})
+            score, priority = _score_customer(spend['total'], spend['cnt'], acct.get('ltv', ''))
+            needs_travel.append({
+                'account_id': aid,
+                'account_name': acct.get('name', ''),
+                'phone': acct.get('phone', ''),
+                'email': acct.get('email', ''),
+                'city': acct.get('city', ''),
+                'ltv': acct.get('ltv', ''),
+                'products_owned': ['Insurance'],
+                'gap': 'Travel',
+                'gap_type': 'needs_travel',
+                'total_spend': round(spend['total'], 2),
+                'transaction_count': spend['cnt'],
+                'score': score,
+                'priority': priority,
+                'reason': _build_reason('needs_travel', spend['total'], spend['cnt']),
+                'sf_link': f"{sf_base}/{aid}",
+            })
 
-        # Filter top opportunities to sales agents only
-        top_opps = [o for o in uninsured[:50] if is_sales_agent(o.get('advisor', ''), 'Travel')]
+        # Summary totals (computed from Python-aggregated data)
+        total_travel_revenue = sum(v['total'] for v in travel_by_acct.values())
+        total_insurance_revenue = sum(v['total'] for v in ins_by_acct.values())
 
         return {
             'summary': {
-                'total_travel_trips': total_travel,
-                'total_insured': total_insured,
-                'total_uninsured': total_uninsured,
-                'value_at_risk': round(value_at_risk, 2),
-                'coverage_rate': coverage_rate,
-                'avg_trip_value': round(total_travel_value / total_travel, 2) if total_travel > 0 else 0,
+                'total_travel_customers': len(travel_account_ids),
+                'total_insurance_customers': len(ins_account_ids),
+                'customers_with_both': len(have_both_ids),
+                'needs_insurance_count': len(needs_insurance_ids),
+                'needs_travel_count': len(needs_travel_ids),
+                'needs_insurance_value': round(
+                    sum(travel_by_acct[a]['total'] for a in needs_insurance_ids), 2
+                ),
+                'needs_travel_value': round(
+                    sum(ins_by_acct[a]['total'] for a in needs_travel_ids), 2
+                ),
+                'total_travel_revenue': round(total_travel_revenue, 2),
+                'total_insurance_revenue': round(total_insurance_revenue, 2),
             },
-            'top_opportunities': top_opps[:30],
-            'by_advisor': by_advisor,
-            'trend': trend,
-            'date_range': {'start': sd, 'end': ed},
-        }
-
-    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
-
-
-@router.get("/api/cross-sell/advisor/{advisor_name}")
-def cross_sell_by_advisor(
-    advisor_name: str,
-    period: int = 6,
-    start_date: Optional[str] = Query(None),
-    end_date: Optional[str] = Query(None),
-):
-    """Per-advisor cross-sell call list: uninsured trips for their customers."""
-    sd, ed = _resolve_dates(start_date, end_date, period)
-    safe_name = escape_soql(advisor_name)
-    key = f"cross_sell_advisor_{safe_name}_{sd}_{ed}"
-
-    def fetch():
-        # First get this advisor's travel opp AccountIds
-        travel_opps = sf_query_all(f"""
-            SELECT Id, Name, AccountId, Amount, CloseDate, OwnerId
-            FROM Opportunity
-            WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
-              AND {WON_STAGES}
-              AND Owner.Name = '{safe_name}'
-              AND CloseDate >= {sd} AND CloseDate <= {ed}
-              AND Amount != null
-            ORDER BY Amount DESC
-        """)
-
-        # Collect unique AccountIds from travel opps
-        account_ids = list({t['AccountId'] for t in travel_opps if t.get('AccountId')})
-        insurance_opps = []
-        if account_ids:
-            # Batch AccountIds (SOQL IN clause limit ~200 IDs at a time)
-            for i in range(0, len(account_ids), 200):
-                batch = account_ids[i:i+200]
-                ids_csv = ','.join(f"'{aid}'" for aid in batch)
-                ins = sf_query_all(f"""
-                    SELECT Id, AccountId, CloseDate
-                    FROM Opportunity
-                    WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
-                      AND {WON_STAGES}
-                      AND AccountId IN ({ids_csv})
-                """)
-                insurance_opps.extend(ins)
-
-        uninsured = _find_uninsured_trips(travel_opps, insurance_opps)
-
-        # Enrich with account names
-        account_ids = list({o['account_id'] for o in uninsured})
-        account_names = {}
-        if account_ids:
-            ids_csv = ','.join(f"'{aid}'" for aid in account_ids[:100])
-            name_rows = sf_query_all(
-                f"SELECT Id, Name FROM Account WHERE Id IN ({ids_csv})"
-            )
-            account_names = {r['Id']: r.get('Name', '') for r in name_rows}
-
-        for opp in uninsured:
-            opp['account_name'] = account_names.get(opp['account_id'], '')
-            opp['advisor'] = advisor_name
-
-        # Summary for this advisor
-        total_trips = len(travel_opps)
-        total_uninsured = len(uninsured)
-        value_at_risk = sum(o['amount'] for o in uninsured)
-
-        return {
-            'advisor': advisor_name,
-            'summary': {
-                'total_trips': total_trips,
-                'total_uninsured': total_uninsured,
-                'coverage_rate': round((total_trips - total_uninsured) / total_trips * 100, 1) if total_trips > 0 else 0,
-                'value_at_risk': round(value_at_risk, 2),
-            },
-            'opportunities': uninsured,
+            'needs_insurance': needs_insurance,
+            'needs_travel': needs_travel,
             'date_range': {'start': sd, 'end': ed},
         }
 
