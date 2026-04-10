@@ -58,11 +58,28 @@ def get_top_customers(
         # Step 2: fetch names for top AccountIds
         ids_csv = ','.join(f"'{r['AccountId']}'" for r in agg_rows if r.get('AccountId'))
         name_map: dict = {}
+        advisor_map: dict = {}
         if ids_csv:
             name_rows = sf_query_all(f"""
                 SELECT Id, Name FROM Account WHERE Id IN ({ids_csv})
             """)
             name_map = {r['Id']: r.get('Name', '') for r in name_rows}
+
+            # Step 3: fetch primary advisor (most deals) per account
+            adv_rows = sf_query_all(f"""
+                SELECT AccountId, Owner.Name, COUNT(Id) cnt
+                FROM Opportunity
+                WHERE AccountId IN ({ids_csv})
+                  AND StageName IN ('Closed Won','Invoice')
+                  AND CloseDate >= {sd} AND CloseDate <= {ed}
+                  AND Amount != null AND {lf}
+                GROUP BY AccountId, Owner.Name
+                ORDER BY AccountId, COUNT(Id) DESC
+            """)
+            for ar in adv_rows:
+                aid = ar.get('AccountId', '')
+                if aid not in advisor_map:
+                    advisor_map[aid] = ar.get('Name', '')
 
         result = []
         for r in agg_rows:
@@ -73,6 +90,7 @@ def get_top_customers(
                 'total_rev': float(r.get('total_rev') or 0),
                 'deal_count': int(r.get('deal_count') or 0),
                 'avg_deal': float(r.get('avg_deal') or 0),
+                'advisor': advisor_map.get(aid, ''),
             })
         return result
 
@@ -218,6 +236,26 @@ def get_customer_profile(
         rt = (o.get('RecordType') or {}).get('Name', 'Other')
         opp_groups.setdefault(rt, []).append(_fmt_opp(o, base_url))
 
+    # Top advisors — derived from opportunity owners, most recent interaction first
+    advisor_map: dict = {}
+    for o in opps:
+        owner = (o.get('Owner') or {}).get('Name')
+        if not owner:
+            continue
+        if owner not in advisor_map:
+            advisor_map[owner] = {
+                'name': owner,
+                'deal_count': 0,
+                'total_revenue': 0,
+                'last_interaction': o.get('CreatedDate', ''),
+            }
+        advisor_map[owner]['deal_count'] += 1
+        advisor_map[owner]['total_revenue'] += o.get('Amount') or 0
+        opp_date = o.get('CreatedDate', '')
+        if opp_date > advisor_map[owner]['last_interaction']:
+            advisor_map[owner]['last_interaction'] = opp_date
+    top_advisors = sorted(advisor_map.values(), key=lambda a: a['last_interaction'], reverse=True)[:3]
+
     return {
         'account':      _fmt_account(acct, base_url),
         'memberships':  [_fmt_membership(m) for m in mships],
@@ -226,6 +264,7 @@ def get_customer_profile(
         'transactions': transactions,
         'opportunities': opp_groups,
         'leads':        [_fmt_lead(l, base_url) for l in raw_leads],
+        'top_advisors': top_advisors,
     }
 
 

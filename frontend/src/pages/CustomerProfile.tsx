@@ -52,6 +52,10 @@ interface Membership {
 
 interface Vehicle { id: string; name: string; status: string | null; vin: string | null; description: string | null }
 
+interface Advisor {
+  name: string; deal_count: number; total_revenue: number; last_interaction: string
+}
+
 interface Profile {
   account: Account
   memberships: Membership[]
@@ -60,6 +64,7 @@ interface Profile {
   transactions: Transaction[]
   opportunities: Record<string, Transaction[]>
   leads: Lead[]
+  top_advisors?: Advisor[]
 }
 
 /* ── Product config ─────────────────────────────────────────────────────── */
@@ -165,7 +170,7 @@ export default function CustomerProfile() {
     </div>
   )
 
-  const { account: acct, memberships, vehicles, product_360, transactions, leads = [] } = profile
+  const { account: acct, memberships, vehicles, product_360, transactions, leads = [], top_advisors = [] } = profile
   const activeMembership = memberships.find(m => m.status === 'A') || memberships[0]
 
   return (
@@ -341,6 +346,34 @@ export default function CustomerProfile() {
           </div>
         </div>
       </div>
+
+      {/* Serving Advisors */}
+      {top_advisors.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-5">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-3">Serving Advisors</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {top_advisors.map((adv, i) => (
+              <div key={adv.name} className={cn(
+                'flex items-center gap-3 rounded-lg border p-3',
+                i === 0 ? 'border-primary/30 bg-primary/5' : 'border-border bg-muted/20',
+              )}>
+                <div className={cn(
+                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold',
+                  i === 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+                )}>
+                  {i + 1}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[12px] font-semibold text-foreground truncate">{adv.name}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {adv.deal_count} deal{adv.deal_count !== 1 ? 's' : ''} · {fmt$(adv.total_revenue)} · Last: {fmtDate(adv.last_interaction)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Transactions */}
       <ActivityTimeline transactions={transactions} leads={leads} />

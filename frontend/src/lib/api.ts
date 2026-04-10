@@ -561,6 +561,7 @@ export interface TopCustomer {
   total_rev: number
   deal_count: number
   avg_deal: number
+  advisor: string
 }
 
 export async function fetchTopCustomers(

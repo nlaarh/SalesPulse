@@ -296,6 +296,7 @@ export default function TopCustomers() {
                   <tr className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">
                     <th className="px-5 py-3 w-10">#</th>
                     <th className="px-5 py-3">Customer</th>
+                    <th className="px-5 py-3">Advisor</th>
                     <th
                       className="px-5 py-3 text-right cursor-pointer hover:text-foreground select-none"
                       onClick={() => toggleSort('total_rev')}
@@ -329,6 +330,9 @@ export default function TopCustomers() {
                         <span className="font-medium text-foreground">
                           {cust.name || cust.account_id}
                         </span>
+                      </td>
+                      <td className="px-5 py-3 text-[12px] text-muted-foreground">
+                        {cust.advisor || '—'}
                       </td>
                       <td className="px-5 py-3 text-right font-semibold text-foreground tabular-nums">
                         {fmtFull(cust.total_rev)}
