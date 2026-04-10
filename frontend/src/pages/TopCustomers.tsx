@@ -154,6 +154,7 @@ export default function TopCustomers() {
   const [limit, setLimit] = useState<Limit>(25)
   const [sortField, setSortField] = useState<SortField>('total_rev')
   const [sortAsc, setSortAsc] = useState(false)
+  const [chartTopN, setChartTopN] = useState(10)
 
   useEffect(() => {
     setLoading(true)
@@ -171,13 +172,13 @@ export default function TopCustomers() {
   }, [customers, sortField, sortAsc])
 
   const chartData = useMemo(
-    () => sorted.slice(0, 10).map(c => ({
+    () => sorted.slice(0, chartTopN).map(c => ({
       name: c.name.length > 20 ? c.name.slice(0, 18) + '…' : c.name,
       fullName: c.name,
       value: c.total_rev,
       account_id: c.account_id,
     })),
-    [sorted],
+    [sorted, chartTopN],
   )
 
   function toggleSort(field: SortField) {
@@ -248,12 +249,26 @@ export default function TopCustomers() {
         </div>
       ) : (
         <>
-          {/* Bar Chart — top 10 */}
+          {/* Bar Chart */}
           <div className="bg-white dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
-            <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-4">
-              Top 10 by Bookings
-            </h2>
-            <ResponsiveContainer width="100%" height={320}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                Top Customers by Bookings
+              </h2>
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">Show top</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={sorted.length || 50}
+                  value={chartTopN}
+                  onChange={(e) => { const v = parseInt(e.target.value, 10); if (v > 0) setChartTopN(v) }}
+                  className="w-16 rounded-md border border-border bg-secondary/50 px-2 py-1 text-center text-[12px] font-semibold tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <span className="text-[11px] text-muted-foreground">of {sorted.length}</span>
+              </div>
+            </div>
+            <ResponsiveContainer width="100%" height={Math.max(300, chartData.length * 32)}>
               <BarChart
                 data={chartData}
                 layout="vertical"
