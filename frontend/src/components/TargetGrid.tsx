@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchMonthlyTargets, saveMonthlyTargets } from '@/lib/api'
-import type { MonthlyTargetAdvisor } from '@/lib/api'
+import { fetchMonthlyTargets, saveMonthlyTargets, computeEstimates } from '@/lib/api'
+import type { MonthlyTargetAdvisor, EstimateAdvisor } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { Loader2, Save, CopyCheck, ArrowDownToLine, DollarSign, BookOpen, Download } from 'lucide-react'
+import { Loader2, Save, DollarSign, BookOpen, Download, Calculator, AlertTriangle } from 'lucide-react'
 import { exportToExcel } from '@/lib/exportExcel'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 type TargetBase = 'bookings' | 'commission'
+type ActiveTab = 'base' | 'bookings' | 'commissions'
 
 interface GridRow {
   advisor_target_id: number
@@ -25,9 +26,11 @@ interface Props {
 }
 
 export default function TargetGrid({ line }: Props) {
-  const [year, setYear] = useState(new Date().getFullYear())
+  const currentYear = new Date().getFullYear()
+  const currentMonth = new Date().getMonth() + 1 // 1-based
+
+  const [year, setYear] = useState(currentYear)
   const [rows, setRows] = useState<GridRow[]>([])
-  const [original, setOriginal] = useState<GridRow[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -36,10 +39,28 @@ export default function TargetGrid({ line }: Props) {
   const [growthPct, setGrowthPct] = useState(10)
   const [targetBase, setTargetBase] = useState<TargetBase>('bookings')
   const [commRate, setCommRate] = useState(10) // commission rate %
-  const [methodology, setMethodology] = useState<{
-    commission_rate: number; prior_year: number
-    prior_year_bookings: number; prior_year_commission: number; note: string
-  } | null>(null)
+
+  // ── Estimation state ───────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<ActiveTab>('bookings')
+  const [baseYears, setBaseYears] = useState<number[]>([currentYear - 1])
+  const [estimateData, setEstimateData] = useState<EstimateAdvisor[] | null>(null)
+  const [estimating, setEstimating] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [existingCount, setExistingCount] = useState(0)
+
+  // Booking estimates (editable) - advisor_target_id -> { month -> value }
+  const [bookingEstimates, setBookingEstimates] = useState<Record<number, Record<number, number>>>({})
+  const [bookingEstimatesOrig, setBookingEstimatesOrig] = useState<Record<number, Record<number, number>>>({})
+  // Commission estimates (editable) - advisor_target_id -> { month -> value }
+  const [commissionEstimates, setCommissionEstimates] = useState<Record<number, Record<number, number>>>({})
+  const [commissionEstimatesOrig, setCommissionEstimatesOrig] = useState<Record<number, Record<number, number>>>({})
+
+  // Is a month editable? Only future months
+  const isMonthEditable = (m: number) => {
+    if (year > currentYear) return true
+    if (year < currentYear) return false
+    return m > currentMonth
+  }
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -47,8 +68,6 @@ export default function TargetGrid({ line }: Props) {
     try {
       const data = await fetchMonthlyTargets(year, line)
       if (data.methodology) {
-        setMethodology(data.methodology)
-        // Seed commission rate from server
         if (data.methodology.commission_rate > 0) {
           setCommRate(Math.round(data.methodology.commission_rate * 10) / 10)
         }
@@ -56,7 +75,6 @@ export default function TargetGrid({ line }: Props) {
       const gridRows: GridRow[] = data.advisors.map((a: MonthlyTargetAdvisor) => {
         const targets: Record<number, number> = {}
         for (const m of a.months) {
-          // Use the right field for the current view
           targets[m.month] = targetBase === 'bookings'
             ? (m.target_bookings ?? m.target)
             : m.target
@@ -66,14 +84,30 @@ export default function TargetGrid({ line }: Props) {
           name: a.name,
           branch: a.branch,
           title: a.title,
-          prior_year: a.prior_year_actual ?? 0,       // commission
-          prior_year_rev: a.prior_year_revenue ?? 0,  // bookings
+          prior_year: a.prior_year_actual ?? 0,
+          prior_year_rev: a.prior_year_revenue ?? 0,
           prior_year_months: a.prior_year_months ?? [],
           targets,
         }
       })
       setRows(gridRows)
-      setOriginal(JSON.parse(JSON.stringify(gridRows)))
+
+      // Populate booking/commission estimates from saved targets
+      const be: Record<number, Record<number, number>> = {}
+      const ce: Record<number, Record<number, number>> = {}
+      for (const a of data.advisors) {
+        be[a.advisor_target_id] = {}
+        ce[a.advisor_target_id] = {}
+        for (const m of a.months) {
+          be[a.advisor_target_id][m.month] = m.target_bookings ?? 0
+          ce[a.advisor_target_id][m.month] = m.target ?? 0
+        }
+      }
+      setBookingEstimates(be)
+      setBookingEstimatesOrig(JSON.parse(JSON.stringify(be)))
+      setCommissionEstimates(ce)
+      setCommissionEstimatesOrig(JSON.parse(JSON.stringify(ce)))
+
     } catch {
       setError('Failed to load targets')
     } finally {
@@ -82,8 +116,6 @@ export default function TargetGrid({ line }: Props) {
   }, [year, line, targetBase])
 
   useEffect(() => { loadData() }, [loadData])
-
-  const isDirty = JSON.stringify(rows) !== JSON.stringify(original)
 
   // ── helpers ──────────────────────────────────────────────────────────────
   const priorYearBase = (row: GridRow) =>
@@ -103,45 +135,14 @@ export default function TargetGrid({ line }: Props) {
       const newTargets: Record<number, number> = {}
       for (const [k, v] of Object.entries(r.targets)) {
         if (newBase === 'commission') {
-          // bookings → commission: multiply by rate
           newTargets[Number(k)] = Math.round(v * commRate / 100)
         } else {
-          // commission → bookings: divide by rate
           newTargets[Number(k)] = commRate > 0 ? Math.round(v / (commRate / 100)) : 0
         }
       }
       return { ...r, targets: newTargets }
     }))
     setTargetBase(newBase)
-    setSaved(false)
-  }
-
-  function updateCell(rowIdx: number, month: number, value: string) {
-    const num = parseFloat(value.replace(/[^0-9.]/g, '')) || 0
-    setRows(prev => {
-      const next = [...prev]
-      next[rowIdx] = { ...next[rowIdx], targets: { ...next[rowIdx].targets, [month]: num } }
-      return next
-    })
-    setSaved(false)
-  }
-
-  function applyToAllMonths(rowIdx: number) {
-    const firstVal = rows[rowIdx].targets[1] || 0
-    setRows(prev => {
-      const next = [...prev]
-      const targets: Record<number, number> = {}
-      for (let m = 1; m <= 12; m++) targets[m] = firstVal
-      next[rowIdx] = { ...next[rowIdx], targets }
-      return next
-    })
-    setSaved(false)
-  }
-
-  function fillDown(month: number) {
-    if (rows.length === 0) return
-    const firstVal = rows[0].targets[month] || 0
-    setRows(prev => prev.map(r => ({ ...r, targets: { ...r.targets, [month]: firstVal } })))
     setSaved(false)
   }
 
@@ -195,15 +196,41 @@ export default function TargetGrid({ line }: Props) {
     setSaving(true)
     setError('')
     try {
-      const updates = rows
-        .filter((r, i) => JSON.stringify(r.targets) !== JSON.stringify(original[i]?.targets))
-        .map(r => ({
-          advisor_target_id: r.advisor_target_id,
-          months: Object.fromEntries(Object.entries(r.targets).map(([k, v]) => [k, v])),
-        }))
-      if (updates.length > 0) await saveMonthlyTargets(year, updates, targetBase, line)
+      // Build updates based on active tab
+      if (activeTab === 'bookings') {
+        // Save booking estimates (only future months)
+        const updates = Object.entries(bookingEstimates)
+          .filter(([id]) => {
+            const orig = bookingEstimatesOrig[Number(id)] || {}
+            const cur = bookingEstimates[Number(id)] || {}
+            return JSON.stringify(cur) !== JSON.stringify(orig)
+          })
+          .map(([id, months]) => ({
+            advisor_target_id: Number(id),
+            months: Object.fromEntries(
+              Object.entries(months).filter(([m]) => isMonthEditable(Number(m)))
+            ),
+          }))
+          .filter(u => Object.keys(u.months).length > 0)
+        if (updates.length > 0) await saveMonthlyTargets(year, updates, 'bookings', line)
+      } else if (activeTab === 'commissions') {
+        // Save commission estimates (only future months)
+        const updates = Object.entries(commissionEstimates)
+          .filter(([id]) => {
+            const orig = commissionEstimatesOrig[Number(id)] || {}
+            const cur = commissionEstimates[Number(id)] || {}
+            return JSON.stringify(cur) !== JSON.stringify(orig)
+          })
+          .map(([id, months]) => ({
+            advisor_target_id: Number(id),
+            months: Object.fromEntries(
+              Object.entries(months).filter(([m]) => isMonthEditable(Number(m)))
+            ),
+          }))
+          .filter(u => Object.keys(u.months).length > 0)
+        if (updates.length > 0) await saveMonthlyTargets(year, updates, 'commission', line)
+      }
       setSaved(true)
-      // Reload from server to confirm DB persistence
       await loadData()
     } catch {
       setError('Failed to save targets')
@@ -211,6 +238,83 @@ export default function TargetGrid({ line }: Props) {
       setSaving(false)
     }
   }
+
+  // ── Estimate computation ─────────────────────────────────────────────────
+  async function handleComputeEstimates() {
+    if (baseYears.length === 0) {
+      setError('Select at least one base year')
+      return
+    }
+    // If targets already exist, show confirmation
+    if (existingCount > 0 && !showConfirm) {
+      setShowConfirm(true)
+      return
+    }
+    setShowConfirm(false)
+    setEstimating(true)
+    setError('')
+    try {
+      const result = await computeEstimates(year, line, baseYears)
+      if (result.error) {
+        setError(result.error)
+        return
+      }
+      setEstimateData(result.advisors)
+      setExistingCount(result.existing_targets)
+      if (result.commission_rate > 0) {
+        setCommRate(result.commission_rate)
+      }
+      // Populate editable grids from estimates (only future months)
+      const be: Record<number, Record<number, number>> = { ...bookingEstimates }
+      const ce: Record<number, Record<number, number>> = { ...commissionEstimates }
+      for (const a of result.advisors) {
+        if (!be[a.advisor_target_id]) be[a.advisor_target_id] = {}
+        if (!ce[a.advisor_target_id]) ce[a.advisor_target_id] = {}
+        for (const m of a.months) {
+          if (isMonthEditable(m.month)) {
+            be[a.advisor_target_id][m.month] = m.base_bookings
+            ce[a.advisor_target_id][m.month] = m.base_commission
+          }
+        }
+      }
+      setBookingEstimates(be)
+      setCommissionEstimates(ce)
+      setActiveTab('base')
+    } catch {
+      setError('Failed to compute estimates')
+    } finally {
+      setEstimating(false)
+    }
+  }
+
+  function toggleBaseYear(y: number) {
+    setBaseYears(prev =>
+      prev.includes(y) ? prev.filter(v => v !== y) : [...prev, y].sort()
+    )
+  }
+
+  function updateEstimateCell(tab: 'bookings' | 'commissions', advisorId: number, month: number, value: string) {
+    const num = parseFloat(value.replace(/[^0-9.]/g, '')) || 0
+    if (tab === 'bookings') {
+      setBookingEstimates(prev => ({
+        ...prev,
+        [advisorId]: { ...(prev[advisorId] || {}), [month]: num },
+      }))
+    } else {
+      setCommissionEstimates(prev => ({
+        ...prev,
+        [advisorId]: { ...(prev[advisorId] || {}), [month]: num },
+      }))
+    }
+    setSaved(false)
+  }
+
+  // Check if estimate tabs are dirty
+  const isEstimateDirty = activeTab === 'bookings'
+    ? JSON.stringify(bookingEstimates) !== JSON.stringify(bookingEstimatesOrig)
+    : activeTab === 'commissions'
+    ? JSON.stringify(commissionEstimates) !== JSON.stringify(commissionEstimatesOrig)
+    : false
 
   function rowTotal(row: GridRow) {
     return Object.values(row.targets).reduce((s, v) => s + v, 0)
@@ -262,18 +366,304 @@ export default function TargetGrid({ line }: Props) {
   const totalPriorBookings  = rows.reduce((s, r) => s + r.prior_year_rev, 0)
   const totalPriorComm      = rows.reduce((s, r) => s + r.prior_year, 0)
   const totalPriorBase      = targetBase === 'bookings' ? totalPriorBookings : totalPriorComm
-  const newTargetBase       = Math.round(totalPriorBase * (1 + growthPct / 100))
   const currentTotal        = rows.reduce((s, r) => s + rowTotal(r), 0)
   const currentOtherTotal   = toOther(currentTotal)
+
+  // Derive advisor list for estimate tabs from estimateData or rows
+  const estimateAdvisors = estimateData ?? []
+
+  // Helper: get sum across months for estimate data
+  const estimateMonthlyTotal = (advisorId: number, data: Record<number, Record<number, number>>) => {
+    const months = data[advisorId] || {}
+    return Object.values(months).reduce((s, v) => s + v, 0)
+  }
+
+  // ── Render: Estimate Grid (Base / Bookings / Commissions tabs) ──────────
+  function renderEstimateGrid(tab: ActiveTab) {
+    const isEditable = tab !== 'base'
+    const dataMap = tab === 'bookings' ? bookingEstimates
+      : tab === 'commissions' ? commissionEstimates
+      : null
+    const label = tab === 'base' ? 'Base Estimates' : tab === 'bookings' ? 'Booking Estimates' : 'Target Commissions'
+    const unit = tab === 'commissions' ? 'commission' : 'bookings'
+
+    if (tab === 'base' && !estimateData) {
+      return (
+        <div className="py-12 text-center space-y-3">
+          <Calculator className="h-8 w-8 mx-auto text-muted-foreground/30" />
+          <div className="text-[13px] text-muted-foreground">
+            Base estimates not yet calculated. Select base year(s) above and click <span className="font-semibold text-primary">Calculate Estimates</span>.
+          </div>
+        </div>
+      )
+    }
+
+    if (isEditable && (!dataMap || Object.keys(dataMap).length === 0)) {
+      return (
+        <div className="py-12 text-center space-y-3">
+          <Calculator className="h-8 w-8 mx-auto text-muted-foreground/30" />
+          <div className="text-[13px] text-muted-foreground">
+            No {label.toLowerCase()} yet. Calculate base estimates first, or targets will load from saved data.
+          </div>
+        </div>
+      )
+    }
+
+    // For base tab, build from estimateData
+    // For editable tabs, build from bookingEstimates/commissionEstimates
+    const gridAdvisors = tab === 'base'
+      ? estimateAdvisors.map(a => ({
+          id: a.advisor_target_id,
+          name: a.name,
+          months: Object.fromEntries(a.months.map(m => [m.month, unit === 'bookings' ? m.base_bookings : m.base_commission])),
+          annual: unit === 'bookings' ? a.avg_annual_bookings : a.avg_annual_commission,
+        }))
+      : rows.map(r => ({
+          id: r.advisor_target_id,
+          name: r.name,
+          months: dataMap![r.advisor_target_id] || {},
+          annual: estimateMonthlyTotal(r.advisor_target_id, dataMap!),
+        }))
+
+    return (
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="border-b-2 border-border bg-secondary/60">
+              <th className="sticky left-0 z-10 bg-secondary/60 px-3 py-2 text-left font-semibold text-muted-foreground min-w-[150px]">
+                Advisor
+              </th>
+              {MONTHS.map((m, i) => {
+                const mo = i + 1
+                const editable = isEditable && isMonthEditable(mo)
+                return (
+                  <th key={m} className={cn(
+                    'px-1 py-2 text-center font-semibold min-w-[76px]',
+                    editable ? 'text-muted-foreground' : 'text-muted-foreground/50',
+                  )}>
+                    <div>{m}</div>
+                    {!editable && isEditable && (
+                      <div className="text-[9px] text-muted-foreground/40">locked</div>
+                    )}
+                  </th>
+                )
+              })}
+              <th className="px-2 py-2 text-right font-bold text-primary min-w-[90px]">
+                Annual
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {gridAdvisors.map(a => (
+              <tr key={a.id} className="border-t border-border/50 hover:bg-secondary/30 transition-colors">
+                <td className="sticky left-0 z-10 bg-background px-3 py-1.5 font-medium min-w-[150px]">
+                  {a.name}
+                </td>
+                {MONTHS.map((_, mi) => {
+                  const m = mi + 1
+                  const val = a.months[m] || 0
+                  const editable = isEditable && isMonthEditable(m)
+                  return (
+                    <td key={m} className="px-1 py-1">
+                      {editable ? (
+                        <input
+                          type="text"
+                          value={fmt(val)}
+                          onChange={e => updateEstimateCell(tab as 'bookings' | 'commissions', a.id, m, e.target.value)}
+                          onFocus={e => e.target.select()}
+                          className="w-full rounded-md border border-border/50 bg-secondary/30 px-2 py-1.5 text-right text-[12px] tabular-nums focus:bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                        />
+                      ) : (
+                        <div className={cn(
+                          'px-2 py-1.5 text-right text-[12px] tabular-nums',
+                          !isEditable ? 'text-foreground' : 'text-muted-foreground/60',
+                        )}>
+                          {fmt(val)}
+                        </div>
+                      )}
+                    </td>
+                  )
+                })}
+                <td className="px-2 py-1.5 text-right font-bold tabular-nums text-primary/80">
+                  {fmtC(Object.values(a.months).reduce((s, v) => s + v, 0))}
+                </td>
+              </tr>
+            ))}
+
+            {/* Totals row */}
+            <tr className="border-t-2 border-border bg-secondary/30 font-semibold">
+              <td className="sticky left-0 z-10 bg-secondary/30 px-3 py-2.5 text-[12px] font-bold uppercase tracking-wide">
+                Total
+              </td>
+              {MONTHS.map((_, mi) => {
+                const m = mi + 1
+                const colTotal = gridAdvisors.reduce((sum, a) => sum + (a.months[m] || 0), 0)
+                return (
+                  <td key={m} className="px-1 py-2.5 text-right">
+                    <span className="tabular-nums text-[12px] font-bold text-foreground">
+                      {fmt(colTotal)}
+                    </span>
+                  </td>
+                )
+              })}
+              <td className="px-2 py-2.5 text-right font-bold tabular-nums text-primary">
+                {fmtC(gridAdvisors.reduce((s, a) => s + Object.values(a.months).reduce((ms, v) => ms + v, 0), 0))}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">
 
-      {/* ── Planner bar ─────────────────────────────────────────────────── */}
-      {rows.length > 0 && (
-        <div className="rounded-xl border border-border bg-secondary/20 p-4 space-y-3">
+      {/* ── Year selector + Base year picker + Estimate button ──────────── */}
+      <div className="rounded-xl border border-border bg-secondary/20 p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Target year */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Target Year</span>
+            <select
+              value={year}
+              onChange={e => setYear(Number(e.target.value))}
+              className="rounded-lg border border-border bg-background px-3 py-1.5 text-[13px] font-bold"
+            >
+              {[currentYear - 1, currentYear, currentYear + 1].map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
 
-          {/* Row 1: Base selector + commission rate */}
+          <div className="h-8 w-px bg-border/50" />
+
+          {/* Base years selection */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Base Year(s)</span>
+            {[year - 1, year - 2, year - 3].map(y => (
+              <label key={y} className={cn(
+                'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-semibold cursor-pointer transition-all',
+                baseYears.includes(y)
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border text-muted-foreground hover:border-primary/40',
+              )}>
+                <input
+                  type="checkbox"
+                  checked={baseYears.includes(y)}
+                  onChange={() => toggleBaseYear(y)}
+                  className="hidden"
+                />
+                {y}
+              </label>
+            ))}
+          </div>
+
+          <button
+            onClick={handleComputeEstimates}
+            disabled={estimating || baseYears.length === 0}
+            className={cn(
+              'flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-[12px] font-semibold transition-all',
+              baseYears.length > 0
+                ? 'bg-primary text-primary-foreground hover:opacity-90'
+                : 'bg-secondary text-muted-foreground cursor-not-allowed opacity-50',
+            )}
+          >
+            {estimating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Calculator className="h-3.5 w-3.5" />}
+            Calculate Estimates
+          </button>
+
+          <span className="text-[11px] text-muted-foreground">{rows.length} advisors</span>
+        </div>
+
+        {/* Confirm dialog */}
+        {showConfirm && (
+          <div className="rounded-lg border border-amber-400/50 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-center gap-3">
+            <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
+            <span className="text-[12px] text-amber-700 dark:text-amber-300">
+              {existingCount} existing targets found for {year}. Recalculating will overwrite <strong>future months only</strong>. Continue?
+            </span>
+            <button
+              onClick={handleComputeEstimates}
+              className="rounded-lg bg-amber-500 px-3 py-1 text-[11px] font-semibold text-white hover:bg-amber-600"
+            >
+              Yes, recalculate
+            </button>
+            <button
+              onClick={() => setShowConfirm(false)}
+              className="rounded-lg border border-border px-3 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-secondary"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {/* Commission rate info */}
+        {commRate > 0 && (
+          <div className="text-[11px] text-muted-foreground">
+            Avg commission rate: <span className="font-semibold text-foreground">{commRate}%</span>
+            {estimateData && baseYears.length > 0 && (
+              <span className="ml-2">• Base: {baseYears.join(', ')} averages</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Tab bar ────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-1 border-b border-border">
+        {([
+          { key: 'base' as ActiveTab, label: 'Base Estimates', desc: 'Read-only' },
+          { key: 'bookings' as ActiveTab, label: 'Booking Estimates', desc: 'Editable' },
+          { key: 'commissions' as ActiveTab, label: 'Target Commissions', desc: 'Editable' },
+        ]).map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={cn(
+              'px-4 py-2 text-[12px] font-semibold border-b-2 transition-all -mb-px',
+              activeTab === tab.key
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
+            )}
+          >
+            {tab.label}
+            <span className="ml-1.5 text-[10px] font-normal text-muted-foreground/60">({tab.desc})</span>
+          </button>
+        ))}
+
+        <div className="ml-auto flex items-center gap-2">
+          {saved && <span className="text-[11px] font-medium text-emerald-500">Saved ✓</span>}
+          {error && <span className="text-[11px] font-medium text-destructive">{error}</span>}
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Download className="h-3.5 w-3.5" />Export
+          </button>
+          {activeTab !== 'base' && (
+            <button
+              onClick={handleSave}
+              disabled={!isEstimateDirty || saving}
+              className={cn(
+                'flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-[12px] font-semibold transition-all',
+                isEstimateDirty
+                  ? 'bg-primary text-primary-foreground hover:opacity-90'
+                  : 'bg-secondary text-muted-foreground cursor-not-allowed opacity-50',
+              )}
+            >
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              Save Changes
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Tab content ────────────────────────────────────────────────── */}
+      {renderEstimateGrid(activeTab)}
+
+      {/* ── Legacy planner bar (shown under Bookings tab for growth tools) ── */}
+      {activeTab === 'bookings' && rows.length > 0 && (
+        <div className="rounded-xl border border-border bg-secondary/20 p-4 space-y-3">
           <div className="flex flex-wrap items-center gap-4">
             {/* Base toggle */}
             <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-0.5">
@@ -301,54 +691,6 @@ export default function TargetGrid({ line }: Props) {
               </button>
             </div>
 
-            {/* Commission rate */}
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-medium text-muted-foreground">Avg commission rate</span>
-              <input
-                type="number"
-                min={0} max={100} step={0.1}
-                value={commRate}
-                onChange={e => setCommRate(parseFloat(e.target.value) || 0)}
-                className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-[13px] font-bold tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-              <span className="text-[12px] font-semibold text-muted-foreground">%</span>
-              {methodology?.commission_rate ? (
-                <span className="text-[10px] text-muted-foreground/50">(SF actual: {methodology.commission_rate}%)</span>
-              ) : null}
-            </div>
-          </div>
-
-          {/* Row 2: PY → New target + growth control */}
-          <div className="flex flex-wrap items-center gap-6">
-            <div className="flex items-center gap-4 flex-1">
-              {/* Prior Year */}
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">{year - 1} Actual</div>
-                <div className="mt-0.5 text-[13px] font-bold text-foreground tabular-nums">
-                  {fmtK(totalPriorBase)} <span className="text-[10px] font-normal text-muted-foreground">({targetBase})</span>
-                </div>
-                <div className="text-[11px] text-muted-foreground">
-                  {targetBase === 'bookings'
-                    ? <>{otherLabel}: <span className="font-semibold">{fmtK(Math.round(totalPriorBookings * commRate / 100))}</span></>
-                    : <>{otherLabel}: <span className="font-semibold">{fmtK(commRate > 0 ? Math.round(totalPriorComm / (commRate / 100)) : 0)}</span></>
-                  }
-                </div>
-              </div>
-
-              <div className="text-muted-foreground/30 text-lg">→</div>
-
-              {/* New Target */}
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-primary">{year} Target (+{growthPct}%)</div>
-                <div className="mt-0.5 text-[13px] font-bold text-primary tabular-nums">
-                  {fmtK(newTargetBase)} <span className="text-[10px] font-normal text-primary/60">({targetBase})</span>
-                </div>
-                <div className="text-[11px] text-muted-foreground">
-                  {otherLabel}: <span className="font-semibold text-primary/70">{fmtK(toOther(newTargetBase))}</span>
-                </div>
-              </div>
-            </div>
-
             {/* Growth control */}
             <div className="flex items-center gap-3">
               <span className="text-[11px] font-medium text-muted-foreground">Growth</span>
@@ -363,12 +705,12 @@ export default function TargetGrid({ line }: Props) {
                 onClick={() => applyGrowthPct(growthPct)}
                 className="rounded-lg bg-primary px-4 py-1.5 text-[12px] font-semibold text-primary-foreground hover:opacity-90 transition-colors"
               >
-                Apply to grid
+                Apply Growth to Bookings
               </button>
             </div>
           </div>
 
-          {/* Row 3: Current grid summary */}
+          {/* Summary */}
           {currentTotal > 0 && (
             <div className="border-t border-border/50 pt-2 flex items-center gap-4 text-[11px] text-muted-foreground">
               <span>Grid total ({targetBase}): <span className="font-semibold text-foreground">{fmtK(currentTotal)}</span></span>
@@ -378,202 +720,8 @@ export default function TargetGrid({ line }: Props) {
                   {currentTotal >= totalPriorBase ? '+' : ''}{((currentTotal / totalPriorBase - 1) * 100).toFixed(1)}% vs {year - 1}
                 </span>
               )}
-              {methodology?.note && (
-                <span className="ml-auto text-[10px] text-amber-600 italic">{methodology.note}</span>
-              )}
             </div>
           )}
-        </div>
-      )}
-
-      {/* ── Header row ──────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <select
-            value={year}
-            onChange={e => setYear(Number(e.target.value))}
-            className="rounded-lg border border-border bg-secondary/50 px-3 py-1.5 text-[12px] font-medium"
-          >
-            {[year - 1, year, year + 1].map(y => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
-          <span className="text-[12px] text-muted-foreground">{rows.length} advisors</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {saved && <span className="text-[11px] font-medium text-emerald-500">Saved ✓</span>}
-          {error && <span className="text-[11px] font-medium text-destructive">{error}</span>}
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <Download className="h-3.5 w-3.5" />Export
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!isDirty || saving}
-            className={cn(
-              'flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-[12px] font-semibold transition-all',
-              isDirty
-                ? 'bg-primary text-primary-foreground hover:opacity-90'
-                : 'bg-secondary text-muted-foreground cursor-not-allowed opacity-50',
-            )}
-          >
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            Save Changes
-          </button>
-        </div>
-      </div>
-
-      {/* ── Grid ────────────────────────────────────────────────────────── */}
-      {rows.length === 0 ? (
-        <div className="py-10 text-center text-[13px] text-muted-foreground/50">
-          No targets found for {year}. Upload targets first.
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full text-[12px]">
-            <thead>
-              <tr className="border-b-2 border-border bg-secondary/60">
-                <th className="sticky left-0 z-10 bg-secondary/60 px-3 py-2 text-left font-semibold text-muted-foreground min-w-[150px]">
-                  Advisor
-                </th>
-                {/* Prior year column */}
-                <th className="px-2 py-2 text-right font-semibold text-muted-foreground min-w-[80px] border-r border-border/50">
-                  <div className="text-[10px] uppercase tracking-wide">{year - 1}</div>
-                  <div className="text-[10px] text-muted-foreground/60">{targetBase === 'bookings' ? 'Bookings' : 'Commissions'}</div>
-                </th>
-                {MONTHS.map((m, i) => (
-                  <th key={m} className="px-1 py-2 text-center font-semibold text-muted-foreground min-w-[76px]">
-                    <div className="flex flex-col items-center gap-0.5">
-                      <span>{m} {year}</span>
-                      <button
-                        onClick={() => fillDown(i + 1)}
-                        title={`Fill all with first row's ${m} value`}
-                        className="text-[9px] text-primary/50 hover:text-primary transition-colors"
-                      >
-                        <ArrowDownToLine className="h-3 w-3" />
-                      </button>
-                    </div>
-                  </th>
-                ))}
-                <th className="px-2 py-2 text-right font-bold text-primary min-w-[90px]">
-                  <div>{year} Total</div>
-                  <div className="text-[10px] font-normal text-primary/60">{targetBase}</div>
-                </th>
-                <th className="px-2 py-2 text-right font-semibold text-muted-foreground/70 min-w-[80px]">
-                  <div className="text-[10px] uppercase tracking-wide">{otherLabel}</div>
-                </th>
-                <th className="px-2 py-2 w-8" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, ri) => {
-                const isChanged = JSON.stringify(row.targets) !== JSON.stringify(original[ri]?.targets)
-                const total = rowTotal(row)
-                const pyBase = priorYearBase(row)
-                const vsGrowth = pyBase > 0 ? ((total / pyBase - 1) * 100) : null
-                return (
-                  <tr key={row.advisor_target_id} className={cn(
-                    'border-t border-border/50 transition-colors',
-                    isChanged ? 'bg-primary/5' : 'hover:bg-secondary/30',
-                  )}>
-                    {/* Name */}
-                    <td className="sticky left-0 z-10 bg-background px-3 py-1.5 font-medium min-w-[150px]">
-                      <div>{row.name}</div>
-                      {row.branch && <div className="text-[10px] text-muted-foreground/50">{row.branch}</div>}
-                    </td>
-                    {/* Prior year */}
-                    <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground border-r border-border/50">
-                      <div className="font-semibold">{pyBase > 0 ? fmtK(pyBase) : '—'}</div>
-                      {vsGrowth !== null && total > 0 && (
-                        <div className={cn('text-[10px] font-semibold',
-                          vsGrowth >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
-                          {vsGrowth >= 0 ? '+' : ''}{vsGrowth.toFixed(0)}%
-                        </div>
-                      )}
-                    </td>
-                    {/* Monthly cells */}
-                    {MONTHS.map((_, mi) => {
-                      const m = mi + 1
-                      const val = row.targets[m] || 0
-                      const origVal = original[ri]?.targets[m] || 0
-                      const cellChanged = val !== origVal
-                      return (
-                        <td key={m} className="px-1 py-1">
-                          <input
-                            type="text"
-                            value={fmt(val)}
-                            onChange={e => updateCell(ri, m, e.target.value)}
-                            onFocus={e => e.target.select()}
-                            className={cn(
-                              'w-full rounded-md border px-2 py-1.5 text-right text-[12px] tabular-nums',
-                              'bg-secondary/30 focus:bg-background focus:outline-none focus:ring-1 focus:ring-primary/40',
-                              cellChanged ? 'border-primary/40 bg-primary/10' : 'border-border/50',
-                            )}
-                          />
-                        </td>
-                      )
-                    })}
-                    {/* Row total */}
-                    <td className="px-2 py-1.5 text-right font-bold tabular-nums text-primary/80">
-                      {fmtC(total)}
-                    </td>
-                    {/* Est. other */}
-                    <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground/70 text-[11px]">
-                      {total > 0 ? fmtK(toOther(total)) : '—'}
-                    </td>
-                    <td className="px-1 py-1.5">
-                      <button
-                        onClick={() => applyToAllMonths(ri)}
-                        title="Apply Jan value to all months"
-                        className="rounded p-1 text-muted-foreground/40 hover:bg-secondary hover:text-primary transition-colors"
-                      >
-                        <CopyCheck className="h-3.5 w-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-
-              {/* Totals row */}
-              {rows.length > 0 && (
-                <tr className="border-t-2 border-border bg-secondary/30 font-semibold">
-                  <td className="sticky left-0 z-10 bg-secondary/30 px-3 py-2.5 text-[12px] font-bold uppercase tracking-wide">
-                    Total
-                  </td>
-                  {/* Prior year total */}
-                  <td className="px-2 py-2.5 text-right tabular-nums font-bold text-foreground border-r border-border/50">
-                    {fmtK(totalPriorBase)}
-                  </td>
-                  {MONTHS.map((_, mi) => {
-                    const m = mi + 1
-                    const colTotal = rows.reduce((sum, r) => sum + (r.targets[m] || 0), 0)
-                    return (
-                      <td key={m} className="px-1 py-2.5 text-right">
-                        <span className="tabular-nums text-[12px] font-bold text-foreground">
-                          {fmt(colTotal)}
-                        </span>
-                      </td>
-                    )
-                  })}
-                  <td className="px-2 py-2.5 text-right font-bold tabular-nums text-primary">
-                    {fmtC(currentTotal)}
-                    {totalPriorBase > 0 && (
-                      <div className={cn('text-[10px] font-semibold',
-                        currentTotal >= totalPriorBase ? 'text-emerald-500' : 'text-rose-500')}>
-                        {currentTotal >= totalPriorBase ? '+' : ''}{((currentTotal / totalPriorBase - 1) * 100).toFixed(0)}% vs {year-1}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-2 py-2.5 text-right tabular-nums text-muted-foreground/70 text-[11px] font-bold">
-                    {fmtK(currentOtherTotal)}
-                  </td>
-                  <td />
-                </tr>
-              )}
-            </tbody>
-          </table>
         </div>
       )}
     </div>

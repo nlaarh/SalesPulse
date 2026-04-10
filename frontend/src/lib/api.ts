@@ -441,6 +441,32 @@ export async function saveMonthlyTargets(
   return data as { status: string; count: number }
 }
 
+export interface EstimateAdvisorMonth {
+  month: number
+  base_bookings: number
+  base_commission: number
+}
+export interface EstimateAdvisor {
+  advisor_target_id: number
+  name: string
+  months: EstimateAdvisorMonth[]
+  avg_annual_bookings: number
+  avg_annual_commission: number
+}
+export interface EstimateResponse {
+  year: number
+  base_years: number[]
+  commission_rate: number
+  existing_targets: number
+  advisors: EstimateAdvisor[]
+  error?: string
+}
+
+export async function computeEstimates(year: number, line: string, baseYears: number[]) {
+  const { data } = await api.post('/api/targets/monthly/estimate', { year, line, base_years: baseYears })
+  return data as EstimateResponse
+}
+
 export async function emailAgentReport(
   agentName: string,
   to: string,

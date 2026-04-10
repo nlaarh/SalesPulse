@@ -205,7 +205,134 @@ class MonthlyTargetSaveRequest(BaseModel):
     line: str = 'Travel'       # needed to look up comm_rate when base='bookings'
 
 
+class EstimateRequest(BaseModel):
+    year: int
+    line: str = 'Travel'
+    base_years: list[int]       # 1-3 prior years to average
+
+
 # ── Endpoints ────────────────────────────────────────────────────────────────
+
+
+@router.post("/api/targets/monthly/estimate")
+def compute_estimates(
+    body: EstimateRequest,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Compute base estimates by averaging monthly actuals across selected prior years.
+    Returns per-advisor, per-month bookings + commission estimates (read-only base data)."""
+    from shared import WON_STAGES, line_filter_opp
+    from sf_client import sf_query_all
+    import cache
+
+    lf = line_filter_opp(body.line)
+    current_year = date.today().year
+
+    # Validate: only allow years within 3 years back
+    valid_years = [y for y in body.base_years if current_year - 3 <= y < body.year]
+    if not valid_years:
+        return {'error': 'No valid base years selected (max 3 years back)'}
+
+    # Get commission rate from most recent base year
+    most_recent = max(valid_years)
+    comm_rate = _get_comm_rate_accurate(body.line, most_recent, cache, sf_query_all, WON_STAGES, lf)
+
+    # Fetch monthly actuals for each base year
+    owner_map = get_owner_map()
+    # advisor_lower -> { month -> [values across years] }
+    advisor_monthly_bookings: dict[str, dict[int, list[float]]] = {}
+    advisor_yearly_totals: dict[str, list[float]] = {}
+
+    for yr in valid_years:
+        cache_key = f"estimate_monthly_{body.line}_{yr}"
+        def _fetch(y=yr):
+            rows = sf_query_all(f"""
+                SELECT OwnerId, CALENDAR_MONTH(CloseDate) mo,
+                       SUM(Amount) rev, SUM(Earned_Commission_Amount__c) comm
+                FROM Opportunity
+                WHERE {WON_STAGES} AND {lf}
+                  AND CloseDate >= {y}-01-01 AND CloseDate <= {y}-12-31
+                  AND Amount != null
+                GROUP BY OwnerId, CALENDAR_MONTH(CloseDate)
+            """)
+            return [{**r, 'Name': owner_map.get(r.get('OwnerId', ''), '')} for r in rows]
+        records = cache.cached_query(cache_key, _fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
+
+        yr_totals: dict[str, float] = {}
+        for r in records:
+            name = (r.get('Name') or '').strip().lower()
+            if not name:
+                continue
+            mo = r.get('mo', 0)
+            rev = r.get('rev', 0) or 0
+            advisor_monthly_bookings.setdefault(name, {}).setdefault(mo, []).append(rev)
+            yr_totals[name] = yr_totals.get(name, 0) + rev
+        for name, total in yr_totals.items():
+            advisor_yearly_totals.setdefault(name, []).append(total)
+
+    # Build averaged estimates
+    all_names: dict[str, str] = {}
+    for yr in valid_years:
+        recs = _sf_advisors_with_bookings(body.line, yr, cache, sf_query_all, WON_STAGES, lf)
+        for r in recs:
+            n = (r.get('Name') or '').strip()
+            if n:
+                all_names[n.lower()] = n
+
+    # Also include current year advisors
+    cur_recs = _sf_advisors_with_bookings(body.line, body.year, cache, sf_query_all, WON_STAGES, lf)
+    for r in cur_recs:
+        n = (r.get('Name') or '').strip()
+        if n:
+            all_names[n.lower()] = n
+
+    advisor_ids = _ensure_advisor_targets(db, list(all_names.values()))
+
+    # Check if targets already exist for this year
+    existing_count = db.query(MonthlyAdvisorTarget).filter(
+        MonthlyAdvisorTarget.year == body.year
+    ).count()
+
+    n_years = len(valid_years)
+    advisors = []
+    for name_lower, display_name in all_names.items():
+        at_id = advisor_ids.get(name_lower)
+        if not at_id:
+            continue
+
+        monthly_data = advisor_monthly_bookings.get(name_lower, {})
+        yearly_tots = advisor_yearly_totals.get(name_lower, [])
+        avg_annual_bookings = sum(yearly_tots) / len(yearly_tots) if yearly_tots else 0
+
+        months = []
+        for m in range(1, 13):
+            vals = monthly_data.get(m, [])
+            avg_bookings = sum(vals) / n_years if vals else 0
+            avg_commission = round(avg_bookings * comm_rate) if body.line == 'Travel' else round(avg_bookings)
+            months.append({
+                'month': m,
+                'base_bookings': round(avg_bookings),
+                'base_commission': avg_commission,
+            })
+
+        advisors.append({
+            'advisor_target_id': at_id,
+            'name': display_name,
+            'months': months,
+            'avg_annual_bookings': round(avg_annual_bookings),
+            'avg_annual_commission': round(avg_annual_bookings * comm_rate) if body.line == 'Travel' else round(avg_annual_bookings),
+        })
+
+    advisors.sort(key=lambda a: a['avg_annual_bookings'], reverse=True)
+
+    return {
+        'year': body.year,
+        'base_years': valid_years,
+        'commission_rate': round(comm_rate * 100, 1),
+        'existing_targets': existing_count,
+        'advisors': advisors,
+    }
 
 @router.get("/api/targets/monthly/{year}")
 def get_monthly_targets(
