@@ -36,18 +36,32 @@ jobs:
         rm -rf backend/static
         cp -r frontend/dist backend/static
 
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install Python dependencies locally
+      working-directory: backend
+      run: |
+        pip install -r requirements.txt \
+          --target .python_packages/lib/site-packages \
+          --quiet
+        echo "Installed packages: $(ls .python_packages/lib/site-packages/ | wc -l) dirs"
+
     - name: Create deployment package
       working-directory: backend
       run: |
-        # Package Python source + static assets
-        # Azure Oryx installs requirements.txt server-side
+        # Package source + static + pre-installed packages (no Oryx needed)
         zip -r ../deploy.zip \
           *.py \
           *.json \
           routers/ \
           startup.sh \
+          gunicorn_conf.py \
           requirements.txt \
-          static/
+          static/ \
+          .python_packages/
         echo "Package size: $(du -h ../deploy.zip | cut -f1)"
         echo "Python files:"
         unzip -l ../deploy.zip | grep "\.py$" | awk '{print $4}'
@@ -57,7 +71,7 @@ jobs:
         DEPLOY_USER: ${{ secrets.AZURE_DEPLOY_USER }}
         DEPLOY_PASS: ${{ secrets.AZURE_DEPLOY_PASS }}
       run: |
-        echo "Deploying to ${{ env.AZURE_WEBAPP_NAME }}..."
+        echo "Deploying to ${{ env.AZURE_WEBAPP_NAME }} (pre-built, no Oryx)..."
 
         # Write temp netrc for auth
         echo "machine ${{ env.AZURE_WEBAPP_NAME }}.scm.azurewebsites.net" > /tmp/.netrc
@@ -80,17 +94,17 @@ jobs:
 
         echo "HTTP Status: $HTTP_CODE"
         if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-          echo "Deployment accepted — Oryx will build on server."
+          echo "Deployment accepted."
         else
           echo "Deployment FAILED"
           echo "$BODY"
           exit 1
         fi
 
-    - name: Wait for Oryx build + verify health
+    - name: Verify health
       run: |
-        echo "Waiting 180s for Oryx build and app startup..."
-        sleep 180
+        echo "Waiting 90s for app startup..."
+        sleep 90
 
         STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
           --max-time 15 \
@@ -100,5 +114,5 @@ jobs:
         if [ "$STATUS" = "200" ] || [ "$STATUS" = "401" ] || [ "$STATUS" = "302" ]; then
           echo "App is live at https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
         else
-          echo "Warning: app returned $STATUS — Oryx build may still be running"
+          echo "Warning: app returned $STATUS — may still be starting"
         fi

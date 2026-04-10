@@ -6,7 +6,7 @@
  * insurance / travel / combined penetration.
  */
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import { fetchTerritoryMapData, type TerritoryZip, type TerritoryMapData } from '@/lib/api'
@@ -185,10 +185,12 @@ function ZoomTracker({ onZoom }: { onZoom: (z: number) => void }) {
 
 function FitBounds({ zips }: { zips: TerritoryZip[] }) {
   const map = useMap()
+  const fitted = useRef(false)
   useEffect(() => {
-    if (zips.length === 0) return
+    if (zips.length === 0 || fitted.current) return
+    fitted.current = true
     const bounds: [number, number][] = zips.map((z) => [z.lat, z.lng])
-    map.fitBounds(bounds, { padding: [20, 20], maxZoom: 11 })
+    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 12 })
   }, [zips, map])
   return null
 }
@@ -365,7 +367,7 @@ export default function TerritoryMap() {
   const { theme } = useTheme()
   const [layer, setLayer] = useState<LayerMode>('combined')
   const [region, setRegion] = useState<RegionFilter>('All')
-  const [zoom, setZoom] = useState(8)
+  const [zoom, setZoom] = useState(11)
 
   const level = zoomToLevel(zoom)
 
@@ -533,8 +535,8 @@ export default function TerritoryMap() {
       {/* Map */}
       <div className="relative rounded-xl overflow-hidden border border-border" style={{ height: 'calc(100vh - 340px)', minHeight: '500px' }}>
         <MapContainer
-          center={[42.85, -76.8]}
-          zoom={8}
+          center={[42.89, -78.85]}
+          zoom={11}
           className="h-full w-full"
           zoomControl={true}
           attributionControl={false}

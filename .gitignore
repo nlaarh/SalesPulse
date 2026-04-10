@@ -41,3 +41,4 @@ Thumbs.db
 # Excel working files
 *.xlsx
 .playwright-mcp/
+deploy.zip
