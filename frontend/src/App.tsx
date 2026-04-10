@@ -24,6 +24,7 @@ const Settings = lazy(() => import('@/pages/Settings'))
 const IssuesPage = lazy(() => import('@/pages/Issues'))
 const CustomerProfile = lazy(() => import('@/pages/CustomerProfile'))
 const TopCustomers = lazy(() => import('@/pages/TopCustomers'))
+const CrossSellInsights = lazy(() => import('@/pages/CrossSellInsights'))
 
 /* ── React Query client ──────────────────────────────────────────────────── */
 
@@ -73,6 +74,7 @@ export default function App() {
                   <Route path="issues" element={<Suspense fallback={LazyFallback}><IssuesPage /></Suspense>} />
                   <Route path="customer/:id" element={<Suspense fallback={LazyFallback}><CustomerProfile /></Suspense>} />
                   <Route path="customers" element={<Suspense fallback={LazyFallback}><TopCustomers /></Suspense>} />
+                  <Route path="insights" element={<Suspense fallback={LazyFallback}><CrossSellInsights /></Suspense>} />
                 </Route>
               </Route>
             </Routes>

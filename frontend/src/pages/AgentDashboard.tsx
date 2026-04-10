@@ -8,7 +8,7 @@ import { DeltaPill } from '@/components/DeltaPill'
 import type { AgentMonthData, Opp } from '@/lib/types'
 import {
   Loader2, ArrowLeft, Sparkles,
-  Target, BarChart3, ListTodo, FileText, BookOpen, DollarSign,
+  Target, BarChart3, ListTodo, FileText, BookOpen, DollarSign, ShieldAlert,
 } from 'lucide-react'
 import ManagerBriefing from '@/components/ManagerBriefing'
 import TargetProgressBar from '@/components/TargetProgressBar'
@@ -17,6 +17,7 @@ import AgentReportActions from '@/components/AgentReportActions'
 import PerformanceTab from './agent/PerformanceTab'
 import OpportunitiesTab from './agent/OpportunitiesTab'
 import SummaryTab from './agent/SummaryTab'
+import CrossSellTab from './agent/CrossSellTab'
 import Markdown from '@/components/Markdown'
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
@@ -57,7 +58,7 @@ export interface AgentProfile {
   tasks: { open_tasks: TaskItem[]; stats: TaskStats }
 }
 
-type AgentTab = 'charts' | 'opportunities' | 'tasks'
+type AgentTab = 'charts' | 'opportunities' | 'tasks' | 'cross-sell'
 
 /* ── Tab Button ───────────────────────────────────────────────────────────── */
 
@@ -461,6 +462,12 @@ export default function AgentDashboard() {
             count={profile.tasks.stats.total_open}
             overdueCount={profile.tasks.stats.overdue}
           />
+          <TabButton
+            icon={<ShieldAlert className="h-3.5 w-3.5" />}
+            label="Cross-Sell"
+            active={activeTab === 'cross-sell'}
+            onClick={() => setActiveTab('cross-sell')}
+          />
         </div>
 
         {/* Tab content */}
@@ -473,6 +480,9 @@ export default function AgentDashboard() {
           )}
           {activeTab === 'tasks' && (
             <SummaryTab profile={profile} />
+          )}
+          {activeTab === 'cross-sell' && (
+            <CrossSellTab agentName={profile.name} />
           )}
         </div>
       </div>

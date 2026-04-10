@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import {
   Users, GitBranch, Plane, Megaphone, Table2, Target, UserCheck,
   Sun, Moon, Calendar, Command,
-  ArrowRight, X, HelpCircle, Settings, LogOut, Bug,
+  ArrowRight, X, HelpCircle, Settings, LogOut, Bug, Lightbulb,
 } from 'lucide-react'
 import SalesPulseLogo from '@/components/SalesPulseLogo'
 import CommandPalette from '@/components/CommandPalette'
@@ -25,6 +25,7 @@ const NAV_ANALYTICS = [
   { to: '/pipeline', label: 'Pipeline & Forecast', icon: GitBranch, desc: 'Stages, velocity & risk' },
   { to: '/opportunities', label: 'Top Opportunities', icon: Target, desc: 'AI-scored deal ranking' },
   { to: '/leads', label: 'Lead Funnel', icon: Megaphone, desc: 'Conversion & sources' },
+  { to: '/insights', label: 'Cross-Sell Insights', icon: Lightbulb, desc: 'Who to call & why' },
   { to: '/travel', label: 'Destinations', icon: Plane, desc: 'Travel analytics' },
 ]
 
