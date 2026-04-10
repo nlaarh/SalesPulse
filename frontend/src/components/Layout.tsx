@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
 import {
   Users, GitBranch, Plane, Megaphone, Table2, Target, UserCheck,
-  Sun, Moon, Calendar, Command,
+  Sun, Moon, Calendar, Command, Radio, Map,
   ArrowRight, X, HelpCircle, Settings, LogOut, Bug, Lightbulb,
 } from 'lucide-react'
 import SalesPulseLogo from '@/components/SalesPulseLogo'
@@ -26,6 +26,8 @@ const NAV_ANALYTICS = [
   { to: '/opportunities', label: 'Top Opportunities', icon: Target, desc: 'AI-scored deal ranking' },
   { to: '/leads', label: 'Lead Funnel', icon: Megaphone, desc: 'Conversion & sources' },
   { to: '/insights', label: 'Cross-Sell Insights', icon: Lightbulb, desc: 'Who to call & why' },
+  { to: '/market-pulse', label: 'Market Pulse', icon: Radio, desc: 'Advisories & intelligence' },
+  { to: '/territory', label: 'Territory Map', icon: Map, desc: 'Penetration heatmap' },
   { to: '/travel', label: 'Destinations', icon: Plane, desc: 'Travel analytics' },
 ]
 

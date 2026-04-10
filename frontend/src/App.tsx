@@ -25,6 +25,8 @@ const IssuesPage = lazy(() => import('@/pages/Issues'))
 const CustomerProfile = lazy(() => import('@/pages/CustomerProfile'))
 const TopCustomers = lazy(() => import('@/pages/TopCustomers'))
 const CrossSellInsights = lazy(() => import('@/pages/CrossSellInsights'))
+const MarketPulse = lazy(() => import('@/pages/MarketPulse'))
+const TerritoryMap = lazy(() => import('@/pages/TerritoryMap'))
 
 /* ── React Query client ──────────────────────────────────────────────────── */
 
@@ -75,6 +77,8 @@ export default function App() {
                   <Route path="customer/:id" element={<Suspense fallback={LazyFallback}><CustomerProfile /></Suspense>} />
                   <Route path="customers" element={<Suspense fallback={LazyFallback}><TopCustomers /></Suspense>} />
                   <Route path="insights" element={<Suspense fallback={LazyFallback}><CrossSellInsights /></Suspense>} />
+                  <Route path="market-pulse" element={<Suspense fallback={LazyFallback}><MarketPulse /></Suspense>} />
+                  <Route path="territory" element={<Suspense fallback={LazyFallback}><TerritoryMap /></Suspense>} />
                 </Route>
               </Route>
             </Routes>

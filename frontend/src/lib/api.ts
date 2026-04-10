@@ -703,3 +703,132 @@ export async function fetchAdvisorCrossSell(
   })
   return data as AdvisorCrossSell
 }
+
+// ── Market Pulse ──────────────────────────────────────────────────────────────
+
+export interface MarketPulseAlert {
+  type: 'travel_advisory' | 'medicare_enrollment' | 'medicare_turning_65' | 'seasonal' | 'membership'
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
+  title: string
+  summary: string
+  action: string
+  icon: string
+  deadline?: string
+  days_remaining?: number
+  country_name?: string
+  advisory_level?: number
+  customer_trips?: number
+  destination?: string
+}
+
+export interface MarketPulseMetrics {
+  international_trips: number
+  international_value: number
+  medicare_enrolled_period: number
+  members_turning_65: number
+  expiring_memberships_90d: number
+  basic_tier_members: number
+  top_destinations: { destination: string; trips: number }[]
+}
+
+export interface MarketPulseData {
+  alerts: MarketPulseAlert[]
+  metrics: MarketPulseMetrics
+  advisory_count: number
+  date_range: { start: string; end: string }
+  generated_at: string
+}
+
+export async function fetchMarketPulse(
+  period = 6,
+  startDate?: string | null,
+  endDate?: string | null,
+): Promise<MarketPulseData> {
+  const { data } = await api.get('/api/market-pulse', {
+    params: withDates({ period }, startDate, endDate),
+  })
+  return data as MarketPulseData
+}
+
+export interface ImpactedAdvisor {
+  advisor: string
+  trips: number
+  value: number
+  customers: {
+    name: string
+    account_id: string
+    trip: string
+    destination: string
+    amount: number
+    close_date: string
+  }[]
+}
+
+export interface ImpactedCustomersData {
+  advisors: ImpactedAdvisor[]
+  total: number
+}
+
+export async function fetchImpactedCustomers(
+  destination: string,
+  period = 6,
+  startDate?: string | null,
+  endDate?: string | null,
+): Promise<ImpactedCustomersData> {
+  const { data } = await api.get('/api/market-pulse/impacted-customers', {
+    params: withDates({ destination, period }, startDate, endDate),
+  })
+  return data as ImpactedCustomersData
+}
+
+// ── Territory Map ─────────────────────────────────────────────────────────────
+
+export interface TerritoryZip {
+  zip: string
+  lat: number
+  lng: number
+  city: string
+  region: string
+  members: number
+  ins_customers_cy: number
+  ins_customers_py: number
+  ins_penetration: number
+  ins_pct_of_total: number
+  travel_customers_3yr: number
+  travel_bookings_cy: number
+  travel_bookings_py: number
+  travel_penetration: number
+  travel_pct_of_total: number
+  travel_rev_cy: number
+  travel_rev_py: number
+}
+
+export interface TerritoryTotals {
+  members: number
+  ins_customers_cy: number
+  ins_customers_py: number
+  travel_customers_3yr: number
+  travel_rev_cy: number
+  travel_rev_py: number
+  zip_count: number
+}
+
+export interface TerritoryRegionSummary {
+  members: number
+  ins_cy: number
+  travel_3yr: number
+  travel_rev_cy: number
+  zip_count: number
+}
+
+export interface TerritoryMapData {
+  zips: TerritoryZip[]
+  totals: TerritoryTotals
+  regions: Record<string, TerritoryRegionSummary>
+  year: number
+}
+
+export async function fetchTerritoryMapData(): Promise<TerritoryMapData> {
+  const { data } = await api.get('/api/territory/map-data')
+  return data as TerritoryMapData
+}
