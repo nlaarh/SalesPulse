@@ -343,25 +343,27 @@ def market_pulse(
         today = date.today()
 
         # Parallel SF queries for context
+        # For advisory matching, only count FUTURE trips (travel not yet departed)
+        future_start = max(sd, today.isoformat())
         data = sf_parallel(
-            # Trip counts by destination (for advisory matching)
+            # Trip counts by destination — future only for advisory relevance
             dest_counts=f"""
                 SELECT Destination_Region__c dest, COUNT(Id) cnt
                 FROM Opportunity
                 WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
                   AND {WON_STAGES}
-                  AND CloseDate >= {sd} AND CloseDate <= {ed}
+                  AND CloseDate >= {future_start} AND CloseDate <= {ed}
                   AND Destination_Region__c != null
                 GROUP BY Destination_Region__c
                 ORDER BY COUNT(Id) DESC
             """,
-            # International vs domestic split
+            # International vs domestic split — future only
             intl_trips=f"""
                 SELECT COUNT(Id) cnt, SUM(Amount) total
                 FROM Opportunity
                 WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
                   AND {WON_STAGES}
-                  AND CloseDate >= {sd} AND CloseDate <= {ed}
+                  AND CloseDate >= {future_start} AND CloseDate <= {ed}
                   AND Amount != null
                   AND Destination_Region__c NOT IN ('United States','Alaska','Hawaii','Walt Disney World')
                   AND Destination_Region__c != null
@@ -472,6 +474,9 @@ def impacted_customers(
     key = f"mp_impact_{safe_dests}_{sd}_{ed}"
 
     def fetch():
+        # Only show future trips (not yet departed)
+        today_str = date.today().isoformat()
+        future_start = max(sd, today_str)
         rows = sf_query_all(f"""
             SELECT Account.Name, AccountId,
                    Owner.Name, Name,
@@ -480,7 +485,7 @@ def impacted_customers(
             FROM Opportunity
             WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
               AND {WON_STAGES}
-              AND CloseDate >= {sd} AND CloseDate <= {ed}
+              AND CloseDate >= {future_start} AND CloseDate <= {ed}
               AND Destination_Region__c IN ('{safe_dests}')
               AND Amount != null
             ORDER BY Owner.Name, Amount DESC

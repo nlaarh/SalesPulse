@@ -21,14 +21,14 @@ import { useState, useEffect, useCallback } from 'react'
 const NAV_ANALYTICS = [
   { to: '/dashboard', label: 'Sales Performance', icon: Users, desc: 'Bookings, pipeline & team' },
   { to: '/customers', label: 'Top Customers', icon: UserCheck, desc: 'Highest bookings accounts' },
+  { to: '/travel', label: 'Top Destinations', icon: Plane, desc: 'Travel analytics' },
   { to: '/monthly', label: 'Advisor Monthly Report', icon: Table2, desc: 'Agent × month breakdown' },
   { to: '/pipeline', label: 'Pipeline & Forecast', icon: GitBranch, desc: 'Stages, velocity & risk' },
   { to: '/opportunities', label: 'Top Opportunities', icon: Target, desc: 'AI-scored deal ranking' },
   { to: '/leads', label: 'Lead Funnel', icon: Megaphone, desc: 'Conversion & sources' },
   { to: '/insights', label: 'Cross-Sell Insights', icon: Lightbulb, desc: 'Who to call & why' },
-  { to: '/market-pulse', label: 'Market Pulse', icon: Radio, desc: 'Advisories & intelligence' },
   { to: '/territory', label: 'Territory Map', icon: Map, desc: 'Penetration heatmap' },
-  { to: '/travel', label: 'Destinations', icon: Plane, desc: 'Travel analytics' },
+  { to: '/market-pulse', label: 'Market Pulse', icon: Radio, desc: 'Advisories & intelligence' },
 ]
 
 const NAV_RESOURCES = [

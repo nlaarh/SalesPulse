@@ -42,3 +42,6 @@ Thumbs.db
 *.xlsx
 .playwright-mcp/
 deploy.zip
+backend/static/
+backend/.python_packages/
+deploy.zip

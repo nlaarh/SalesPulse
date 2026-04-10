@@ -8,7 +8,6 @@ on:
 env:
   AZURE_WEBAPP_NAME: salespulse-nyaaa
   NODE_VERSION: '22'
-  PYTHON_VERSION: '3.13'
 
 jobs:
   build-and-deploy:
@@ -36,44 +35,25 @@ jobs:
         rm -rf backend/static
         cp -r frontend/dist backend/static
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-
-    - name: Install Python dependencies locally
-      working-directory: backend
-      run: |
-        pip install -r requirements.txt \
-          --target .python_packages/lib/site-packages \
-          --quiet
-        echo "Installed packages: $(ls .python_packages/lib/site-packages/ | wc -l) dirs"
-
     - name: Create deployment package
       working-directory: backend
       run: |
-        # Package source + static + pre-installed packages (no Oryx needed)
         zip -r ../deploy.zip \
           *.py \
           *.json \
           routers/ \
-          startup.sh \
           gunicorn_conf.py \
           requirements.txt \
-          static/ \
-          .python_packages/
+          static/
         echo "Package size: $(du -h ../deploy.zip | cut -f1)"
-        echo "Python files:"
-        unzip -l ../deploy.zip | grep "\.py$" | awk '{print $4}'
 
-    - name: Deploy to Azure via Kudu ZIP Deploy
+    - name: Deploy to Azure (Oryx builds Python deps)
       env:
         DEPLOY_USER: ${{ secrets.AZURE_DEPLOY_USER }}
         DEPLOY_PASS: ${{ secrets.AZURE_DEPLOY_PASS }}
       run: |
-        echo "Deploying to ${{ env.AZURE_WEBAPP_NAME }} (pre-built, no Oryx)..."
+        echo "Deploying to ${{ env.AZURE_WEBAPP_NAME }}..."
 
-        # Write temp netrc for auth
         echo "machine ${{ env.AZURE_WEBAPP_NAME }}.scm.azurewebsites.net" > /tmp/.netrc
         echo "login ${DEPLOY_USER}" >> /tmp/.netrc
         echo "password ${DEPLOY_PASS}" >> /tmp/.netrc
@@ -81,11 +61,11 @@ jobs:
 
         RESPONSE=$(curl -s -w "\n%{http_code}" \
           -X POST \
-          "https://${{ env.AZURE_WEBAPP_NAME }}.scm.azurewebsites.net/api/zipdeploy?isAsync=true" \
+          "https://${{ env.AZURE_WEBAPP_NAME }}.scm.azurewebsites.net/api/zipdeploy" \
           --netrc-file /tmp/.netrc \
           --data-binary @deploy.zip \
           -H "Content-Type: application/octet-stream" \
-          --max-time 300)
+          --max-time 600)
 
         rm -f /tmp/.netrc
 
@@ -103,11 +83,11 @@ jobs:
 
     - name: Verify health
       run: |
-        echo "Waiting 90s for app startup..."
-        sleep 90
+        echo "Waiting 180s for Oryx build + app startup..."
+        sleep 180
 
         STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-          --max-time 15 \
+          --max-time 30 \
           "https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/api/health")
 
         echo "Health check: HTTP $STATUS"
