@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { fetchMonthlyTargets, saveMonthlyTargets, computeEstimates } from '@/lib/api'
 import type { MonthlyTargetAdvisor, EstimateAdvisor } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { Loader2, Save, DollarSign, BookOpen, Download, Calculator, AlertTriangle } from 'lucide-react'
+import { Loader2, Save, Download, Calculator, AlertTriangle } from 'lucide-react'
 import { exportToExcel } from '@/lib/exportExcel'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -37,7 +37,7 @@ export default function TargetGrid({ line }: Props) {
   const [error, setError] = useState('')
 
   const [growthPct, setGrowthPct] = useState(10)
-  const [targetBase, setTargetBase] = useState<TargetBase>('bookings')
+  const [targetBase] = useState<TargetBase>('bookings')
   const [commRate, setCommRate] = useState(10) // commission rate %
 
   // ── Estimation state ───────────────────────────────────────────────────────
@@ -118,79 +118,7 @@ export default function TargetGrid({ line }: Props) {
   useEffect(() => { loadData() }, [loadData])
 
   // ── helpers ──────────────────────────────────────────────────────────────
-  const priorYearBase = (row: GridRow) =>
-    targetBase === 'bookings' ? row.prior_year_rev : row.prior_year
-
-  const toOther = (amount: number) =>
-    targetBase === 'bookings'
-      ? Math.round(amount * commRate / 100)   // bookings → commission
-      : commRate > 0 ? Math.round(amount / (commRate / 100)) : 0  // commission → bookings
-
-  const otherLabel = targetBase === 'bookings' ? 'Est. Commissions' : 'Est. Bookings'
-
-  // Convert all target cells when switching basis
-  function switchBase(newBase: TargetBase) {
-    if (newBase === targetBase) return
-    setRows(prev => prev.map(r => {
-      const newTargets: Record<number, number> = {}
-      for (const [k, v] of Object.entries(r.targets)) {
-        if (newBase === 'commission') {
-          newTargets[Number(k)] = Math.round(v * commRate / 100)
-        } else {
-          newTargets[Number(k)] = commRate > 0 ? Math.round(v / (commRate / 100)) : 0
-        }
-      }
-      return { ...r, targets: newTargets }
-    }))
-    setTargetBase(newBase)
-    setSaved(false)
-  }
-
-  function applyGrowthPct(pct: number) {
-    const now = new Date()
-    const currentMonth = year === now.getFullYear() ? now.getMonth() + 1 : 0 // 1-based; 0 = past year, recalc all
-    const companyShape = Array(12).fill(0)
-    rows.forEach(r => r.prior_year_months.forEach((v, i) => { companyShape[i] += v }))
-    const companyTotal = companyShape.reduce((s, v) => s + v, 0)
-
-    const withData = rows.filter(r => priorYearBase(r) > 0)
-    const medianPrior = withData.length > 0
-      ? withData.map(r => priorYearBase(r)).sort((a, b) => a - b)[Math.floor(withData.length / 2)]
-      : 0
-
-    setRows(prev => prev.map(r => {
-      const base = priorYearBase(r) > 0 ? priorYearBase(r) : medianPrior
-      const yearlyTarget = Math.round(base * (1 + pct / 100))
-
-      const pyMonths = r.prior_year_months
-      const pyTotal = pyMonths.reduce((s, v) => s + v, 0)
-
-      const targets: Record<number, number> = { ...r.targets }
-
-      // Sum already-locked months (past + current)
-      let lockedSum = 0
-      for (let m = 1; m <= currentMonth; m++) lockedSum += (targets[m] || 0)
-
-      // Distribute remaining target across future months using seasonal shape
-      const remaining = Math.max(0, yearlyTarget - lockedSum)
-      let futureShapeTotal = 0
-      for (let m = currentMonth + 1; m <= 12; m++) {
-        futureShapeTotal += pyTotal > 0 ? pyMonths[m - 1] : (companyTotal > 0 ? companyShape[m - 1] : 1)
-      }
-
-      for (let m = currentMonth + 1; m <= 12; m++) {
-        if (futureShapeTotal > 0) {
-          const shape = pyTotal > 0 ? pyMonths[m - 1] : (companyTotal > 0 ? companyShape[m - 1] : 1)
-          targets[m] = Math.round(remaining * (shape / futureShapeTotal))
-        } else {
-          const futureCount = 12 - currentMonth
-          targets[m] = futureCount > 0 ? Math.round(remaining / futureCount) : 0
-        }
-      }
-      return { ...r, targets }
-    }))
-    setSaved(false)
-  }
+  
 
   async function handleSave() {
     setSaving(true)
@@ -287,6 +215,27 @@ export default function TargetGrid({ line }: Props) {
     }
   }
 
+  // Apply growth % on top of base estimates → Booking & Commission estimates
+  function applyGrowthToEstimates() {
+    if (!estimateData) return
+    const be: Record<number, Record<number, number>> = { ...bookingEstimates }
+    const ce: Record<number, Record<number, number>> = { ...commissionEstimates }
+    for (const a of estimateData) {
+      if (!be[a.advisor_target_id]) be[a.advisor_target_id] = {}
+      if (!ce[a.advisor_target_id]) ce[a.advisor_target_id] = {}
+      for (const m of a.months) {
+        if (isMonthEditable(m.month)) {
+          const grown = Math.round(m.base_bookings * (1 + growthPct / 100))
+          be[a.advisor_target_id][m.month] = grown
+          ce[a.advisor_target_id][m.month] = Math.round(grown * commRate / 100)
+        }
+      }
+    }
+    setBookingEstimates(be)
+    setCommissionEstimates(ce)
+    setSaved(false)
+  }
+
   function toggleBaseYear(y: number) {
     setBaseYears(prev =>
       prev.includes(y) ? prev.filter(v => v !== y) : [...prev, y].sort()
@@ -316,32 +265,29 @@ export default function TargetGrid({ line }: Props) {
     ? JSON.stringify(commissionEstimates) !== JSON.stringify(commissionEstimatesOrig)
     : false
 
-  function rowTotal(row: GridRow) {
-    return Object.values(row.targets).reduce((s, v) => s + v, 0)
-  }
-
   function handleExport() {
-    const exportRows = rows.map(r => {
-      const total = rowTotal(r)
+    // Export from the active tab's data
+    const advisorList = rows.length > 0 ? rows : []
+    const exportRows = advisorList.map(r => {
+      const be = bookingEstimates[r.advisor_target_id] || {}
+      const ce = commissionEstimates[r.advisor_target_id] || {}
       const row: Record<string, unknown> = {
         Advisor: r.name,
         Branch: r.branch ?? '',
         [`PY ${year - 1} Bookings`]: r.prior_year_rev,
         [`PY ${year - 1} Commissions`]: r.prior_year,
       }
+      let totalBookings = 0, totalCommissions = 0
       for (let m = 1; m <= 12; m++) {
-        const val = r.targets[m] || 0
-        const other = toOther(val)
-        if (targetBase === 'bookings') {
-          row[`${MONTHS[m - 1]} Bookings`] = val
-          row[`${MONTHS[m - 1]} Commissions`] = other
-        } else {
-          row[`${MONTHS[m - 1]} Commissions`] = val
-          row[`${MONTHS[m - 1]} Bookings`] = other
-        }
+        const bv = be[m] || 0
+        const cv = ce[m] || 0
+        row[`${MONTHS[m - 1]} Bookings`] = bv
+        row[`${MONTHS[m - 1]} Commissions`] = cv
+        totalBookings += bv
+        totalCommissions += cv
       }
-      row[`${year} Total Bookings`] = targetBase === 'bookings' ? total : toOther(total)
-      row[`${year} Total Commissions`] = targetBase === 'commission' ? total : toOther(total)
+      row[`${year} Total Bookings`] = totalBookings
+      row[`${year} Total Commissions`] = totalCommissions
       return row
     })
     exportToExcel(exportRows, `Advisor_Targets_${line}_${year}`)
@@ -349,11 +295,6 @@ export default function TargetGrid({ line }: Props) {
 
   const fmt  = (v: number) => v > 0 ? v.toLocaleString('en-US', { maximumFractionDigits: 0 }) : '0'
   const fmtC = (v: number) => `$${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
-  const fmtK = (v: number) => {
-    if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`
-    if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`
-    return `$${v.toFixed(0)}`
-  }
 
   if (loading) {
     return (
@@ -363,11 +304,6 @@ export default function TargetGrid({ line }: Props) {
     )
   }
 
-  const totalPriorBookings  = rows.reduce((s, r) => s + r.prior_year_rev, 0)
-  const totalPriorComm      = rows.reduce((s, r) => s + r.prior_year, 0)
-  const totalPriorBase      = targetBase === 'bookings' ? totalPriorBookings : totalPriorComm
-  const currentTotal        = rows.reduce((s, r) => s + rowTotal(r), 0)
-  const currentOtherTotal   = toOther(currentTotal)
 
   // Derive advisor list for estimate tabs from estimateData or rows
   const estimateAdvisors = estimateData ?? []
@@ -576,6 +512,48 @@ export default function TargetGrid({ line }: Props) {
           <span className="text-[11px] text-muted-foreground">{rows.length} advisors</span>
         </div>
 
+        {/* Row 2: Growth % + Commission Rate controls */}
+        <div className="flex flex-wrap items-center gap-4 border-t border-border/50 pt-3">
+          {/* Avg Commission Rate */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Avg Commission Rate</span>
+            <input
+              type="number"
+              step="0.1"
+              value={commRate}
+              onChange={e => setCommRate(parseFloat(e.target.value) || 0)}
+              className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-[13px] font-bold tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <span className="text-[13px] font-semibold text-muted-foreground">%</span>
+          </div>
+
+          <div className="h-8 w-px bg-border/50" />
+
+          {/* Growth target */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Growth Target</span>
+            <input
+              type="number"
+              value={growthPct}
+              onChange={e => setGrowthPct(Number(e.target.value) || 0)}
+              className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-[13px] font-bold tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <span className="text-[13px] font-semibold text-muted-foreground">%</span>
+            <button
+              onClick={applyGrowthToEstimates}
+              disabled={!estimateData}
+              className={cn(
+                'rounded-lg px-4 py-1.5 text-[12px] font-semibold transition-all',
+                estimateData
+                  ? 'bg-primary text-primary-foreground hover:opacity-90'
+                  : 'bg-secondary text-muted-foreground cursor-not-allowed opacity-50',
+              )}
+            >
+              Apply Growth to Bookings
+            </button>
+          </div>
+        </div>
+
         {/* Confirm dialog */}
         {showConfirm && (
           <div className="rounded-lg border border-amber-400/50 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-center gap-3">
@@ -661,69 +639,6 @@ export default function TargetGrid({ line }: Props) {
       {/* ── Tab content ────────────────────────────────────────────────── */}
       {renderEstimateGrid(activeTab)}
 
-      {/* ── Legacy planner bar (shown under Bookings tab for growth tools) ── */}
-      {activeTab === 'bookings' && rows.length > 0 && (
-        <div className="rounded-xl border border-border bg-secondary/20 p-4 space-y-3">
-          <div className="flex flex-wrap items-center gap-4">
-            {/* Base toggle */}
-            <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-0.5">
-              <button
-                onClick={() => switchBase('bookings')}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold transition-all',
-                  targetBase === 'bookings'
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                <BookOpen className="h-3.5 w-3.5" /> Bookings basis
-              </button>
-              <button
-                onClick={() => switchBase('commission')}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold transition-all',
-                  targetBase === 'commission'
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                <DollarSign className="h-3.5 w-3.5" /> Commissions basis
-              </button>
-            </div>
-
-            {/* Growth control */}
-            <div className="flex items-center gap-3">
-              <span className="text-[11px] font-medium text-muted-foreground">Growth</span>
-              <input
-                type="number"
-                value={growthPct}
-                onChange={e => setGrowthPct(Number(e.target.value) || 0)}
-                className="w-14 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-[14px] font-bold tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-              <span className="text-[13px] font-semibold text-muted-foreground">%</span>
-              <button
-                onClick={() => applyGrowthPct(growthPct)}
-                className="rounded-lg bg-primary px-4 py-1.5 text-[12px] font-semibold text-primary-foreground hover:opacity-90 transition-colors"
-              >
-                Apply Growth to Bookings
-              </button>
-            </div>
-          </div>
-
-          {/* Summary */}
-          {currentTotal > 0 && (
-            <div className="border-t border-border/50 pt-2 flex items-center gap-4 text-[11px] text-muted-foreground">
-              <span>Grid total ({targetBase}): <span className="font-semibold text-foreground">{fmtK(currentTotal)}</span></span>
-              <span>{otherLabel}: <span className="font-semibold text-foreground">{fmtK(currentOtherTotal)}</span></span>
-              {totalPriorBase > 0 && (
-                <span className={cn('font-semibold', currentTotal >= totalPriorBase ? 'text-emerald-500' : 'text-rose-500')}>
-                  {currentTotal >= totalPriorBase ? '+' : ''}{((currentTotal / totalPriorBase - 1) * 100).toFixed(1)}% vs {year - 1}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 }
