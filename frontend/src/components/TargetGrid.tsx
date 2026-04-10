@@ -36,7 +36,7 @@ export default function TargetGrid({ line }: Props) {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
-  const [growthPct, setGrowthPct] = useState(10)
+  const [growthPct, setGrowthPct] = useState(5)
   const [targetBase] = useState<TargetBase>('bookings')
   const [commRate, setCommRate] = useState(10) // commission rate %
 
