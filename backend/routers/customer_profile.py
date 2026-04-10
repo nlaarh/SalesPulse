@@ -258,7 +258,7 @@ def get_customer_profile(
 
     return {
         'account':      _fmt_account(acct, base_url),
-        'memberships':  [_fmt_membership(m) for m in mships],
+        'memberships':  [_fmt_membership(m, base_url) for m in mships],
         'vehicles':     [_fmt_vehicle(v) for v in vehs],
         'product_360':  product_360,
         'transactions': transactions,
@@ -591,10 +591,11 @@ def _fmt_account(r: dict, base_url: str = '') -> dict:
     }
 
 
-def _fmt_membership(r: dict) -> dict:
+def _fmt_membership(r: dict, base_url: str = '') -> dict:
     parts = [p.strip() for p in (r.get('Name') or '').split(' - ')]
+    sf_id = r.get('Id', '')
     return {
-        'id':           r.get('Id'),
+        'id':           sf_id,
         'name':         r.get('Name'),
         'level':        parts[1] if len(parts) > 1 else None,
         'member_number': parts[0] if parts else None,
@@ -602,6 +603,7 @@ def _fmt_membership(r: dict) -> dict:
         'purchase_date': r.get('PurchaseDate'),
         'expiry_date':  r.get('UsageEndDate'),
         'price':        r.get('Price'),
+        'sf_url':       f"{base_url}/{sf_id}" if base_url and sf_id else None,
     }
 
 

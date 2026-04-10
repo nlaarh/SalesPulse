@@ -48,6 +48,7 @@ interface Account {
 interface Membership {
   id: string; name: string; level: string | null; member_number: string | null
   status: string | null; purchase_date: string | null; expiry_date: string | null; price: number | null
+  sf_url: string | null
 }
 
 interface Vehicle { id: string; name: string; status: string | null; vin: string | null; description: string | null }
@@ -311,7 +312,14 @@ export default function CustomerProfile() {
                     <div className="flex items-center gap-2">
                       <span className={cn('h-2 w-2 rounded-full',
                         m.status === 'A' ? 'bg-emerald-500' : m.status === 'L' ? 'bg-amber-500' : 'bg-rose-500')} />
-                      <span className="font-medium text-foreground">{m.level || 'Basic'}</span>
+                      {m.sf_url ? (
+                        <a href={m.sf_url} target="_blank" rel="noopener noreferrer"
+                          className="font-medium text-primary hover:underline flex items-center gap-1">
+                          {m.level || 'Basic'} <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : (
+                        <span className="font-medium text-foreground">{m.level || 'Basic'}</span>
+                      )}
                       <span className="text-muted-foreground/50 font-mono text-[10px]">#{m.member_number}</span>
                     </div>
                     <div className="flex items-center gap-3 text-muted-foreground">
