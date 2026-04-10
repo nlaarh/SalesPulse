@@ -215,24 +215,44 @@ export default function TargetGrid({ line }: Props) {
     }
   }
 
-  // Apply growth % on top of base estimates → Booking & Commission estimates
+  // Apply growth % to booking & commission estimates
   function applyGrowthToEstimates() {
-    if (!estimateData) return
-    const be: Record<number, Record<number, number>> = { ...bookingEstimates }
-    const ce: Record<number, Record<number, number>> = { ...commissionEstimates }
-    for (const a of estimateData) {
-      if (!be[a.advisor_target_id]) be[a.advisor_target_id] = {}
-      if (!ce[a.advisor_target_id]) ce[a.advisor_target_id] = {}
-      for (const m of a.months) {
-        if (isMonthEditable(m.month)) {
-          const grown = Math.round(m.base_bookings * (1 + growthPct / 100))
-          be[a.advisor_target_id][m.month] = grown
-          ce[a.advisor_target_id][m.month] = Math.round(grown * commRate / 100)
+    if (estimateData) {
+      // Use base estimates as the growth foundation
+      const be: Record<number, Record<number, number>> = { ...bookingEstimates }
+      const ce: Record<number, Record<number, number>> = { ...commissionEstimates }
+      for (const a of estimateData) {
+        if (!be[a.advisor_target_id]) be[a.advisor_target_id] = {}
+        if (!ce[a.advisor_target_id]) ce[a.advisor_target_id] = {}
+        for (const m of a.months) {
+          if (isMonthEditable(m.month)) {
+            const grown = Math.round(m.base_bookings * (1 + growthPct / 100))
+            be[a.advisor_target_id][m.month] = grown
+            ce[a.advisor_target_id][m.month] = Math.round(grown * commRate / 100)
+          }
         }
       }
+      setBookingEstimates(be)
+      setCommissionEstimates(ce)
+    } else if (rows.length > 0) {
+      // No base estimates yet — apply growth on current booking estimates
+      const be: Record<number, Record<number, number>> = { ...bookingEstimates }
+      const ce: Record<number, Record<number, number>> = { ...commissionEstimates }
+      for (const r of rows) {
+        if (!be[r.advisor_target_id]) be[r.advisor_target_id] = {}
+        if (!ce[r.advisor_target_id]) ce[r.advisor_target_id] = {}
+        for (let m = 1; m <= 12; m++) {
+          if (isMonthEditable(m)) {
+            const current = be[r.advisor_target_id][m] || 0
+            const grown = Math.round(current * (1 + growthPct / 100))
+            be[r.advisor_target_id][m] = grown
+            ce[r.advisor_target_id][m] = Math.round(grown * commRate / 100)
+          }
+        }
+      }
+      setBookingEstimates(be)
+      setCommissionEstimates(ce)
     }
-    setBookingEstimates(be)
-    setCommissionEstimates(ce)
     setSaved(false)
   }
 
@@ -541,10 +561,10 @@ export default function TargetGrid({ line }: Props) {
             <span className="text-[13px] font-semibold text-muted-foreground">%</span>
             <button
               onClick={applyGrowthToEstimates}
-              disabled={!estimateData}
+              disabled={!estimateData && rows.length === 0}
               className={cn(
                 'rounded-lg px-4 py-1.5 text-[12px] font-semibold transition-all',
-                estimateData
+                (estimateData || rows.length > 0)
                   ? 'bg-primary text-primary-foreground hover:opacity-90'
                   : 'bg-secondary text-muted-foreground cursor-not-allowed opacity-50',
               )}
