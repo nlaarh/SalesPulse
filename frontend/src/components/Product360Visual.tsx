@@ -1,13 +1,12 @@
-import { CheckCircle2 } from 'lucide-react'
 import {
-  User, Shield, Car, CreditCard, Plane, Heart,
-  TrendingUp, AlertCircle,
+  Shield, Car, CreditCard, Plane, Heart,
+  AlertCircle, CheckCircle2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface Product360 {
   membership: boolean; travel: boolean; insurance: boolean; medicare: boolean
-  membership_services: boolean; financial: boolean; driver: boolean; ers: boolean
+  driver: boolean; ers: boolean
 }
 
 const PRODUCTS = [
@@ -15,8 +14,6 @@ const PRODUCTS = [
   { key: 'travel',              label: 'Travel',        icon: Plane,      color: 'text-indigo-500',  bg: 'bg-indigo-500/10',  border: 'border-indigo-500/30' },
   { key: 'insurance',           label: 'Insurance',     icon: Shield,     color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' },
   { key: 'medicare',            label: 'Medicare',      icon: Heart,      color: 'text-rose-500',    bg: 'bg-rose-500/10',    border: 'border-rose-500/30' },
-  { key: 'membership_services', label: 'Mbr Services',  icon: User,       color: 'text-violet-500',  bg: 'bg-violet-500/10',  border: 'border-violet-500/30' },
-  { key: 'financial',           label: 'Financial',     icon: TrendingUp, color: 'text-amber-500',   bg: 'bg-amber-500/10',   border: 'border-amber-500/30' },
   { key: 'driver',              label: 'Driver Pgm',    icon: Car,        color: 'text-orange-500',  bg: 'bg-orange-500/10',  border: 'border-orange-500/30' },
   { key: 'ers',                 label: 'ERS',           icon: AlertCircle,color: 'text-cyan-500',    bg: 'bg-cyan-500/10',    border: 'border-cyan-500/30' },
 ]
@@ -31,7 +28,7 @@ export default function Product360Visual({ p360 }: { p360: Product360 }) {
         <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60">Product 360</p>
         <span className="text-[12px] font-semibold text-primary">{owned}/{total} products</span>
       </div>
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         {PRODUCTS.map(p => {
           const has = p360[p.key as keyof Product360]
           const Icon = p.icon

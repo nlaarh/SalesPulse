@@ -197,15 +197,16 @@ def get_customer_profile(
         base_url = ''
 
     opp_types = {(o.get('RecordType') or {}).get('Name', 'Other') for o in opps}
+    active_mship = any(m.get('Status') == 'A' for m in mships)
+    member_status = acct.get('Member_Status__c')
+    ers_calls = acct.get('ERS_Calls_Made_CP__c') or 0
     product_360 = {
-        'membership': bool(mships or acct.get('Account_Member_ID__c')),
+        'membership': active_mship or member_status == 'A',
         'travel':     'Travel' in opp_types,
         'insurance':  'Insurance' in opp_types or bool(acct.get('Insuance_Customer_ID__c')),
         'medicare':   'Medicare' in opp_types,
-        'membership_services': 'Membership Services' in opp_types,
-        'financial':  'Financial Services' in opp_types,
         'driver':     'Driver Programs' in opp_types,
-        'ers':        bool(acct.get('ERS_Calls_Made_CP__c')),
+        'ers':        ers_calls > 0,
     }
 
     # Transactions — last 30 opportunities as history
