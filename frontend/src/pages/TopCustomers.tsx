@@ -18,8 +18,6 @@ import {
 import { Loader2, Users, ExternalLink, ArrowUp, ArrowDown, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const LIMITS = [25, 50, 100] as const
-type Limit = typeof LIMITS[number]
 type SortField = 'total_rev' | 'deal_count' | 'avg_deal'
 
 function fmt(n: number) {
@@ -151,18 +149,17 @@ export default function TopCustomers() {
 
   const [customers, setCustomers] = useState<TopCustomer[]>([])
   const [loading, setLoading] = useState(true)
-  const [limit, setLimit] = useState<Limit>(25)
+  const [topN, setTopN] = useState(25)
   const [sortField, setSortField] = useState<SortField>('total_rev')
   const [sortAsc, setSortAsc] = useState(false)
-  const [chartTopN, setChartTopN] = useState(10)
 
   useEffect(() => {
     setLoading(true)
-    fetchTopCustomers(line, limit, startDate, endDate)
+    fetchTopCustomers(line, topN, startDate, endDate)
       .then(data => setCustomers(Array.isArray(data) ? data : []))
       .catch(() => setCustomers([]))
       .finally(() => setLoading(false))
-  }, [line, limit, startDate, endDate])
+  }, [line, topN, startDate, endDate])
 
   const sorted = useMemo(() => {
     return [...customers].sort((a, b) => {
@@ -172,13 +169,13 @@ export default function TopCustomers() {
   }, [customers, sortField, sortAsc])
 
   const chartData = useMemo(
-    () => sorted.slice(0, chartTopN).map(c => ({
+    () => sorted.slice(0, Math.min(topN, 20)).map(c => ({
       name: c.name.length > 20 ? c.name.slice(0, 18) + '…' : c.name,
       fullName: c.name,
       value: c.total_rev,
       account_id: c.account_id,
     })),
-    [sorted, chartTopN],
+    [sorted, topN],
   )
 
   function toggleSort(field: SortField) {
@@ -207,67 +204,44 @@ export default function TopCustomers() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <Users className="w-6 h-6 text-orange-500" />
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Top Customers</h1>
-            <p className="text-sm text-slate-500">Highest revenue accounts from closed deals</p>
-          </div>
+      <div className="animate-enter flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <p className="text-[12px] font-medium text-muted-foreground">Top Customers</p>
+          <h1 className="mt-0.5 text-2xl font-bold tracking-tight">Highest Bookings Accounts</h1>
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
           <CustomerSearchBox />
-          {/* Limit toggle */}
-          <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
-            {LIMITS.map(l => (
-              <button
-                key={l}
-                onClick={() => setLimit(l)}
-                className={cn(
-                  'px-3 py-1 rounded-md text-sm font-medium transition-all',
-                  limit === l
-                    ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white'
-                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300',
-                )}
-              >
-                Top {l}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">Show top</label>
+            <input
+              type="number"
+              min={1}
+              max={200}
+              value={topN}
+              onChange={(e) => { const v = parseInt(e.target.value, 10); if (v > 0) setTopN(v) }}
+              className="w-16 rounded-md border border-border bg-secondary/50 px-2 py-1 text-center text-[12px] font-semibold tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+            />
           </div>
         </div>
       </div>
 
       {loading ? (
         <div className="flex justify-center items-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       ) : customers.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+        <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
           <Users className="w-12 h-12 mb-3 opacity-30" />
           <p>No customer data found for this period</p>
         </div>
       ) : (
         <>
           {/* Bar Chart */}
-          <div className="bg-white dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-                Top Customers by Bookings
-              </h2>
-              <div className="flex items-center gap-2">
-                <label className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">Show top</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={sorted.length || 50}
-                  value={chartTopN}
-                  onChange={(e) => { const v = parseInt(e.target.value, 10); if (v > 0) setChartTopN(v) }}
-                  className="w-16 rounded-md border border-border bg-secondary/50 px-2 py-1 text-center text-[12px] font-semibold tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-                <span className="text-[11px] text-muted-foreground">of {sorted.length}</span>
-              </div>
-            </div>
+          <div className="rounded-xl border border-border bg-card p-5">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
+              Top {chartData.length} by Bookings
+            </h2>
             <ResponsiveContainer width="100%" height={Math.max(300, chartData.length * 32)}>
               <BarChart
                 data={chartData}
@@ -310,32 +284,32 @@ export default function TopCustomers() {
           </div>
 
           {/* Leaderboard Table */}
-          <div className="bg-white dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-            <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-700">
-              <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="px-5 py-3 border-b border-border">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                 Full Leaderboard — {sorted.length} customers
               </h2>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide border-b border-slate-100 dark:border-slate-700">
+                  <tr className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">
                     <th className="px-5 py-3 w-10">#</th>
                     <th className="px-5 py-3">Customer</th>
                     <th
-                      className="px-5 py-3 text-right cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 select-none"
+                      className="px-5 py-3 text-right cursor-pointer hover:text-foreground select-none"
                       onClick={() => toggleSort('total_rev')}
                     >
                       Bookings <SortIcon field="total_rev" />
                     </th>
                     <th
-                      className="px-5 py-3 text-right cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 select-none"
+                      className="px-5 py-3 text-right cursor-pointer hover:text-foreground select-none"
                       onClick={() => toggleSort('deal_count')}
                     >
                       Deals <SortIcon field="deal_count" />
                     </th>
                     <th
-                      className="px-5 py-3 text-right cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 select-none"
+                      className="px-5 py-3 text-right cursor-pointer hover:text-foreground select-none"
                       onClick={() => toggleSort('avg_deal')}
                     >
                       Avg Deal <SortIcon field="avg_deal" />
@@ -343,30 +317,30 @@ export default function TopCustomers() {
                     <th className="px-5 py-3 w-12" />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50 dark:divide-slate-700/50">
+                <tbody className="divide-y divide-border/50">
                   {sorted.map((cust, idx) => (
                     <tr
                       key={cust.account_id}
-                      className="hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer transition-colors"
+                      className="hover:bg-muted/50 cursor-pointer transition-colors"
                       onClick={() => navigate(`/customer/${cust.account_id}`)}
                     >
-                      <td className="px-5 py-3 text-slate-400 font-mono text-xs">{idx + 1}</td>
+                      <td className="px-5 py-3 text-muted-foreground font-mono text-xs">{idx + 1}</td>
                       <td className="px-5 py-3">
-                        <span className="font-medium text-slate-800 dark:text-slate-200">
+                        <span className="font-medium text-foreground">
                           {cust.name || cust.account_id}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-right font-semibold text-slate-900 dark:text-white tabular-nums">
+                      <td className="px-5 py-3 text-right font-semibold text-foreground tabular-nums">
                         {fmtFull(cust.total_rev)}
                       </td>
-                      <td className="px-5 py-3 text-right text-slate-600 dark:text-slate-300 tabular-nums">
+                      <td className="px-5 py-3 text-right text-muted-foreground tabular-nums">
                         {cust.deal_count}
                       </td>
-                      <td className="px-5 py-3 text-right text-slate-500 dark:text-slate-400 tabular-nums">
+                      <td className="px-5 py-3 text-right text-muted-foreground tabular-nums">
                         {fmt(cust.avg_deal)}
                       </td>
                       <td className="px-5 py-3 text-center">
-                        <ExternalLink className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600" />
+                        <ExternalLink className="w-3.5 h-3.5 text-muted-foreground/50" />
                       </td>
                     </tr>
                   ))}
