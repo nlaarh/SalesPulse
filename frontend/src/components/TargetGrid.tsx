@@ -556,14 +556,14 @@ export default function TargetGrid({ line }: Props) {
 
         {/* Confirm dialog */}
         {showConfirm && (
-          <div className="rounded-lg border border-amber-400/50 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-center gap-3">
+          <div className="rounded-lg border border-border bg-secondary/40 p-3 flex items-center gap-3">
             <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
-            <span className="text-[12px] text-amber-700 dark:text-amber-300">
+            <span className="text-[12px] text-foreground">
               {existingCount} existing targets found for {year}. Recalculating will overwrite <strong>future months only</strong>. Continue?
             </span>
             <button
               onClick={handleComputeEstimates}
-              className="rounded-lg bg-amber-500 px-3 py-1 text-[11px] font-semibold text-white hover:bg-amber-600"
+              className="rounded-lg bg-primary px-3 py-1 text-[11px] font-semibold text-primary-foreground hover:opacity-90"
             >
               Yes, recalculate
             </button>
