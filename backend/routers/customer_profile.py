@@ -275,14 +275,33 @@ def get_upsell_analysis(
     # Build age-appropriateness rules
     age_rules = []
     if member_age is not None:
-        if member_age < 60:
-            age_rules.append("- Do NOT recommend Medicare products — member is under 60 and not yet eligible.")
         if member_age < 25:
-            age_rules.append("- Emphasize driver training and roadside assistance — relevant for younger members.")
-        if member_age >= 60:
-            age_rules.append("- Medicare is age-appropriate — recommend if not already held.")
-            age_rules.append("- Consider low-risk financial products and travel insurance.")
+            age_rules.append("- Young member: emphasize driver training, roadside assistance (ERS), and basic auto insurance.")
+            age_rules.append("- Do NOT recommend Medicare, financial services, or home insurance — not relevant at this age.")
+        elif member_age < 40:
+            age_rules.append("- Young professional: auto insurance, home insurance, travel, financial services, and membership upgrades are appropriate.")
+            age_rules.append("- Do NOT recommend Medicare — member is far from eligibility.")
+        elif member_age < 60:
+            age_rules.append("- Mid-career member: all products EXCEPT Medicare are appropriate.")
+            age_rules.append("- Do NOT recommend Medicare — member is under 60 and not yet eligible.")
+        else:  # 60+
+            age_rules.append("- Senior member: Medicare IS age-appropriate — recommend if not already held.")
+            age_rules.append("- Travel insurance, financial services, and ERS are especially relevant.")
     age_instructions = '\n'.join(age_rules) if age_rules else "- No age data available; omit age-specific products like Medicare unless the member already holds them."
+
+    # Build explicit product ownership rules
+    already_held_rules = []
+    if active_products:
+        already_held_rules.append(f"- Member ALREADY owns: {', '.join(active_products)}. Do NOT suggest these as new cross-sell — instead suggest upgrades/enhancements within these lines if applicable.")
+    if missing:
+        already_held_rules.append(f"- Member does NOT yet have: {', '.join(missing)}. These are your cross-sell targets (subject to age rules).")
+    if current_membership == 'Premier':
+        already_held_rules.append("- Member is already Premier level — do NOT suggest membership upgrade. Instead focus on product cross-sell.")
+    elif current_membership == 'Plus':
+        already_held_rules.append("- Member is on Plus — suggest Premier upgrade for enhanced benefits.")
+    elif current_membership in ('Basic', 'Classic'):
+        already_held_rules.append("- Member is on Basic/Classic — suggest Plus or Premier upgrade.")
+    product_rules = '\n'.join(already_held_rules) if already_held_rules else ''
 
     prompt = f"""You are a AAA sales advisor analyzing a member profile to identify upsell and cross-sell opportunities.
 
@@ -301,18 +320,25 @@ def get_upsell_analysis(
 ## Recent Transactions (last 10)
 {recent_txns if recent_txns else 'No transactions found'}
 
-## Age-Appropriateness Rules (MUST follow)
+## STRICT RULES — You MUST follow these
+
+### Age-Appropriateness (MANDATORY)
 {age_instructions}
+
+### Product Ownership (MANDATORY)
+{product_rules}
+- NEVER recommend a product the member already has as a new cross-sell.
+- Only recommend products from the "NOT yet held" list above (subject to age appropriateness).
+- For products the member already owns, you may suggest upgrades or enhanced coverage — but clearly label these as "enhancements" not new products.
 
 ## Your Task
 Provide concise upsell/cross-sell recommendations. Use ## headers and bullet points.
-Focus on:
-1. **Membership upgrade** if on Basic/Plus (upgrade to Plus/Premier)
-2. **Missing products** the member doesn't have yet — only recommend products appropriate for the member's age
-3. **Specific next actions** for the advisor based on transaction history
-4. **Risk signals** — any signs of churn or disengagement
-
-IMPORTANT: All product recommendations MUST be age-appropriate. Never suggest Medicare to someone under 60. Tailor financial and insurance product suggestions to the member's life stage.
+Structure as:
+1. **Membership Upgrade** — only if not already on Premier
+2. **Cross-Sell Opportunities** — products they DON'T have yet, filtered by age appropriateness
+3. **Enhancement Opportunities** — upgrades to products they already own
+4. **Specific Next Actions** — what the advisor should do based on transaction history
+5. **Risk Signals** — any signs of churn or disengagement
 
 Be specific, actionable, and brief. Max 300 words."""
 
