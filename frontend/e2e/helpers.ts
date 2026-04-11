@@ -10,8 +10,8 @@ import { Page, expect } from '@playwright/test'
 export const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5173'
 
 export const TEST_USER = {
-  email:    process.env.TEST_EMAIL    ?? 'nlaaroubi@nyaaa.com',
-  password: process.env.TEST_PASSWORD ?? '***REDACTED***',
+  email:    process.env.TEST_EMAIL    ?? '',
+  password: process.env.TEST_PASSWORD ?? '',
 }
 
 /** Log in and wait for the dashboard to be fully visible. */

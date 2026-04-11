@@ -46,11 +46,11 @@ def get_db():
 
 
 SEED_USERS = [
-    {'email': 'nlaaroubi@nyaaa.com', 'name': 'Nour Laaroubi', 'password': '***REDACTED***', 'role': 'superadmin'},
-    {'email': 'swas@nyaaa.com', 'name': 'S. Was', 'password': '***REDACTED***', 'role': 'officer'},
-    {'email': 'clawrence@nyaaa.com', 'name': 'C. Lawrence', 'password': '***REDACTED***', 'role': 'officer'},
-    {'email': 'akelly@nyaaa.com', 'name': 'A. Kelly', 'password': '***REDACTED***', 'role': 'travel_manager'},
-    {'email': 'jnicotra@nyaaa.com', 'name': 'J. Nicotra', 'password': '***REDACTED***', 'role': 'travel_director'},
+    {'email': 'nlaaroubi@nyaaa.com', 'name': 'Nour Laaroubi', 'role': 'superadmin', 'pw_env': 'SEED_PW_NLAAROUBI'},
+    {'email': 'swas@nyaaa.com', 'name': 'S. Was', 'role': 'officer', 'pw_env': 'SEED_PW_SWAS'},
+    {'email': 'clawrence@nyaaa.com', 'name': 'C. Lawrence', 'role': 'officer', 'pw_env': 'SEED_PW_CLAWRENCE'},
+    {'email': 'akelly@nyaaa.com', 'name': 'A. Kelly', 'role': 'travel_manager', 'pw_env': 'SEED_PW_AKELLY'},
+    {'email': 'jnicotra@nyaaa.com', 'name': 'J. Nicotra', 'role': 'travel_director', 'pw_env': 'SEED_PW_JNICOTRA'},
 ]
 
 
@@ -89,10 +89,15 @@ def init_db():
     db = SessionLocal()
     try:
         existing_count = db.query(User).count()
-        for seed in SEED_USERS:
-            user = db.query(User).filter(User.email == seed['email']).first()
-            hashed = bcrypt.hashpw(seed['password'].encode(), bcrypt.gensalt()).decode()
-            if user is None:
+        if existing_count == 0:
+            # Fresh DB — seed users from env vars (set in Azure App Settings or .env)
+            missing = [s['pw_env'] for s in SEED_USERS if not os.getenv(s['pw_env'])]
+            if missing:
+                log.error(f'Cannot seed: missing env vars {missing}. Set them in Azure App Settings or .env')
+                return
+            for seed in SEED_USERS:
+                pw = os.getenv(seed['pw_env'])
+                hashed = bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
                 db.add(User(
                     email=seed['email'],
                     name=seed['name'],
@@ -101,13 +106,8 @@ def init_db():
                     is_active=True,
                 ))
                 log.info(f'Seed user created: {seed["email"]} ({seed["role"]})')
-            else:
-                # Always sync superadmin credentials; sync others only on fresh DB
-                if seed['role'] == 'superadmin' or existing_count == 0:
-                    user.password_hash = hashed
-                    user.role = seed['role']
-                    user.is_active = True
-                    log.info(f'Seed user synced: {seed["email"]} ({seed["role"]})')
+        else:
+            log.info(f'DB has {existing_count} users, skipping seed')
         db.commit()
     finally:
         db.close()

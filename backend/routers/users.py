@@ -149,10 +149,11 @@ def delete_user(user_id: int, request: Request, admin: User = Depends(require_ad
 
 class ResetAdminRequest(BaseModel):
     pin: str
+    new_password: str
 
 @router.post('/api/admin/reset-admin')
 def reset_admin(body: ResetAdminRequest, db: Session = Depends(get_db)):
-    """Reset superadmin password to seed value. Protected by ADMIN_PIN env var."""
+    """Reset superadmin password. Protected by ADMIN_PIN env var."""
     import os, bcrypt
     from database import SEED_USERS
 
@@ -160,12 +161,15 @@ def reset_admin(body: ResetAdminRequest, db: Session = Depends(get_db)):
     if not pin or body.pin != pin:
         raise HTTPException(status_code=403, detail='Invalid PIN')
 
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail='Password must be at least 8 characters')
+
     seed = next((s for s in SEED_USERS if s['role'] == 'superadmin'), None)
     if not seed:
         raise HTTPException(status_code=500, detail='No superadmin seed found')
 
+    hashed = bcrypt.hashpw(body.new_password.encode(), bcrypt.gensalt()).decode()
     user = db.query(User).filter(User.email == seed['email']).first()
-    hashed = bcrypt.hashpw(seed['password'].encode(), bcrypt.gensalt()).decode()
     if user:
         user.password_hash = hashed
         user.is_active = True

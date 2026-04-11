@@ -41,7 +41,8 @@ Thumbs.db
 # Excel working files
 *.xlsx
 .playwright-mcp/
+frontend/playwright-report/
+frontend/test-results/
 deploy.zip
 backend/static/
 backend/.python_packages/
-deploy.zip
