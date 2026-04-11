@@ -111,3 +111,13 @@ def init_db():
         db.commit()
     finally:
         db.close()
+
+    # Seed geographic data in background thread (takes ~60s for Census API calls)
+    import threading
+    def _bg_geo_seed():
+        try:
+            from seed_geodata import seed_geodata
+            seed_geodata(force=False)
+        except Exception as e:
+            log.warning(f'Geo data seed failed: {e}')
+    threading.Thread(target=_bg_geo_seed, daemon=True).start()

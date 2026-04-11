@@ -5,8 +5,8 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
 import {
-  Users, GitBranch, Plane, Megaphone, Table2, Target, UserCheck,
-  Sun, Moon, Calendar, Command, Radio, Map,
+  Users, GitBranch, Plane, Megaphone, Table2, Target, UserCheck, DollarSign,
+  Sun, Moon, Calendar, Command, Radio, Map, BarChart3,
   ArrowRight, X, HelpCircle, Settings, LogOut, Bug, Lightbulb,
 } from 'lucide-react'
 import SalesPulseLogo from '@/components/SalesPulseLogo'
@@ -20,14 +20,17 @@ import { useState, useEffect, useCallback } from 'react'
 
 const NAV_ANALYTICS = [
   { to: '/dashboard', label: 'Sales Performance', icon: Users, desc: 'Bookings, pipeline & team' },
-  { to: '/customers', label: 'Top Customers', icon: UserCheck, desc: 'Highest bookings accounts' },
-  { to: '/travel', label: 'Top Destinations', icon: Plane, desc: 'Travel analytics' },
+  { to: '/revenue', label: 'Top Revenue Contributors', icon: DollarSign, desc: 'Customers, destinations & regions' },
   { to: '/monthly', label: 'Advisor Monthly Report', icon: Table2, desc: 'Agent × month breakdown' },
   { to: '/pipeline', label: 'Pipeline & Forecast', icon: GitBranch, desc: 'Stages, velocity & risk' },
   { to: '/opportunities', label: 'Top Opportunities', icon: Target, desc: 'AI-scored deal ranking' },
   { to: '/leads', label: 'Lead Funnel', icon: Megaphone, desc: 'Conversion & sources' },
   { to: '/insights', label: 'Cross-Sell Insights', icon: Lightbulb, desc: 'Who to call & why' },
   { to: '/territory', label: 'Territory Map', icon: Map, desc: 'Penetration heatmap' },
+]
+
+const NAV_EXTERNAL = [
+  { to: '/census', label: 'Census Data', icon: BarChart3, desc: 'Population & demographics' },
   { to: '/market-pulse', label: 'Market Pulse', icon: Radio, desc: 'Advisories & intelligence' },
 ]
 
@@ -144,6 +147,42 @@ export default function Layout() {
             Analytics
           </span>
           {NAV_ANALYTICS.map(({ to, label, icon: Icon, desc }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) => cn(
+                'group relative flex items-center gap-3 rounded-lg px-2.5 py-2',
+                'text-[13px] font-medium transition-all duration-200',
+                isActive
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+              )}
+            >
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <div className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-primary" />
+                  )}
+                  <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2 : 1.5} />
+                  <div className="flex flex-col">
+                    <span>{label}</span>
+                    <span className={cn(
+                      'text-[10px] font-normal leading-tight',
+                      isActive ? 'text-primary/60' : 'text-muted-foreground/40',
+                    )}>
+                      {desc}
+                    </span>
+                  </div>
+                </>
+              )}
+            </NavLink>
+          ))}
+
+          {/* External Data */}
+          <span className="mb-2 mt-4 block px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
+            External Data
+          </span>
+          {NAV_EXTERNAL.map(({ to, label, icon: Icon, desc }) => (
             <NavLink
               key={to}
               to={to}

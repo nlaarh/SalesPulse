@@ -14,6 +14,7 @@ import LandingPage from '@/pages/LandingPage'
 const AdvisorDashboard = lazy(() => import('@/pages/AdvisorDashboard'))
 const Pipeline = lazy(() => import('@/pages/Pipeline'))
 const TravelAnalytics = lazy(() => import('@/pages/TravelAnalytics'))
+const TopRevenueContributors = lazy(() => import('@/pages/TopRevenueContributors'))
 const LeadFunnel = lazy(() => import('@/pages/LeadFunnel'))
 const MonthlyReport = lazy(() => import('@/pages/MonthlyReport'))
 const TopOpportunities = lazy(() => import('@/pages/TopOpportunities'))
@@ -27,6 +28,7 @@ const TopCustomers = lazy(() => import('@/pages/TopCustomers'))
 const CrossSellInsights = lazy(() => import('@/pages/CrossSellInsights'))
 const MarketPulse = lazy(() => import('@/pages/MarketPulse'))
 const TerritoryMap = lazy(() => import('@/pages/TerritoryMap'))
+const CensusData = lazy(() => import('@/pages/CensusData'))
 
 /* ── React Query client ──────────────────────────────────────────────────── */
 
@@ -70,6 +72,7 @@ export default function App() {
                   <Route path="pipeline" element={<Suspense fallback={LazyFallback}><Pipeline /></Suspense>} />
                   <Route path="opportunity/:id" element={<Suspense fallback={LazyFallback}><OpportunityDetail /></Suspense>} />
                   <Route path="travel" element={<Suspense fallback={LazyFallback}><TravelAnalytics /></Suspense>} />
+                  <Route path="revenue" element={<Suspense fallback={LazyFallback}><TopRevenueContributors /></Suspense>} />
                   <Route path="leads" element={<Suspense fallback={LazyFallback}><LeadFunnel /></Suspense>} />
                   <Route path="help" element={<Suspense fallback={LazyFallback}><Help /></Suspense>} />
                   <Route path="settings" element={<Suspense fallback={LazyFallback}><Settings /></Suspense>} />
@@ -79,6 +82,7 @@ export default function App() {
                   <Route path="insights" element={<Suspense fallback={LazyFallback}><CrossSellInsights /></Suspense>} />
                   <Route path="market-pulse" element={<Suspense fallback={LazyFallback}><MarketPulse /></Suspense>} />
                   <Route path="territory" element={<Suspense fallback={LazyFallback}><TerritoryMap /></Suspense>} />
+                  <Route path="census" element={<Suspense fallback={LazyFallback}><CensusData /></Suspense>} />
                 </Route>
               </Route>
             </Routes>

@@ -109,6 +109,51 @@ class MonthlyAdvisorTarget(Base):
         }
 
 
+# ── Geographic Data (Census) ─────────────────────────────────────────────────
+
+class GeoCounty(Base):
+    """NY county boundaries + population from US Census."""
+    __tablename__ = 'geo_counties'
+
+    fips = Column(String, primary_key=True)           # 5-digit county FIPS
+    name = Column(String, nullable=False, index=True)
+    population = Column(Integer, nullable=True)        # total pop
+    pop_18plus = Column(Integer, nullable=True)        # 18+ pop
+    median_income = Column(Integer, nullable=True)     # median household income $
+    median_age = Column(Float, nullable=True)          # median age
+    housing_units = Column(Integer, nullable=True)     # total housing units
+    median_home_value = Column(Integer, nullable=True) # median home value $
+    college_educated = Column(Integer, nullable=True)  # bachelor's+ (25+)
+    geojson = Column(String, nullable=True)            # GeoJSON geometry (polygon)
+
+
+class GeoMeta(Base):
+    """Tracks when geo/census data was last refreshed."""
+    __tablename__ = 'geo_meta'
+
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=True)
+
+
+class GeoZip(Base):
+    """Zip code → county mapping + demographics + centroid."""
+    __tablename__ = 'geo_zips'
+
+    zip_code = Column(String, primary_key=True)
+    city = Column(String, nullable=True)
+    county_fips = Column(String, nullable=True, index=True)
+    county_name = Column(String, nullable=True, index=True)
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+    population = Column(Integer, nullable=True)
+    pop_18plus = Column(Integer, nullable=True)
+    median_income = Column(Integer, nullable=True)     # median household income $
+    median_age = Column(Float, nullable=True)          # median age
+    housing_units = Column(Integer, nullable=True)     # total housing units
+    median_home_value = Column(Integer, nullable=True) # median home value $
+    college_educated = Column(Integer, nullable=True)  # bachelor's+ (25+)
+
+
 class ActivityLog(Base):
     __tablename__ = 'activity_logs'
     __table_args__ = (

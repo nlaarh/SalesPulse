@@ -5,13 +5,13 @@ import { cn } from '@/lib/utils'
 import {
   UserPlus, Pencil, Trash2,
   X, Shield, Eye, Plane, Umbrella, Crown,
-  AlertCircle, Check, Users, ScrollText, Target, Zap, Database,
+  AlertCircle, Check, Users, ScrollText, Target, Zap, Database, MapPin, HardDrive, Download,
 } from 'lucide-react'
 import axios from 'axios'
 import ActivityLogsTable from '@/components/ActivityLogsTable'
 import TargetsTab from '@/pages/settings/TargetsTab'
 import AIConfigTab from '@/pages/settings/AIConfigTab'
-import { flushCache } from '@/lib/api'
+import { flushCache, refreshGeoData, fetchGeoStatus, fetchDbInfo, downloadDbBackup } from '@/lib/api'
 
 type SettingsTab = 'users' | 'logs' | 'targets' | 'ai'
 
@@ -56,6 +56,9 @@ export default function Settings() {
   const [formPassword, setFormPassword] = useState('')
   const [formRole, setFormRole] = useState<UserRole>('officer')
   const [formSubmitting, setFormSubmitting] = useState(false)
+  const [geoRefreshing, setGeoRefreshing] = useState(false)
+  const [geoStatus, setGeoStatus] = useState<{ seeded: boolean; counties: number; zips: number; last_refreshed: string | null; source: string } | null>(null)
+  const [dbInfo, setDbInfo] = useState<{ path: string; exists: boolean; size_kb: number; backups: { name: string; size_kb: number; created: number }[] } | null>(null)
 
   // Non-admin redirect
   if (!isAdmin) return <Navigate to="/dashboard" replace />
@@ -73,7 +76,21 @@ export default function Settings() {
     }
   }
 
-  useEffect(() => { loadUsers() }, [])
+  const loadGeoStatus = async () => {
+    try {
+      const s = await fetchGeoStatus()
+      setGeoStatus(s)
+    } catch { /* ignore */ }
+  }
+
+  const loadDbInfo = async () => {
+    try {
+      const info = await fetchDbInfo()
+      setDbInfo(info)
+    } catch { /* ignore */ }
+  }
+
+  useEffect(() => { loadUsers(); loadGeoStatus(); loadDbInfo() }, [])
 
   const openCreate = () => {
     setEditUser(null)
@@ -449,6 +466,130 @@ export default function Settings() {
             className="ml-6 shrink-0 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-[12px] font-semibold text-amber-600 hover:bg-amber-500/20 transition">
             Flush Cache
           </button>
+        </div>
+      </div>
+
+      {/* Geographic & Census Data */}
+      <div className="card-premium overflow-hidden border-blue-500/20">
+        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+          <div className="flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-blue-500" />
+            <h3 className="text-sm font-semibold">Geographic & Census Data</h3>
+          </div>
+          {geoStatus?.last_refreshed && (
+            <span className="text-[10px] text-muted-foreground">
+              Last refreshed: {new Date(geoStatus.last_refreshed).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          {geoStatus && (
+            <div className="flex items-center gap-6 text-[12px]">
+              <span className="text-muted-foreground">
+                <span className="font-semibold text-foreground">{geoStatus.counties}</span> counties
+              </span>
+              <span className="text-muted-foreground">
+                <span className="font-semibold text-foreground">{geoStatus.zips}</span> zip codes
+              </span>
+              <span className="text-muted-foreground">
+                Source: <span className="font-medium text-foreground">{geoStatus.source}</span>
+              </span>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[13px] font-medium">Refresh Boundaries & Demographics</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Re-downloads WCNY county GeoJSON boundaries, population, income, education & housing data from US Census Bureau.
+              </p>
+            </div>
+            <button
+              disabled={geoRefreshing}
+              onClick={async () => {
+                setGeoRefreshing(true)
+                try {
+                  const r = await refreshGeoData()
+                  setSuccess(`Geo data refreshed — ${r.counties} counties, ${r.zips} zips, pop ${(r.total_population).toLocaleString()}`)
+                  loadGeoStatus()
+                  setTimeout(() => setSuccess(''), 6000)
+                } catch {
+                  setError('Geo refresh failed — check network or Census API availability')
+                  setTimeout(() => setError(''), 5000)
+                } finally {
+                  setGeoRefreshing(false)
+                }
+              }}
+              className={cn(
+                'ml-6 shrink-0 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-[12px] font-semibold text-blue-600 transition',
+                geoRefreshing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-500/20',
+              )}>
+              {geoRefreshing ? 'Refreshing…' : 'Refresh Geo Data'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Database Storage */}
+      <div className="card-premium overflow-hidden border-emerald-500/20">
+        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+          <div className="flex items-center gap-2">
+            <HardDrive className="h-4 w-4 text-emerald-500" />
+            <h3 className="text-sm font-semibold">Database Storage</h3>
+          </div>
+          {dbInfo && (
+            <span className="text-[10px] text-muted-foreground font-mono">
+              {dbInfo.path}
+            </span>
+          )}
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          {dbInfo && (
+            <>
+              <div className="flex items-center gap-6 text-[12px]">
+                <span className="text-muted-foreground">
+                  Size: <span className="font-semibold text-foreground">{dbInfo.size_kb > 1024 ? `${(dbInfo.size_kb / 1024).toFixed(1)} MB` : `${dbInfo.size_kb} KB`}</span>
+                </span>
+                <span className="text-muted-foreground">
+                  Auto-backups: <span className="font-semibold text-foreground">{dbInfo.backups.length}</span>
+                </span>
+                <span className={cn(
+                  'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                  dbInfo.exists ? 'bg-emerald-500/10 text-emerald-500' : 'bg-destructive/10 text-destructive',
+                )}>
+                  {dbInfo.exists ? '● Healthy' : '● Missing'}
+                </span>
+              </div>
+              {dbInfo.backups.length > 0 && (
+                <div className="text-[11px] text-muted-foreground">
+                  Latest backup: <span className="font-medium text-foreground">{dbInfo.backups[0].name}</span>
+                  {' '}({dbInfo.backups[0].size_kb > 1024 ? `${(dbInfo.backups[0].size_kb / 1024).toFixed(1)} MB` : `${dbInfo.backups[0].size_kb} KB`})
+                </div>
+              )}
+            </>
+          )}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[13px] font-medium">Download Database Backup</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Download a copy of the SQLite database (users, targets, census data). Auto-backed up on every deploy.
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                try {
+                  await downloadDbBackup()
+                  setSuccess('Database backup downloaded')
+                  setTimeout(() => setSuccess(''), 3000)
+                } catch {
+                  setError('Backup download failed')
+                  setTimeout(() => setError(''), 3000)
+                }
+              }}
+              className="ml-6 shrink-0 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-[12px] font-semibold text-emerald-600 hover:bg-emerald-500/20 transition">
+              <Download className="h-3.5 w-3.5" />
+              Download .db
+            </button>
+          </div>
         </div>
       </div>
     </div>

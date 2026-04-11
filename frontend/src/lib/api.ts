@@ -557,6 +557,31 @@ export async function flushCache() {
   return data as { ok: boolean; flushed_l1: number; flushed_l2: number; owner_map_size: number }
 }
 
+export async function refreshGeoData() {
+  const { data } = await api.post('/api/admin/geo/refresh')
+  return data as { ok: boolean; counties: number; zips: number; total_population: number; last_refreshed: string | null }
+}
+
+export async function fetchGeoStatus() {
+  const { data } = await api.get('/api/admin/geo/status')
+  return data as { seeded: boolean; counties: number; zips: number; last_refreshed: string | null; source: string }
+}
+
+export async function fetchDbInfo() {
+  const { data } = await api.get('/api/admin/db/info')
+  return data as { path: string; exists: boolean; size_kb: number; backups: { name: string; size_kb: number; created: number }[] }
+}
+
+export async function downloadDbBackup() {
+  const resp = await api.get('/api/admin/db/backup', { responseType: 'blob' })
+  const url = URL.createObjectURL(resp.data)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `salesinsight_backup_${Date.now()}.db`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // ── Email / Export ────────────────────────────────────────────────────────
 
 export async function emailCustomerProfile(accountId: string, to: string) {
@@ -757,6 +782,8 @@ export interface TerritoryZip {
   members: number
   ins_customers_cy: number
   ins_customers_py: number
+  ins_rev_cy: number
+  ins_rev_py: number
   ins_penetration: number
   ins_pct_of_total: number
   travel_customers_3yr: number
@@ -766,24 +793,41 @@ export interface TerritoryZip {
   travel_pct_of_total: number
   travel_rev_cy: number
   travel_rev_py: number
+  rev_pct_of_total: number
+  // Census demographics
+  population: number
+  pop_18plus: number
+  median_income: number
+  median_age: number
+  housing_units: number
+  median_home_value: number
+  college_educated: number
+  county_name: string
+  market_share: number
 }
 
 export interface TerritoryTotals {
   members: number
   ins_customers_cy: number
   ins_customers_py: number
+  ins_rev_cy: number
+  ins_rev_py: number
   travel_customers_3yr: number
   travel_rev_cy: number
   travel_rev_py: number
   zip_count: number
+  population: number
+  market_share: number
 }
 
 export interface TerritoryRegionSummary {
   members: number
   ins_cy: number
+  ins_rev_cy: number
   travel_3yr: number
   travel_rev_cy: number
   zip_count: number
+  population: number
 }
 
 export interface TerritoryMapData {
@@ -796,4 +840,45 @@ export interface TerritoryMapData {
 export async function fetchTerritoryMapData(): Promise<TerritoryMapData> {
   const { data } = await api.get('/api/territory/map-data')
   return data as TerritoryMapData
+}
+
+// ── Census Demographics ──────────────────────────────────────────────────────
+
+export interface CensusZipRow {
+  zip: string
+  city: string
+  county: string
+  population: number
+  pop_18plus: number
+  median_income: number
+  median_age: number
+  housing_units: number
+  median_home_value: number
+  college_educated: number
+  college_pct: number
+}
+
+export interface CensusCountyRow {
+  county: string
+  fips: string
+  population: number
+  pop_18plus: number
+  median_income: number
+  median_age: number
+  housing_units: number
+  median_home_value: number
+  college_educated: number
+  college_pct: number
+}
+
+export interface CensusDataResponse {
+  level: 'zip' | 'county'
+  rows: (CensusZipRow | CensusCountyRow)[]
+  totals: Record<string, number>
+  count: number
+}
+
+export async function fetchCensusData(level: 'zip' | 'county' = 'zip'): Promise<CensusDataResponse> {
+  const { data } = await api.get('/api/territory/census-data', { params: { level } })
+  return data as CensusDataResponse
 }

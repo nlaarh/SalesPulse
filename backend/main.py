@@ -19,11 +19,28 @@ log = logging.getLogger('main')
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """On startup: flush disk cache only if code changed since last run (new deployment).
-    On a plain restart (same code), the cache is preserved.
+    """On startup: backup DB, flush disk cache if code changed.
     Starts a 3 AM daily cache warm-up for heavy endpoints.
     """
-    import cache, hashlib, asyncio
+    import cache, hashlib, asyncio, shutil
+    from datetime import datetime, timedelta
+    from database import DB_PATH, DB_DIR
+
+    # ── Auto-backup DB on every startup (protects against deploy issues) ──
+    if DB_PATH.exists():
+        backup_dir = DB_DIR / 'backups'
+        backup_dir.mkdir(exist_ok=True)
+        ts = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        backup_file = backup_dir / f'salesinsight_{ts}.db'
+        shutil.copy2(DB_PATH, backup_file)
+        log.info(f"DB backup created: {backup_file} ({backup_file.stat().st_size // 1024}KB)")
+        # Keep only last 5 backups
+        backups = sorted(backup_dir.glob('salesinsight_*.db'), reverse=True)
+        for old in backups[5:]:
+            old.unlink(missing_ok=True)
+            log.info(f"Pruned old backup: {old.name}")
+
+    log.info(f"Database path: {DB_PATH} (exists={DB_PATH.exists()}, size={DB_PATH.stat().st_size // 1024 if DB_PATH.exists() else 0}KB)")
     from datetime import datetime, timedelta
 
     # Hash the key backend files that affect query logic / response shape

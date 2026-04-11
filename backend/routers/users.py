@@ -204,3 +204,109 @@ def cache_reset(admin: User = Depends(require_admin)):
         'flushed_l2': l2_count,
         'owner_map_size': len(owner_map),
     }
+
+
+@router.post('/api/admin/geo/refresh')
+def geo_refresh(admin: User = Depends(require_admin)):
+    """Force re-seed geographic boundaries + Census population data."""
+    from seed_geodata import seed_geodata
+    from database import SessionLocal
+    from models import GeoCounty, GeoZip, GeoMeta
+    from sqlalchemy import func
+
+    seed_geodata(force=True)
+
+    db = SessionLocal()
+    try:
+        county_count = db.query(GeoCounty).count()
+        zip_count = db.query(GeoZip).count()
+        total_pop = db.query(func.sum(GeoZip.population)).scalar() or 0
+        last_refreshed = db.query(GeoMeta).filter(GeoMeta.key == 'last_refreshed').first()
+    finally:
+        db.close()
+
+    # Clear boundary + census caches
+    import cache
+    with cache._lock:
+        keys_to_remove = [k for k in cache._store if 'boundar' in k or 'census' in k]
+        for k in keys_to_remove:
+            del cache._store[k]
+    for f in cache._CACHE_DIR.glob('*.json'):
+        fname = f.name
+        if 'boundar' in fname or 'census' in fname:
+            f.unlink(missing_ok=True)
+
+    return {
+        'ok': True,
+        'counties': county_count,
+        'zips': zip_count,
+        'total_population': total_pop,
+        'last_refreshed': last_refreshed.value if last_refreshed else None,
+    }
+
+
+@router.get('/api/admin/geo/status')
+def geo_status(admin: User = Depends(require_admin)):
+    """Return geo seed status — when last refreshed, counts."""
+    from database import SessionLocal
+    from models import GeoCounty, GeoZip, GeoMeta
+
+    db = SessionLocal()
+    try:
+        county_count = db.query(GeoCounty).count()
+        zip_count = db.query(GeoZip).count()
+        meta = {m.key: m.value for m in db.query(GeoMeta).all()}
+        return {
+            'seeded': county_count > 0,
+            'counties': county_count,
+            'zips': zip_count,
+            'last_refreshed': meta.get('last_refreshed'),
+            'source': meta.get('source', 'US Census Bureau ACS 5-Year 2022'),
+        }
+    finally:
+        db.close()
+
+
+@router.get('/api/admin/db/backup')
+def db_backup_download(admin: User = Depends(require_admin)):
+    """Download the current SQLite database file (admin-only)."""
+    from database import DB_PATH
+    from fastapi.responses import FileResponse
+    import shutil, tempfile
+
+    if not DB_PATH.exists():
+        raise HTTPException(status_code=404, detail="Database file not found")
+
+    # Copy to temp file to avoid locking issues during download
+    tmp = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+    shutil.copy2(DB_PATH, tmp.name)
+    tmp.close()
+
+    return FileResponse(
+        tmp.name,
+        media_type='application/x-sqlite3',
+        filename=f'salesinsight_backup_{DB_PATH.stat().st_mtime:.0f}.db',
+    )
+
+
+@router.get('/api/admin/db/info')
+def db_info(admin: User = Depends(require_admin)):
+    """Return DB location, size, backup info."""
+    from database import DB_PATH, DB_DIR
+
+    backup_dir = DB_DIR / 'backups'
+    backups = []
+    if backup_dir.exists():
+        for f in sorted(backup_dir.glob('salesinsight_*.db'), reverse=True):
+            backups.append({
+                'name': f.name,
+                'size_kb': f.stat().st_size // 1024,
+                'created': f.stat().st_mtime,
+            })
+
+    return {
+        'path': str(DB_PATH),
+        'exists': DB_PATH.exists(),
+        'size_kb': DB_PATH.stat().st_size // 1024 if DB_PATH.exists() else 0,
+        'backups': backups,
+    }

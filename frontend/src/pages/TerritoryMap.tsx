@@ -14,7 +14,7 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { cn } from '@/lib/utils'
 import {
   Loader2, Map as MapIcon, Shield, Plane, Users, Layers,
-  TrendingUp, Minus, Info, ZoomIn,
+  TrendingUp, Minus, Info, ZoomIn, BarChart3,
 } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
 
@@ -43,6 +43,14 @@ interface MapBubble {
   travel_rev_py: number
   zip_count: number
   region: string
+  // Census
+  population: number
+  pop_18plus: number
+  median_income: number
+  median_age: number
+  housing_units: number
+  market_share: number
+  rev_pct_of_total: number
 }
 
 /* ── Color helpers ───────────────────────────────────────────────────────── */
@@ -96,7 +104,7 @@ function bubbleRadius(members: number, level: ZoomLevel): number {
 
 /* ── Aggregation helpers ─────────────────────────────────────────────────── */
 
-function aggregateZips(zips: TerritoryZip[], groupBy: 'region' | 'city'): MapBubble[] {
+function aggregateZips(zips: TerritoryZip[], groupBy: 'region' | 'city', totalRevCy: number): MapBubble[] {
   const groups = new Map<string, TerritoryZip[]>()
   for (const z of zips) {
     const key = groupBy === 'region' ? z.region : `${z.city}|${z.region}`
@@ -115,6 +123,14 @@ function aggregateZips(zips: TerritoryZip[], groupBy: 'region' | 'city'): MapBub
     const tb_py = group.reduce((s, z) => s + z.travel_bookings_py, 0)
     const tr_cy = group.reduce((s, z) => s + z.travel_rev_cy, 0)
     const tr_py = group.reduce((s, z) => s + z.travel_rev_py, 0)
+    const pop = group.reduce((s, z) => s + (z.population || 0), 0)
+    const pop18 = group.reduce((s, z) => s + (z.pop_18plus || 0), 0)
+    const housing = group.reduce((s, z) => s + (z.housing_units || 0), 0)
+
+    // Weighted average for median fields
+    const totalPop = pop || 1
+    const wIncome = group.reduce((s, z) => s + (z.median_income || 0) * (z.population || 0), 0) / totalPop
+    const wAge = group.reduce((s, z) => s + (z.median_age || 0) * (z.population || 0), 0) / totalPop
 
     // Weighted average lat/lng
     const lat = group.reduce((s, z) => s + z.lat * z.members, 0) / members
@@ -142,14 +158,21 @@ function aggregateZips(zips: TerritoryZip[], groupBy: 'region' | 'city'): MapBub
       travel_rev_py: tr_py,
       zip_count: group.length,
       region: regionName,
+      population: pop,
+      pop_18plus: pop18,
+      median_income: Math.round(wIncome),
+      median_age: Math.round(wAge * 10) / 10,
+      housing_units: housing,
+      market_share: pop ? Math.round(members / pop * 10000) / 100 : 0,
+      rev_pct_of_total: totalRevCy ? Math.round(tr_cy / totalRevCy * 10000) / 100 : 0,
     })
   }
   return bubbles.sort((a, b) => b.members - a.members)
 }
 
 function zoomToLevel(zoom: number): ZoomLevel {
-  if (zoom <= 8) return 'region'
-  if (zoom <= 10) return 'city'
+  if (zoom <= 9) return 'region'
+  if (zoom <= 11) return 'city'
   return 'zip'
 }
 
@@ -187,7 +210,7 @@ const REGION_CENTERS: Record<string, { lat: number; lng: number; zoom: number }>
   Western:   { lat: 42.89, lng: -78.85, zoom: 11 },
   Rochester: { lat: 43.16, lng: -77.61, zoom: 11 },
   Central:   { lat: 43.05, lng: -76.15, zoom: 11 },
-  All:       { lat: 43.0,  lng: -77.50, zoom: 9 },
+  All:       { lat: 43.0,  lng: -77.50, zoom: 10 },
 }
 
 function FlyToRegion({ region, zips }: { region: RegionFilter; zips: TerritoryZip[] }) {
@@ -271,45 +294,44 @@ function SummaryCard({
 
 function BubbleTooltipContent({ b, year }: { b: MapBubble; year: number }) {
   return (
-    <div className="min-w-[220px]">
-      <div className="flex items-center justify-between mb-2">
+    <div className="min-w-[280px] max-w-[320px]">
+      <div className="flex items-center justify-between mb-1.5">
         <span className="font-bold text-sm">{b.label}</span>
         <span className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{b.sublabel}</span>
       </div>
-      <div className="text-xs space-y-1.5">
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Total Members</span>
-          <span className="font-semibold">{fmt(b.members)}</span>
-        </div>
 
-        <div className="border-t border-border my-1" />
-        <p className="font-semibold text-blue-600">Insurance</p>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Customers ({year})</span>
-          <span className="font-medium">{fmt(b.ins_customers_cy)} {yoyBadge(b.ins_customers_cy, b.ins_customers_py)}</span>
+      {/* Census + Market Share — compact grid */}
+      {b.population > 0 && (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] mb-1.5 pb-1.5 border-b border-border">
+          <div className="flex justify-between"><span className="text-muted-foreground">Population</span><span className="font-semibold">{fmt(b.population)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Adults 18+</span><span className="font-medium">{fmt(b.pop_18plus)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Med. Income</span><span className="font-medium">{fmtCurrency(b.median_income)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Med. Age</span><span className="font-medium">{b.median_age}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Housing</span><span className="font-medium">{fmt(b.housing_units)}</span></div>
+          <div className="flex justify-between"><span className="text-orange-600 font-semibold">Mkt Share</span><span className="font-bold text-orange-600">{fmtPct(b.market_share)}</span></div>
         </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Penetration</span>
-          <span className="font-medium">{fmtPct(b.ins_penetration)}</span>
-        </div>
+      )}
 
-        <div className="border-t border-border my-1" />
-        <p className="font-semibold text-emerald-600">Travel</p>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Customers (3yr)</span>
-          <span className="font-medium">{fmt(b.travel_customers_3yr)}</span>
+      {/* Members + Revenue */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] mb-1.5 pb-1.5 border-b border-border">
+        <div className="flex justify-between"><span className="text-muted-foreground">AAA Members</span><span className="font-semibold">{fmt(b.members)}</span></div>
+        {b.rev_pct_of_total > 0 && (
+          <div className="flex justify-between"><span className="text-muted-foreground">% Total Rev</span><span className="font-bold text-amber-600">{fmtPct(b.rev_pct_of_total)}</span></div>
+        )}
+      </div>
+
+      {/* Insurance + Travel side by side */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px]">
+        <div>
+          <p className="font-semibold text-blue-600 mb-0.5">🛡 Insurance</p>
+          <div className="flex justify-between"><span className="text-muted-foreground">Cust ({year})</span><span className="font-medium">{fmt(b.ins_customers_cy)} {yoyBadge(b.ins_customers_cy, b.ins_customers_py)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Penetration</span><span className="font-medium">{fmtPct(b.ins_penetration)}</span></div>
         </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Bookings ({year})</span>
-          <span className="font-medium">{fmt(b.travel_bookings_cy)} {yoyBadge(b.travel_bookings_cy, b.travel_bookings_py)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Revenue ({year})</span>
-          <span className="font-medium">{fmtCurrency(b.travel_rev_cy)} {yoyBadge(b.travel_rev_cy, b.travel_rev_py)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Penetration</span>
-          <span className="font-medium">{fmtPct(b.travel_penetration)}</span>
+        <div>
+          <p className="font-semibold text-emerald-600 mb-0.5">✈ Travel</p>
+          <div className="flex justify-between"><span className="text-muted-foreground">Cust (3yr)</span><span className="font-medium">{fmt(b.travel_customers_3yr)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Rev ({year})</span><span className="font-medium">{fmtCurrency(b.travel_rev_cy)} {yoyBadge(b.travel_rev_cy, b.travel_rev_py)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Penetration</span><span className="font-medium">{fmtPct(b.travel_penetration)}</span></div>
         </div>
       </div>
     </div>
@@ -320,56 +342,50 @@ function BubbleTooltipContent({ b, year }: { b: MapBubble; year: number }) {
 
 function ZipTooltipContent({ z, year }: { z: TerritoryZip; year: number }) {
   return (
-    <div className="min-w-[220px]">
-      <div className="flex items-center justify-between mb-2">
+    <div className="min-w-[280px] max-w-[320px]">
+      <div className="flex items-center justify-between mb-1.5">
         <span className="font-bold text-sm">{z.zip}</span>
         <span className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
           {z.city ? `${z.city} · ` : ''}{z.region}
         </span>
       </div>
 
-      <div className="text-xs space-y-1.5">
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Total Members</span>
-          <span className="font-semibold">{fmt(z.members)}</span>
+      {/* Census + Market Share — compact grid */}
+      {z.population > 0 && (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] mb-1.5 pb-1.5 border-b border-border">
+          <div className="flex justify-between"><span className="text-muted-foreground">Population</span><span className="font-semibold">{fmt(z.population)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Adults 18+</span><span className="font-medium">{fmt(z.pop_18plus)}</span></div>
+          {z.median_income > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Med. Income</span><span className="font-medium">{fmtCurrency(z.median_income)}</span></div>}
+          {z.median_age > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Med. Age</span><span className="font-medium">{z.median_age}</span></div>}
+          {z.median_home_value > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Home Value</span><span className="font-medium">{fmtCurrency(z.median_home_value)}</span></div>}
+          <div className="flex justify-between"><span className="text-orange-600 font-semibold">Mkt Share</span><span className="font-bold text-orange-600">{fmtPct(z.market_share)}</span></div>
         </div>
+      )}
 
-        <div className="border-t border-border my-1" />
-        <p className="font-semibold text-blue-600">Insurance</p>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Customers ({year})</span>
-          <span className="font-medium">{fmt(z.ins_customers_cy)} {yoyBadge(z.ins_customers_cy, z.ins_customers_py)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Penetration</span>
-          <span className="font-medium">{fmtPct(z.ins_penetration)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">% of Org Total</span>
-          <span className="font-medium">{fmtPct(z.ins_pct_of_total)}</span>
-        </div>
+      {/* Members + Revenue */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] mb-1.5 pb-1.5 border-b border-border">
+        <div className="flex justify-between"><span className="text-muted-foreground">AAA Members</span><span className="font-semibold">{fmt(z.members)}</span></div>
+        {z.rev_pct_of_total > 0 && (
+          <div className="flex justify-between"><span className="text-muted-foreground">% Total Rev</span><span className="font-bold text-amber-600">{fmtPct(z.rev_pct_of_total)}</span></div>
+        )}
+        {z.county_name && (
+          <div className="flex justify-between col-span-2"><span className="text-muted-foreground">County</span><span className="font-medium">{z.county_name}</span></div>
+        )}
+      </div>
 
-        <div className="border-t border-border my-1" />
-        <p className="font-semibold text-emerald-600">Travel</p>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Customers (3yr)</span>
-          <span className="font-medium">{fmt(z.travel_customers_3yr)}</span>
+      {/* Insurance + Travel side by side */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px]">
+        <div>
+          <p className="font-semibold text-blue-600 mb-0.5">🛡 Insurance</p>
+          <div className="flex justify-between"><span className="text-muted-foreground">Cust ({year})</span><span className="font-medium">{fmt(z.ins_customers_cy)} {yoyBadge(z.ins_customers_cy, z.ins_customers_py)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Penetration</span><span className="font-medium">{fmtPct(z.ins_penetration)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">% of Org</span><span className="font-medium">{fmtPct(z.ins_pct_of_total)}</span></div>
         </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Bookings ({year})</span>
-          <span className="font-medium">{fmt(z.travel_bookings_cy)} {yoyBadge(z.travel_bookings_cy, z.travel_bookings_py)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Revenue ({year})</span>
-          <span className="font-medium">{fmtCurrency(z.travel_rev_cy)} {yoyBadge(z.travel_rev_cy, z.travel_rev_py)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Penetration</span>
-          <span className="font-medium">{fmtPct(z.travel_penetration)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">% of Org Total</span>
-          <span className="font-medium">{fmtPct(z.travel_pct_of_total)}</span>
+        <div>
+          <p className="font-semibold text-emerald-600 mb-0.5">✈ Travel</p>
+          <div className="flex justify-between"><span className="text-muted-foreground">Cust (3yr)</span><span className="font-medium">{fmt(z.travel_customers_3yr)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Rev ({year})</span><span className="font-medium">{fmtCurrency(z.travel_rev_cy)} {yoyBadge(z.travel_rev_cy, z.travel_rev_py)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Penetration</span><span className="font-medium">{fmtPct(z.travel_penetration)}</span></div>
         </div>
       </div>
     </div>
@@ -382,7 +398,7 @@ export default function TerritoryMap() {
   const { theme } = useTheme()
   const [layer, setLayer] = useState<LayerMode>('combined')
   const [region, setRegion] = useState<RegionFilter>('All')
-  const [zoom, setZoom] = useState(12)
+  const [zoom, setZoom] = useState(10)
 
   const level = zoomToLevel(zoom)
 
@@ -406,8 +422,8 @@ export default function TerritoryMap() {
   // Aggregated bubbles for region/city views
   const bubbles = useMemo(() => {
     if (level === 'zip') return []
-    return aggregateZips(filteredZips, level === 'region' ? 'region' : 'city')
-  }, [filteredZips, level])
+    return aggregateZips(filteredZips, level === 'region' ? 'region' : 'city', data?.totals.travel_rev_cy ?? 0)
+  }, [filteredZips, level, data])
 
   // Tile layer URL based on theme
   const tileUrl = theme === 'dark'
@@ -445,6 +461,8 @@ export default function TerritoryMap() {
           travel_customers_3yr: r.travel_3yr,
           travel_rev_cy: r.travel_rev_cy,
           zip_count: r.zip_count,
+          population: r.population || 0,
+          market_share: r.population ? Math.round(r.members / r.population * 10000) / 100 : 0,
         }
       })()
 
@@ -506,7 +524,16 @@ export default function TerritoryMap() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {filteredStats.population > 0 && (
+          <SummaryCard
+            icon={BarChart3}
+            label="Census Population"
+            value={fmt(filteredStats.population)}
+            sub={`Market share: ${fmtPct(filteredStats.market_share)}`}
+            accent="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400"
+          />
+        )}
         <SummaryCard
           icon={Users}
           label="AAA Members"
@@ -516,21 +543,21 @@ export default function TerritoryMap() {
         />
         <SummaryCard
           icon={Shield}
-          label={`Insurance Customers (${year})`}
+          label={`Insurance (${year})`}
           value={fmt(filteredStats.ins_customers_cy)}
           sub={`${((filteredStats.ins_customers_cy / filteredStats.members) * 100).toFixed(2)}% penetration`}
           accent="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400"
         />
         <SummaryCard
           icon={Plane}
-          label="Travel Customers (3yr)"
+          label="Travel (3yr)"
           value={fmt(filteredStats.travel_customers_3yr)}
           sub={`${((filteredStats.travel_customers_3yr / filteredStats.members) * 100).toFixed(1)}% penetration`}
           accent="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
         />
         <SummaryCard
           icon={TrendingUp}
-          label={`Travel Revenue (${year})`}
+          label={`Revenue (${year})`}
           value={fmtCurrency(filteredStats.travel_rev_cy)}
           sub={totals.travel_rev_py ? `PY: ${fmtCurrency(totals.travel_rev_py)}` : undefined}
           accent="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
@@ -548,10 +575,10 @@ export default function TerritoryMap() {
       </div>
 
       {/* Map */}
-      <div className="relative rounded-xl overflow-hidden border border-border" style={{ height: 'calc(100vh - 340px)', minHeight: '500px' }}>
+      <div className="relative rounded-xl border border-border" style={{ height: 'calc(100vh - 340px)', minHeight: '500px' }}>
         <MapContainer
           center={[43.1, -77.75]}
-          zoom={12}
+          zoom={10}
           className="h-full w-full"
           zoomControl={true}
           attributionControl={false}
@@ -576,7 +603,7 @@ export default function TerritoryMap() {
                   opacity: 0.9,
                 }}
               >
-                <Tooltip sticky>
+                <Tooltip sticky direction="auto" offset={[0, -10]}>
                   <BubbleTooltipContent b={b} year={year} />
                 </Tooltip>
               </CircleMarker>
@@ -599,7 +626,7 @@ export default function TerritoryMap() {
                   opacity: 0.8,
                 }}
               >
-                <Tooltip sticky>
+                <Tooltip sticky direction="auto" offset={[0, -10]}>
                   <ZipTooltipContent z={z} year={year} />
                 </Tooltip>
               </CircleMarker>
@@ -671,8 +698,10 @@ function PenetrationTable({
           <thead>
             <tr className="border-b border-border bg-muted/30">
               <th className="text-left px-3 py-2 font-medium text-muted-foreground">Zip</th>
-              <th className="text-left px-3 py-2 font-medium text-muted-foreground">Region</th>
+              <th className="text-left px-3 py-2 font-medium text-muted-foreground">City</th>
+              <th className="text-right px-3 py-2 font-medium text-muted-foreground">Pop.</th>
               <th className="text-right px-3 py-2 font-medium text-muted-foreground">Members</th>
+              <th className="text-right px-3 py-2 font-medium text-muted-foreground">Mkt %</th>
               {(mode === 'insurance' || mode === 'combined') && (
                 <th className="text-right px-3 py-2 font-medium text-muted-foreground">Ins %</th>
               )}
@@ -680,14 +709,17 @@ function PenetrationTable({
                 <th className="text-right px-3 py-2 font-medium text-muted-foreground">Travel %</th>
               )}
               <th className="text-right px-3 py-2 font-medium text-muted-foreground">Rev ({year})</th>
+              <th className="text-right px-3 py-2 font-medium text-muted-foreground">Rev %</th>
             </tr>
           </thead>
           <tbody>
             {sorted.map((z) => (
               <tr key={z.zip} className="border-b border-border/50 hover:bg-muted/20">
                 <td className="px-3 py-2 font-mono font-medium">{z.zip}</td>
-                <td className="px-3 py-2 text-muted-foreground">{z.region}</td>
+                <td className="px-3 py-2 text-muted-foreground">{z.city || z.region}</td>
+                <td className="px-3 py-2 text-right">{z.population ? fmt(z.population) : '—'}</td>
                 <td className="px-3 py-2 text-right">{fmt(z.members)}</td>
+                <td className="px-3 py-2 text-right font-medium text-orange-600">{z.market_share ? fmtPct(z.market_share) : '—'}</td>
                 {(mode === 'insurance' || mode === 'combined') && (
                   <td className="px-3 py-2 text-right font-medium">
                     {fmtPct(z.ins_penetration)}
@@ -701,6 +733,9 @@ function PenetrationTable({
                 <td className="px-3 py-2 text-right">
                   {fmtCurrency(z.travel_rev_cy)}
                   {' '}{yoyBadge(z.travel_rev_cy, z.travel_rev_py)}
+                </td>
+                <td className="px-3 py-2 text-right font-medium text-amber-600">
+                  {z.rev_pct_of_total ? fmtPct(z.rev_pct_of_total) : '—'}
                 </td>
               </tr>
             ))}
