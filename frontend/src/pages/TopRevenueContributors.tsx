@@ -28,6 +28,129 @@ import {
 } from 'lucide-react'
 import { exportToExcel } from '@/lib/exportExcel'
 
+/* ── 3D Pie Chart ─────────────────────────────────────────────────────────── */
+
+interface Pie3DSlice { label: string; value: number; color: string; pct: number }
+
+function Pie3D({ data, height = 300, formatter }: {
+  data: Pie3DSlice[]
+  height?: number
+  formatter: (v: number) => string
+}) {
+  const total = data.reduce((s, d) => s + d.value, 0)
+  if (!total) return null
+
+  const cx = 200, cy = 120, rx = 140, ry = 70, depth = 28
+  const svgW = 400, svgH = height
+
+  // Build slices with angles
+  let angle = -Math.PI / 2
+  const slices = data.map(d => {
+    const fraction = d.value / total
+    const startAngle = angle
+    const endAngle = angle + fraction * 2 * Math.PI
+    angle = endAngle
+    return { ...d, startAngle, endAngle, fraction }
+  })
+
+  // Ellipse point
+  const ep = (a: number, yOff = 0) => ({
+    x: cx + rx * Math.cos(a),
+    y: cy + ry * Math.sin(a) + yOff,
+  })
+
+  // Arc sector path (top face)
+  const sectorPath = (sa: number, ea: number, yOff = 0) => {
+    const s = ep(sa, yOff), e = ep(ea, yOff)
+    const large = ea - sa > Math.PI ? 1 : 0
+    return `M${cx},${cy + yOff} L${s.x},${s.y} A${rx},${ry} 0 ${large} 1 ${e.x},${e.y} Z`
+  }
+
+  // Side strip path (for depth)
+  const sidePath = (sa: number, ea: number) => {
+    const steps = Math.max(2, Math.ceil(((ea - sa) / (Math.PI * 2)) * 48))
+    const pts: string[] = []
+    for (let i = 0; i <= steps; i++) {
+      const a = sa + (ea - sa) * (i / steps)
+      const p = ep(a, 0)
+      pts.push(`${p.x},${p.y}`)
+    }
+    for (let i = steps; i >= 0; i--) {
+      const a = sa + (ea - sa) * (i / steps)
+      const p = ep(a, depth)
+      pts.push(`${p.x},${p.y}`)
+    }
+    return `M${pts.join(' L')} Z`
+  }
+
+  // Darken color for side
+  const darken = (hex: string, amt = 40) => {
+    const h = hex.replace('#', '')
+    const n = parseInt(h, 16)
+    const r = Math.max(0, (n >> 16) - amt)
+    const g = Math.max(0, ((n >> 8) & 0xff) - amt)
+    const b = Math.max(0, (n & 0xff) - amt)
+    return `rgb(${r},${g},${b})`
+  }
+
+  // Label positions
+  const labels = slices.map(s => {
+    const mid = (s.startAngle + s.endAngle) / 2
+    const lr = rx + 36
+    const ly = ry + 18
+    const lx = cx + lr * Math.cos(mid)
+    const lyr = cy + ly * Math.sin(mid)
+    const anchor = Math.cos(mid) > 0 ? 'start' : 'end'
+    const ap = ep(mid, 0)
+    return { ...s, lx, ly: lyr, anchor, ax: ap.x, ay: ap.y }
+  })
+
+  return (
+    <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" height="100%" style={{ overflow: 'visible' }}>
+      {/* Side faces (back half first, then front half for correct z-order) */}
+      {slices.filter(s => {
+        const mid = (s.startAngle + s.endAngle) / 2
+        return Math.sin(mid) < 0
+      }).map((s, i) => (
+        <path key={`sb-${i}`} d={sidePath(s.startAngle, s.endAngle)}
+          fill={darken(s.color)} stroke={darken(s.color, 60)} strokeWidth={0.5} />
+      ))}
+      {slices.filter(s => {
+        const mid = (s.startAngle + s.endAngle) / 2
+        return Math.sin(mid) >= 0
+      }).map((s, i) => (
+        <path key={`sf-${i}`} d={sidePath(s.startAngle, s.endAngle)}
+          fill={darken(s.color)} stroke={darken(s.color, 60)} strokeWidth={0.5} />
+      ))}
+
+      {/* Top faces */}
+      {slices.map((s, i) => (
+        <path key={`top-${i}`} d={sectorPath(s.startAngle, s.endAngle)}
+          fill={s.color} stroke="rgba(255,255,255,0.3)" strokeWidth={1.5}>
+          <title>{`${s.label}: ${formatter(s.value)} (${s.pct.toFixed(1)}%)`}</title>
+        </path>
+      ))}
+
+      {/* Highlight ring on top */}
+      <ellipse cx={cx} cy={cy} rx={rx} ry={ry}
+        fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={1} />
+
+      {/* Labels with leader lines */}
+      {labels.map((l, i) => (
+        <g key={`lbl-${i}`}>
+          <line x1={l.ax} y1={l.ay} x2={l.lx} y2={l.ly}
+            stroke="currentColor" strokeWidth={0.8} opacity={0.4} />
+          <text x={l.lx + (l.anchor === 'start' ? 4 : -4)} y={l.ly}
+            textAnchor={l.anchor as any} dominantBaseline="middle"
+            fill="currentColor" fontSize={11} fontWeight={500}>
+            {l.label} {l.pct.toFixed(1)}%
+          </text>
+        </g>
+      ))}
+    </svg>
+  )
+}
+
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
 
 function fmt(n: number) {
@@ -580,31 +703,21 @@ function RegionsTab() {
           </ResponsiveContainer>
         </div>
 
-        {/* Pie chart */}
+        {/* 3D Pie chart */}
         <div className="rounded-xl border border-border bg-card p-5">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
-            Revenue Share
+            Bookings Share
           </h2>
-          <ResponsiveContainer width="100%" height={regions.length * 60 + 40}>
-            <PieChart>
-              <Pie
-                data={regions}
-                dataKey="revenue"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                outerRadius={80}
-                label={({ name, rev_pct }: any) => `${name} ${rev_pct.toFixed(1)}%`}
-              >
-                {regions.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-              </Pie>
-              <Tooltip content={({ active, payload }: any) => {
-                if (!active || !payload?.length) return null
-                const d = payload[0].payload
-                return <div style={tooltipStyle(c)} className="px-3 py-2 text-sm"><p className="font-semibold">{d.name}</p><p style={{ color: c.primary }}>{fmtFull(d.revenue)}</p></div>
-              }} />
-            </PieChart>
-          </ResponsiveContainer>
+          <Pie3D
+            data={regions.map((r, i) => ({
+              label: r.name,
+              value: r.revenue,
+              color: COLORS[i % COLORS.length],
+              pct: r.rev_pct,
+            }))}
+            height={Math.max(260, regions.length * 50)}
+            formatter={fmtFull}
+          />
         </div>
       </div>
 

@@ -781,14 +781,13 @@ export interface TerritoryZip {
   region: string
   members: number
   ins_customers_cy: number
-  ins_customers_py: number
   ins_rev_cy: number
   ins_rev_py: number
   ins_penetration: number
   ins_pct_of_total: number
   travel_customers_3yr: number
-  travel_bookings_cy: number
-  travel_bookings_py: number
+  travel_customers_cy: number
+  travel_customers_py: number
   travel_penetration: number
   travel_pct_of_total: number
   travel_rev_cy: number
@@ -808,8 +807,7 @@ export interface TerritoryZip {
 
 export interface TerritoryTotals {
   members: number
-  ins_customers_cy: number
-  ins_customers_py: number
+  ins_customers: number
   ins_rev_cy: number
   ins_rev_py: number
   travel_customers_3yr: number
@@ -846,6 +844,25 @@ export async function fetchTerritoryMapData(
     params: withDates({ period }, startDate, endDate),
   })
   return data as TerritoryMapData
+}
+
+// County boundary GeoJSON for map overlays
+export interface CountyBoundaryData {
+  county_geojson: GeoJSON.FeatureCollection
+  zips: Array<{
+    zip: string
+    city: string
+    county_fips: string
+    county_name: string
+    lat: number
+    lng: number
+    population: number
+  }>
+}
+
+export async function fetchTerritoryBoundaries(): Promise<CountyBoundaryData> {
+  const { data } = await api.get('/api/territory/boundaries')
+  return data as CountyBoundaryData
 }
 
 // ── Census Demographics ──────────────────────────────────────────────────────

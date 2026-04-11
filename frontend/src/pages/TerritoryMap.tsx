@@ -8,20 +8,19 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap, useMapEvents } from 'react-leaflet'
-import { fetchTerritoryMapData, type TerritoryZip, type TerritoryMapData } from '@/lib/api'
+import { MapContainer, TileLayer, CircleMarker, Tooltip, GeoJSON, useMap, useMapEvents } from 'react-leaflet'
+import { fetchTerritoryMapData, fetchTerritoryBoundaries, type TerritoryZip, type TerritoryMapData, type CountyBoundaryData } from '@/lib/api'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useSales } from '@/contexts/SalesContext'
 import { cn } from '@/lib/utils'
 import {
-  Loader2, Map as MapIcon, Shield, Plane, Users, Layers,
-  TrendingUp, Minus, Info, ZoomIn, BarChart3,
+  Loader2, Map as MapIcon, Shield, Plane, Users,
+  TrendingUp, Minus, Info, ZoomIn, BarChart3, Maximize2, Minimize2,
 } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
 
-type LayerMode = 'insurance' | 'travel' | 'combined'
 type RegionFilter = 'All' | 'Western' | 'Rochester' | 'Central'
 type ZoomLevel = 'region' | 'city' | 'zip'
 
@@ -34,11 +33,10 @@ interface MapBubble {
   lng: number
   members: number
   ins_customers_cy: number
-  ins_customers_py: number
   ins_penetration: number
   travel_customers_3yr: number
-  travel_bookings_cy: number
-  travel_bookings_py: number
+  travel_customers_cy: number
+  travel_customers_py: number
   travel_penetration: number
   travel_rev_cy: number
   travel_rev_py: number
@@ -56,8 +54,8 @@ interface MapBubble {
 
 /* ── Color helpers ───────────────────────────────────────────────────────── */
 
-function penetrationColor(pct: number, mode: LayerMode): string {
-  const max = mode === 'insurance' ? 1.0 : mode === 'travel' ? 8.0 : 5.0
+function penetrationColor(pct: number): string {
+  const max = 5.0
   const ratio = Math.min(pct / max, 1)
   if (ratio < 0.25) return '#ef4444'
   if (ratio < 0.5) return '#f97316'
@@ -65,20 +63,15 @@ function penetrationColor(pct: number, mode: LayerMode): string {
   return '#22c55e'
 }
 
-function penetrationOpacity(pct: number, mode: LayerMode): number {
-  const max = mode === 'insurance' ? 1.0 : mode === 'travel' ? 8.0 : 5.0
-  return Math.max(0.35, Math.min(0.85, pct / max))
+function penetrationOpacity(pct: number): number {
+  return Math.max(0.35, Math.min(0.85, pct / 5.0))
 }
 
-function getBubblePenetration(b: MapBubble, mode: LayerMode): number {
-  if (mode === 'insurance') return b.ins_penetration
-  if (mode === 'travel') return b.travel_penetration
+function getBubblePenetration(b: MapBubble): number {
   return (b.ins_penetration + b.travel_penetration) / 2
 }
 
-function getPenetration(z: TerritoryZip, mode: LayerMode): number {
-  if (mode === 'insurance') return z.ins_penetration
-  if (mode === 'travel') return z.travel_penetration
+function getPenetration(z: TerritoryZip): number {
   return (z.ins_penetration + z.travel_penetration) / 2
 }
 
@@ -118,10 +111,9 @@ function aggregateZips(zips: TerritoryZip[], groupBy: 'region' | 'city', totalRe
   for (const [key, group] of groups) {
     const members = group.reduce((s, z) => s + z.members, 0)
     const ins_cy = group.reduce((s, z) => s + z.ins_customers_cy, 0)
-    const ins_py = group.reduce((s, z) => s + z.ins_customers_py, 0)
     const travel_3yr = group.reduce((s, z) => s + z.travel_customers_3yr, 0)
-    const tb_cy = group.reduce((s, z) => s + z.travel_bookings_cy, 0)
-    const tb_py = group.reduce((s, z) => s + z.travel_bookings_py, 0)
+    const tc_cy = group.reduce((s, z) => s + z.travel_customers_cy, 0)
+    const tc_py = group.reduce((s, z) => s + z.travel_customers_py, 0)
     const tr_cy = group.reduce((s, z) => s + z.travel_rev_cy, 0)
     const tr_py = group.reduce((s, z) => s + z.travel_rev_py, 0)
     const pop = group.reduce((s, z) => s + (z.population || 0), 0)
@@ -149,11 +141,10 @@ function aggregateZips(zips: TerritoryZip[], groupBy: 'region' | 'city', totalRe
       lat, lng,
       members,
       ins_customers_cy: ins_cy,
-      ins_customers_py: ins_py,
       ins_penetration: members ? Math.round(ins_cy / members * 1000) / 10 : 0,
       travel_customers_3yr: travel_3yr,
-      travel_bookings_cy: tb_cy,
-      travel_bookings_py: tb_py,
+      travel_customers_cy: tc_cy,
+      travel_customers_py: tc_py,
       travel_penetration: members ? Math.round(travel_3yr / members * 1000) / 10 : 0,
       travel_rev_cy: tr_cy,
       travel_rev_py: tr_py,
@@ -172,7 +163,7 @@ function aggregateZips(zips: TerritoryZip[], groupBy: 'region' | 'city', totalRe
 }
 
 function zoomToLevel(zoom: number): ZoomLevel {
-  if (zoom <= 9) return 'region'
+  // Always show city-level bubbles (never region) — one big circle is unhelpful
   if (zoom <= 11) return 'city'
   return 'zip'
 }
@@ -207,11 +198,20 @@ function ZoomTracker({ onZoom }: { onZoom: (z: number) => void }) {
   return null
 }
 
+function MapResizer({ fullscreen }: { fullscreen: boolean }) {
+  const map = useMap()
+  useEffect(() => {
+    // Leaflet needs to recalculate when container size changes
+    setTimeout(() => map.invalidateSize(), 100)
+  }, [fullscreen, map])
+  return null
+}
+
 const REGION_CENTERS: Record<string, { lat: number; lng: number; zoom: number }> = {
   Western:   { lat: 42.89, lng: -78.85, zoom: 11 },
   Rochester: { lat: 43.16, lng: -77.61, zoom: 11 },
   Central:   { lat: 43.05, lng: -76.15, zoom: 11 },
-  All:       { lat: 43.0,  lng: -77.50, zoom: 10 },
+  All:       { lat: 43.0,  lng: -77.50, zoom: 9 },
 }
 
 function FlyToRegion({ region, zips }: { region: RegionFilter; zips: TerritoryZip[] }) {
@@ -220,14 +220,6 @@ function FlyToRegion({ region, zips }: { region: RegionFilter; zips: TerritoryZi
   useEffect(() => {
     if (region === prevRegion.current) return
     prevRegion.current = region
-    if (region !== 'All') {
-      const regionZips = zips.filter((z) => z.region === region)
-      if (regionZips.length) {
-        const bounds: [number, number][] = regionZips.map((z) => [z.lat, z.lng])
-        map.fitBounds(bounds, { padding: [30, 30], maxZoom: 13 })
-        return
-      }
-    }
     const center = REGION_CENTERS[region] || REGION_CENTERS.All
     map.flyTo([center.lat, center.lng], center.zoom, { duration: 0.8 })
   }, [region, zips, map])
@@ -236,14 +228,12 @@ function FlyToRegion({ region, zips }: { region: RegionFilter; zips: TerritoryZi
 
 /* ── Legend ───────────────────────────────────────────────────────────────── */
 
-function Legend({ mode, level }: { mode: LayerMode; level: ZoomLevel }) {
-  const label = mode === 'insurance' ? 'Insurance' : mode === 'travel' ? 'Travel' : 'Combined'
-  const max = mode === 'insurance' ? '1%+' : mode === 'travel' ? '8%+' : '5%+'
+function Legend({ level }: { level: ZoomLevel }) {
   const levelLabel = level === 'region' ? 'Region view' : level === 'city' ? 'City view' : 'Zip code view'
   return (
     <div className="absolute bottom-6 left-6 z-[1000] bg-card/95 backdrop-blur border border-border rounded-lg p-3 shadow-lg">
       <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-semibold text-foreground">{label} Penetration</p>
+        <p className="text-xs font-semibold text-foreground">Customer Penetration</p>
         <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium ml-2">
           {levelLabel}
         </span>
@@ -256,7 +246,7 @@ function Legend({ mode, level }: { mode: LayerMode; level: ZoomLevel }) {
           <div className="w-6 bg-yellow-500" />
           <div className="w-6 bg-green-500" />
         </div>
-        <span className="text-[10px] text-muted-foreground">{max}</span>
+        <span className="text-[10px] text-muted-foreground">5%+</span>
       </div>
       <p className="text-[10px] text-muted-foreground mt-1.5">
         <ZoomIn className="w-3 h-3 inline mr-0.5" />
@@ -301,7 +291,7 @@ function BubbleTooltipContent({ b, year }: { b: MapBubble; year: number }) {
         <span className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{b.sublabel}</span>
       </div>
 
-      {/* Census + Market Share — compact grid */}
+      {/* Census + Market Share */}
       {b.population > 0 && (
         <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] mb-1.5 pb-1.5 border-b border-border">
           <div className="flex justify-between"><span className="text-muted-foreground">Population</span><span className="font-semibold">{fmt(b.population)}</span></div>
@@ -313,26 +303,25 @@ function BubbleTooltipContent({ b, year }: { b: MapBubble; year: number }) {
         </div>
       )}
 
-      {/* Members + Revenue */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] mb-1.5 pb-1.5 border-b border-border">
+      {/* Members */}
+      <div className="text-[11px] mb-1.5 pb-1.5 border-b border-border">
         <div className="flex justify-between"><span className="text-muted-foreground">AAA Members</span><span className="font-semibold">{fmt(b.members)}</span></div>
-        {b.rev_pct_of_total > 0 && (
-          <div className="flex justify-between"><span className="text-muted-foreground">% Total Rev</span><span className="font-bold text-amber-600">{fmtPct(b.rev_pct_of_total)}</span></div>
-        )}
       </div>
 
       {/* Insurance + Travel side by side */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px]">
         <div>
           <p className="font-semibold text-blue-600 mb-0.5">🛡 Insurance</p>
-          <div className="flex justify-between"><span className="text-muted-foreground">Cust ({year})</span><span className="font-medium">{fmt(b.ins_customers_cy)} {yoyBadge(b.ins_customers_cy, b.ins_customers_py)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Penetration</span><span className="font-medium">{fmtPct(b.ins_penetration)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Customers</span><span className="font-medium">{fmt(b.ins_customers_cy)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">% of Members</span><span className="font-medium">{fmtPct(b.ins_penetration)}</span></div>
+          {b.population > 0 && <div className="flex justify-between"><span className="text-muted-foreground">% of Pop.</span><span className="font-medium">{fmtPct(b.ins_customers_cy / b.population * 100)}</span></div>}
         </div>
         <div>
           <p className="font-semibold text-emerald-600 mb-0.5">✈ Travel</p>
-          <div className="flex justify-between"><span className="text-muted-foreground">Cust (3yr)</span><span className="font-medium">{fmt(b.travel_customers_3yr)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Customers (3yr)</span><span className="font-medium">{fmt(b.travel_customers_3yr)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">% of Members</span><span className="font-medium">{fmtPct(b.travel_penetration)}</span></div>
+          {b.population > 0 && <div className="flex justify-between"><span className="text-muted-foreground">% of Pop.</span><span className="font-medium">{fmtPct(b.travel_customers_3yr / b.population * 100)}</span></div>}
           <div className="flex justify-between"><span className="text-muted-foreground">Rev ({year})</span><span className="font-medium">{fmtCurrency(b.travel_rev_cy)} {yoyBadge(b.travel_rev_cy, b.travel_rev_py)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Penetration</span><span className="font-medium">{fmtPct(b.travel_penetration)}</span></div>
         </div>
       </div>
     </div>
@@ -351,7 +340,7 @@ function ZipTooltipContent({ z, year }: { z: TerritoryZip; year: number }) {
         </span>
       </div>
 
-      {/* Census + Market Share — compact grid */}
+      {/* Census + Market Share */}
       {z.population > 0 && (
         <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] mb-1.5 pb-1.5 border-b border-border">
           <div className="flex justify-between"><span className="text-muted-foreground">Population</span><span className="font-semibold">{fmt(z.population)}</span></div>
@@ -363,14 +352,11 @@ function ZipTooltipContent({ z, year }: { z: TerritoryZip; year: number }) {
         </div>
       )}
 
-      {/* Members + Revenue */}
+      {/* Members + County */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] mb-1.5 pb-1.5 border-b border-border">
         <div className="flex justify-between"><span className="text-muted-foreground">AAA Members</span><span className="font-semibold">{fmt(z.members)}</span></div>
-        {z.rev_pct_of_total > 0 && (
-          <div className="flex justify-between"><span className="text-muted-foreground">% Total Rev</span><span className="font-bold text-amber-600">{fmtPct(z.rev_pct_of_total)}</span></div>
-        )}
         {z.county_name && (
-          <div className="flex justify-between col-span-2"><span className="text-muted-foreground">County</span><span className="font-medium">{z.county_name}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">County</span><span className="font-medium">{z.county_name}</span></div>
         )}
       </div>
 
@@ -378,15 +364,18 @@ function ZipTooltipContent({ z, year }: { z: TerritoryZip; year: number }) {
       <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px]">
         <div>
           <p className="font-semibold text-blue-600 mb-0.5">🛡 Insurance</p>
-          <div className="flex justify-between"><span className="text-muted-foreground">Cust ({year})</span><span className="font-medium">{fmt(z.ins_customers_cy)} {yoyBadge(z.ins_customers_cy, z.ins_customers_py)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Penetration</span><span className="font-medium">{fmtPct(z.ins_penetration)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Customers</span><span className="font-medium">{fmt(z.ins_customers_cy)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">% of Members</span><span className="font-medium">{fmtPct(z.ins_penetration)}</span></div>
+          {z.population > 0 && <div className="flex justify-between"><span className="text-muted-foreground">% of Pop.</span><span className="font-medium">{fmtPct(z.ins_customers_cy / z.population * 100)}</span></div>}
           <div className="flex justify-between"><span className="text-muted-foreground">% of Org</span><span className="font-medium">{fmtPct(z.ins_pct_of_total)}</span></div>
         </div>
         <div>
           <p className="font-semibold text-emerald-600 mb-0.5">✈ Travel</p>
-          <div className="flex justify-between"><span className="text-muted-foreground">Cust (3yr)</span><span className="font-medium">{fmt(z.travel_customers_3yr)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Customers (3yr)</span><span className="font-medium">{fmt(z.travel_customers_3yr)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">% of Members</span><span className="font-medium">{fmtPct(z.travel_penetration)}</span></div>
+          {z.population > 0 && <div className="flex justify-between"><span className="text-muted-foreground">% of Pop.</span><span className="font-medium">{fmtPct(z.travel_customers_3yr / z.population * 100)}</span></div>}
+          <div className="flex justify-between"><span className="text-muted-foreground">% of Org</span><span className="font-medium">{fmtPct(z.travel_pct_of_total)}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Rev ({year})</span><span className="font-medium">{fmtCurrency(z.travel_rev_cy)} {yoyBadge(z.travel_rev_cy, z.travel_rev_py)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Penetration</span><span className="font-medium">{fmtPct(z.travel_penetration)}</span></div>
         </div>
       </div>
     </div>
@@ -397,9 +386,10 @@ function ZipTooltipContent({ z, year }: { z: TerritoryZip; year: number }) {
 
 export default function TerritoryMap() {
   const { theme } = useTheme()
-  const [layer, setLayer] = useState<LayerMode>('combined')
   const [region, setRegion] = useState<RegionFilter>('All')
-  const [zoom, setZoom] = useState(10)
+  const [zoom, setZoom] = useState(9)
+  const [fullscreen, setFullscreen] = useState(false)
+  const [showBoundaries, setShowBoundaries] = useState(true)
 
   const level = zoomToLevel(zoom)
 
@@ -411,7 +401,21 @@ export default function TerritoryMap() {
     staleTime: 5 * 60_000,
   })
 
+  const { data: boundaries } = useQuery<CountyBoundaryData>({
+    queryKey: ['territory-boundaries'],
+    queryFn: fetchTerritoryBoundaries,
+    staleTime: 60 * 60_000, // 1 hour — boundaries don't change
+  })
+
   const handleZoom = useCallback((z: number) => setZoom(z), [])
+
+  // Escape exits fullscreen
+  useEffect(() => {
+    if (!fullscreen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFullscreen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [fullscreen])
 
   const filteredZips = useMemo(() => {
     if (!data) return []
@@ -460,7 +464,7 @@ export default function TerritoryMap() {
         if (!r) return totals
         return {
           members: r.members,
-          ins_customers_cy: r.ins_cy,
+          ins_customers: r.ins_cy,
           travel_customers_3yr: r.travel_3yr,
           travel_rev_cy: r.travel_rev_cy,
           zip_count: r.zip_count,
@@ -470,7 +474,11 @@ export default function TerritoryMap() {
       })()
 
   return (
-    <div className="space-y-4">
+    <div className={cn(
+      fullscreen
+        ? 'fixed inset-0 z-50 bg-background overflow-auto p-4'
+        : 'space-y-4'
+    )}>
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
@@ -483,51 +491,10 @@ export default function TerritoryMap() {
           </div>
         </div>
 
-        {/* Controls */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Layer toggle */}
-          <div className="flex items-center bg-muted rounded-lg p-0.5">
-            {(['insurance', 'travel', 'combined'] as LayerMode[]).map((m) => (
-              <button
-                key={m}
-                onClick={() => setLayer(m)}
-                className={cn(
-                  'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
-                  layer === m
-                    ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {m === 'insurance' && <Shield className="w-3 h-3 inline mr-1" />}
-                {m === 'travel' && <Plane className="w-3 h-3 inline mr-1" />}
-                {m === 'combined' && <Layers className="w-3 h-3 inline mr-1" />}
-                {m.charAt(0).toUpperCase() + m.slice(1)}
-              </button>
-            ))}
-          </div>
-
-          {/* Region filter */}
-          <div className="flex items-center bg-muted rounded-lg p-0.5">
-            {(['All', 'Western', 'Rochester', 'Central'] as RegionFilter[]).map((r) => (
-              <button
-                key={r}
-                onClick={() => setRegion(r)}
-                className={cn(
-                  'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
-                  region === r
-                    ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* Summary Cards — hidden in fullscreen */}
+      {!fullscreen && <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {filteredStats.population > 0 && (
           <SummaryCard
             icon={BarChart3}
@@ -546,9 +513,9 @@ export default function TerritoryMap() {
         />
         <SummaryCard
           icon={Shield}
-          label={`Insurance (${year})`}
-          value={fmt(filteredStats.ins_customers_cy)}
-          sub={`${((filteredStats.ins_customers_cy / filteredStats.members) * 100).toFixed(2)}% penetration`}
+          label="Insurance Customers"
+          value={fmt(filteredStats.ins_customers)}
+          sub={`${((filteredStats.ins_customers / filteredStats.members) * 100).toFixed(2)}% penetration`}
           accent="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400"
         />
         <SummaryCard
@@ -565,43 +532,113 @@ export default function TerritoryMap() {
           sub={totals.travel_rev_py ? `PY: ${fmtCurrency(totals.travel_rev_py)}` : undefined}
           accent="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
         />
-      </div>
+      </div>}
 
-      {/* Info banner */}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+      {/* Info banner — hidden in fullscreen */}
+      {!fullscreen && <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
         <Info className="w-3.5 h-3.5 shrink-0" />
         <span>
-          Showing {level === 'region' ? '3 regions' : level === 'city' ? `${bubbles.length} cities` : `${filteredZips.length} zip codes`}.
-          {' '}Color = {layer} penetration (red = weak, green = strong).
+          Showing {level === 'city' ? `${bubbles.length} cities` : `${filteredZips.length} zip codes`}.
+          {' '}Color = customer penetration (red = weak, green = strong).
           {level !== 'zip' && ' Zoom in for more detail.'}
         </span>
-      </div>
+      </div>}
 
       {/* Map */}
-      <div className="relative rounded-xl border border-border" style={{ height: 'calc(100vh - 340px)', minHeight: '500px' }}>
+      <div className="relative rounded-xl border border-border overflow-hidden" style={{ height: fullscreen ? 'calc(100vh - 120px)' : 'calc(100vh - 340px)', minHeight: '500px' }}>
+        {/* Overlay controls — top-right corner of map */}
+        <div className="absolute top-3 right-3 z-[1000] flex items-center gap-2">
+          {/* Region filter */}
+          <div className="flex items-center bg-card/90 backdrop-blur-sm rounded-lg p-0.5 shadow-md border border-border">
+            {(['All', 'Western', 'Rochester', 'Central'] as RegionFilter[]).map((r) => (
+              <button
+                key={r}
+                onClick={() => setRegion(r)}
+                className={cn(
+                  'px-2.5 py-1.5 text-[11px] font-medium rounded-md transition-colors',
+                  region === r
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+
+          {/* County boundaries toggle */}
+          <button
+            onClick={() => setShowBoundaries(b => !b)}
+            className={cn(
+              'px-2.5 py-1.5 text-[11px] font-medium rounded-lg backdrop-blur-sm shadow-md border border-border transition-colors',
+              showBoundaries
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-card/90 text-muted-foreground hover:text-foreground'
+            )}
+            title={showBoundaries ? 'Hide county boundaries' : 'Show county boundaries'}
+          >
+            <MapIcon className="w-3 h-3 inline mr-1" />
+            Counties
+          </button>
+
+          {/* Fullscreen toggle */}
+          <button
+            onClick={() => setFullscreen(f => !f)}
+            className="p-2 rounded-lg bg-card/90 backdrop-blur-sm hover:bg-card text-foreground transition-colors shadow-md border border-border"
+            title={fullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen map'}
+          >
+            {fullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
+        </div>
         <MapContainer
           center={[43.1, -77.75]}
-          zoom={10}
+          zoom={9}
+          minZoom={8}
           className="h-full w-full"
           zoomControl={true}
           attributionControl={false}
         >
           <TileLayer url={tileUrl} />
           <ZoomTracker onZoom={handleZoom} />
+          <MapResizer fullscreen={fullscreen} />
           <FlyToRegion region={region} zips={data?.zips ?? []} />
+
+          {/* County boundary polygons */}
+          {showBoundaries && boundaries?.county_geojson && (
+            <GeoJSON
+              key="county-boundaries"
+              data={boundaries.county_geojson}
+              style={() => ({
+                color: theme === 'dark' ? 'rgba(148,163,184,0.5)' : 'rgba(71,85,105,0.45)',
+                weight: 1.5,
+                fillColor: 'transparent',
+                fillOpacity: 0,
+                dashArray: '4 3',
+              })}
+              onEachFeature={(feature, leafletLayer) => {
+                const p = feature.properties
+                if (p?.name) {
+                  leafletLayer.bindTooltip(
+                    `<strong>${p.name} County</strong><br/>Pop: ${(p.population || 0).toLocaleString()}`,
+                    { sticky: true, direction: 'auto', className: 'county-tooltip' }
+                  )
+                }
+              }}
+            />
+          )}
 
           {/* Region / City bubbles */}
           {level !== 'zip' && bubbles.map((b) => {
-            const pct = getBubblePenetration(b, layer)
+            const pct = getBubblePenetration(b)
             return (
               <CircleMarker
                 key={b.key}
                 center={[b.lat, b.lng]}
                 radius={bubbleRadius(b.members, level)}
                 pathOptions={{
-                  fillColor: penetrationColor(pct, layer),
-                  fillOpacity: penetrationOpacity(pct, layer),
-                  color: penetrationColor(pct, layer),
+                  fillColor: penetrationColor(pct),
+                  fillOpacity: penetrationOpacity(pct),
+                  color: penetrationColor(pct),
                   weight: 2,
                   opacity: 0.9,
                 }}
@@ -615,16 +652,16 @@ export default function TerritoryMap() {
 
           {/* Zip-level circles */}
           {level === 'zip' && filteredZips.map((z) => {
-            const pct = getPenetration(z, layer)
+            const pct = getPenetration(z)
             return (
               <CircleMarker
                 key={z.zip}
                 center={[z.lat, z.lng]}
                 radius={bubbleRadius(z.members, 'zip')}
                 pathOptions={{
-                  fillColor: penetrationColor(pct, layer),
-                  fillOpacity: penetrationOpacity(pct, layer),
-                  color: penetrationColor(pct, layer),
+                  fillColor: penetrationColor(pct),
+                  fillOpacity: penetrationOpacity(pct),
+                  color: penetrationColor(pct),
                   weight: 1.5,
                   opacity: 0.8,
                 }}
@@ -637,7 +674,7 @@ export default function TerritoryMap() {
           })}
         </MapContainer>
 
-        <Legend mode={layer} level={level} />
+        <Legend level={level} />
       </div>
 
       {/* Top penetration / lowest penetration tables */}
@@ -646,7 +683,6 @@ export default function TerritoryMap() {
           title="Highest Penetration"
           subtitle="Strong market presence"
           zips={filteredZips}
-          mode={layer}
           year={year}
           sort="desc"
           accent="text-green-600 dark:text-green-400"
@@ -655,7 +691,6 @@ export default function TerritoryMap() {
           title="Lowest Penetration"
           subtitle="Growth opportunity zones"
           zips={filteredZips}
-          mode={layer}
           year={year}
           sort="asc"
           accent="text-red-600 dark:text-red-400"
@@ -668,27 +703,25 @@ export default function TerritoryMap() {
 /* ── Penetration ranking table ───────────────────────────────────────────── */
 
 function PenetrationTable({
-  title, subtitle, zips, mode, year, sort, accent,
+  title, subtitle, zips, year, sort, accent,
 }: {
   title: string
   subtitle: string
   zips: TerritoryZip[]
-  mode: LayerMode
   year: number
   sort: 'asc' | 'desc'
   accent: string
 }) {
   const sorted = useMemo(() => {
-    // Only include zips with enough members to be meaningful
     const meaningful = zips.filter((z) => z.members >= 200)
     return [...meaningful]
       .sort((a, b) => {
-        const pa = getPenetration(a, mode)
-        const pb = getPenetration(b, mode)
+        const pa = getPenetration(a)
+        const pb = getPenetration(b)
         return sort === 'desc' ? pb - pa : pa - pb
       })
       .slice(0, 10)
-  }, [zips, mode, sort])
+  }, [zips, sort])
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
@@ -705,14 +738,11 @@ function PenetrationTable({
               <th className="text-right px-3 py-2 font-medium text-muted-foreground">Pop.</th>
               <th className="text-right px-3 py-2 font-medium text-muted-foreground">Members</th>
               <th className="text-right px-3 py-2 font-medium text-muted-foreground">Mkt %</th>
-              {(mode === 'insurance' || mode === 'combined') && (
-                <th className="text-right px-3 py-2 font-medium text-muted-foreground">Ins %</th>
-              )}
-              {(mode === 'travel' || mode === 'combined') && (
-                <th className="text-right px-3 py-2 font-medium text-muted-foreground">Travel %</th>
-              )}
+              <th className="text-right px-3 py-2 font-medium text-muted-foreground">Ins Cust</th>
+              <th className="text-right px-3 py-2 font-medium text-muted-foreground">Ins %</th>
+              <th className="text-right px-3 py-2 font-medium text-muted-foreground">Travel</th>
+              <th className="text-right px-3 py-2 font-medium text-muted-foreground">Travel %</th>
               <th className="text-right px-3 py-2 font-medium text-muted-foreground">Rev ({year})</th>
-              <th className="text-right px-3 py-2 font-medium text-muted-foreground">Rev %</th>
             </tr>
           </thead>
           <tbody>
@@ -723,23 +753,11 @@ function PenetrationTable({
                 <td className="px-3 py-2 text-right">{z.population ? fmt(z.population) : '—'}</td>
                 <td className="px-3 py-2 text-right">{fmt(z.members)}</td>
                 <td className="px-3 py-2 text-right font-medium text-orange-600">{z.market_share ? fmtPct(z.market_share) : '—'}</td>
-                {(mode === 'insurance' || mode === 'combined') && (
-                  <td className="px-3 py-2 text-right font-medium">
-                    {fmtPct(z.ins_penetration)}
-                  </td>
-                )}
-                {(mode === 'travel' || mode === 'combined') && (
-                  <td className="px-3 py-2 text-right font-medium">
-                    {fmtPct(z.travel_penetration)}
-                  </td>
-                )}
-                <td className="px-3 py-2 text-right">
-                  {fmtCurrency(z.travel_rev_cy)}
-                  {' '}{yoyBadge(z.travel_rev_cy, z.travel_rev_py)}
-                </td>
-                <td className="px-3 py-2 text-right font-medium text-amber-600">
-                  {z.rev_pct_of_total ? fmtPct(z.rev_pct_of_total) : '—'}
-                </td>
+                <td className="px-3 py-2 text-right">{fmt(z.ins_customers_cy)}</td>
+                <td className="px-3 py-2 text-right font-medium">{fmtPct(z.ins_penetration)}</td>
+                <td className="px-3 py-2 text-right">{fmt(z.travel_customers_3yr)}</td>
+                <td className="px-3 py-2 text-right font-medium">{fmtPct(z.travel_penetration)}</td>
+                <td className="px-3 py-2 text-right">{fmtCurrency(z.travel_rev_cy)} {yoyBadge(z.travel_rev_cy, z.travel_rev_py)}</td>
               </tr>
             ))}
           </tbody>

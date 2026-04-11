@@ -29,7 +29,8 @@ log = logging.getLogger(__name__)
 
 OPERATING_REGIONS = ("Western", "Rochester", "Central")
 REGION_FILTER = "Billing_Region__c IN ('Western','Rochester','Central')"
-MIN_MEMBERS = 50  # skip noise zips
+ACTIVE_MEMBER = "(Member_Status__c = 'A' OR ImportantActiveMemExpiryDate__c >= TODAY)"
+MIN_MEMBERS = 10  # skip tiny noise zips on the map
 NY_STATE = "BillingState = 'New York'"
 
 # Static zip centroid lookup (no numpy/pandas dependency)
@@ -70,7 +71,7 @@ def territory_map_data(
     key = f"territory_map_{cy_start}_{cy_end}"
 
     def fetch():
-        # Batch 1: members + insurance
+        # ── Batch 1: Member & customer counts (Account-based = unique people) ──
         batch1 = sf_parallel(
             members=f"""
                 SELECT BillingPostalCode zip, Billing_Region__c region,
@@ -78,56 +79,130 @@ def territory_map_data(
                 FROM Account
                 WHERE BillingPostalCode != null
                   AND {NY_STATE} AND {REGION_FILTER}
+                  AND {ACTIVE_MEMBER}
                 GROUP BY BillingPostalCode, Billing_Region__c
                 HAVING COUNT(Id) >= {MIN_MEMBERS}
                 ORDER BY COUNT(Id) DESC
                 LIMIT 2000
             """,
-            ins_cy=f"""
-                SELECT Account.BillingPostalCode zip, COUNT(Id) cnt,
-                       SUM(Amount) rev
-                FROM Opportunity
-                WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
-                  AND {WON_STAGES}
-                  AND CloseDate >= {cy_start} AND CloseDate <= {cy_end}
-                  AND Account.BillingPostalCode != null
-                  AND Account.BillingState = 'New York'
-                GROUP BY Account.BillingPostalCode
+            members_total=f"""
+                SELECT COUNT(Id) cnt
+                FROM Account
+                WHERE BillingPostalCode != null
+                  AND {NY_STATE} AND {REGION_FILTER}
+                  AND {ACTIVE_MEMBER}
+            """,
+            # Insurance customers: accounts with an Insurance Customer ID
+            # No active-member filter — insurance customers may have lapsed AAA membership
+            ins_customers=f"""
+                SELECT BillingPostalCode zip, COUNT(Id) cnt
+                FROM Account
+                WHERE Insuance_Customer_ID__c != null
+                  AND BillingPostalCode != null
+                  AND {NY_STATE} AND {REGION_FILTER}
+                GROUP BY BillingPostalCode
                 ORDER BY COUNT(Id) DESC
                 LIMIT 2000
             """,
-            ins_py=f"""
-                SELECT Account.BillingPostalCode zip, COUNT(Id) cnt,
-                       SUM(Amount) rev
-                FROM Opportunity
-                WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
-                  AND {WON_STAGES}
-                  AND CloseDate >= {py_start} AND CloseDate <= {py_end}
-                  AND Account.BillingPostalCode != null
-                  AND Account.BillingState = 'New York'
-                GROUP BY Account.BillingPostalCode
+            ins_customers_total=f"""
+                SELECT COUNT(Id) cnt
+                FROM Account
+                WHERE Insuance_Customer_ID__c != null
+                  AND BillingPostalCode != null
+                  AND {NY_STATE} AND {REGION_FILTER}
+            """,
+            # Travel customers: unique accounts with a won travel opp (3yr)
+            travel_customers_3yr=f"""
+                SELECT BillingPostalCode zip, COUNT(Id) cnt
+                FROM Account
+                WHERE Id IN (
+                    SELECT AccountId FROM Opportunity
+                    WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
+                      AND {WON_STAGES}
+                      AND CloseDate >= {travel_3yr} AND CloseDate <= {cy_end}
+                )
+                  AND BillingPostalCode != null
+                  AND {NY_STATE} AND {REGION_FILTER}
+                GROUP BY BillingPostalCode
                 ORDER BY COUNT(Id) DESC
                 LIMIT 2000
             """,
         )
-        # Batch 2: travel queries (separate to stay under SF concurrency)
+        # ── Batch 2: Travel customer counts CY/PY + totals ──
         batch2 = sf_parallel(
-            travel_3yr_q=f"""
-                SELECT Account.BillingPostalCode zip, COUNT(Id) cnt,
-                       SUM(Amount) rev
-                FROM Opportunity
-                WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
-                  AND {WON_STAGES}
-                  AND CloseDate >= {travel_3yr} AND CloseDate <= {cy_end}
-                  AND Account.BillingPostalCode != null
-                  AND Account.BillingState = 'New York'
-                  AND Amount != null
-                GROUP BY Account.BillingPostalCode
+            travel_customers_3yr_total=f"""
+                SELECT COUNT(Id) cnt
+                FROM Account
+                WHERE Id IN (
+                    SELECT AccountId FROM Opportunity
+                    WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
+                      AND {WON_STAGES}
+                      AND CloseDate >= {travel_3yr} AND CloseDate <= {cy_end}
+                )
+                  AND BillingPostalCode != null
+                  AND {NY_STATE} AND {REGION_FILTER}
+            """,
+            travel_customers_cy=f"""
+                SELECT BillingPostalCode zip, COUNT(Id) cnt
+                FROM Account
+                WHERE Id IN (
+                    SELECT AccountId FROM Opportunity
+                    WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
+                      AND {WON_STAGES}
+                      AND CloseDate >= {cy_start} AND CloseDate <= {cy_end}
+                )
+                  AND BillingPostalCode != null
+                  AND {NY_STATE} AND {REGION_FILTER}
+                GROUP BY BillingPostalCode
                 ORDER BY COUNT(Id) DESC
                 LIMIT 2000
             """,
-            travel_cy=f"""
-                SELECT Account.BillingPostalCode zip, COUNT(Id) cnt,
+            travel_customers_py=f"""
+                SELECT BillingPostalCode zip, COUNT(Id) cnt
+                FROM Account
+                WHERE Id IN (
+                    SELECT AccountId FROM Opportunity
+                    WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
+                      AND {WON_STAGES}
+                      AND CloseDate >= {py_start} AND CloseDate <= {py_end}
+                )
+                  AND BillingPostalCode != null
+                  AND {NY_STATE} AND {REGION_FILTER}
+                GROUP BY BillingPostalCode
+                ORDER BY COUNT(Id) DESC
+                LIMIT 2000
+            """,
+        )
+        # ── Batch 3: Revenue from Opportunities (insurance + travel) ──
+        batch3 = sf_parallel(
+            ins_rev_cy=f"""
+                SELECT Account.BillingPostalCode zip,
+                       SUM(Amount) rev
+                FROM Opportunity
+                WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
+                  AND {WON_STAGES}
+                  AND CloseDate >= {cy_start} AND CloseDate <= {cy_end}
+                  AND Account.BillingPostalCode != null
+                  AND Account.BillingState = 'New York'
+                GROUP BY Account.BillingPostalCode
+                ORDER BY SUM(Amount) DESC
+                LIMIT 2000
+            """,
+            ins_rev_py=f"""
+                SELECT Account.BillingPostalCode zip,
+                       SUM(Amount) rev
+                FROM Opportunity
+                WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
+                  AND {WON_STAGES}
+                  AND CloseDate >= {py_start} AND CloseDate <= {py_end}
+                  AND Account.BillingPostalCode != null
+                  AND Account.BillingState = 'New York'
+                GROUP BY Account.BillingPostalCode
+                ORDER BY SUM(Amount) DESC
+                LIMIT 2000
+            """,
+            travel_rev_cy=f"""
+                SELECT Account.BillingPostalCode zip,
                        SUM(Amount) rev
                 FROM Opportunity
                 WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
@@ -137,11 +212,11 @@ def territory_map_data(
                   AND Account.BillingState = 'New York'
                   AND Amount != null
                 GROUP BY Account.BillingPostalCode
-                ORDER BY COUNT(Id) DESC
+                ORDER BY SUM(Amount) DESC
                 LIMIT 2000
             """,
-            travel_py=f"""
-                SELECT Account.BillingPostalCode zip, COUNT(Id) cnt,
+            travel_rev_py=f"""
+                SELECT Account.BillingPostalCode zip,
                        SUM(Amount) rev
                 FROM Opportunity
                 WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
@@ -151,11 +226,11 @@ def territory_map_data(
                   AND Account.BillingState = 'New York'
                   AND Amount != null
                 GROUP BY Account.BillingPostalCode
-                ORDER BY COUNT(Id) DESC
+                ORDER BY SUM(Amount) DESC
                 LIMIT 2000
             """,
         )
-        data = {**batch1, **batch2}
+        data = {**batch1, **batch2, **batch3}
 
         # Build lookup dicts from query results
         # Normalize ZIP+4 (e.g. 14211-2506) to 5-digit and aggregate
@@ -180,26 +255,45 @@ def territory_map_data(
             return out
 
         members_raw = data.get('members', [])
-        ins_cy = _to_dict(data.get('ins_cy', []),
-                          extra_keys=['rev'])
-        ins_py = _to_dict(data.get('ins_py', []),
-                          extra_keys=['rev'])
-        travel_3yr_d = _to_dict(data.get('travel_3yr_q', []),
-                                extra_keys=['rev'])
-        travel_cy = _to_dict(data.get('travel_cy', []),
-                             extra_keys=['rev'])
-        travel_py = _to_dict(data.get('travel_py', []),
-                             extra_keys=['rev'])
+        # Normalize members ZIP+4 to 5-digit and aggregate
+        members_normed: dict[str, dict] = {}
+        for r in (members_raw or []):
+            z = (r.get('zip', '') or '')[:5]
+            if not z or len(z) < 5:
+                continue
+            region = r.get('region', '')
+            cnt = r.get('cnt', 0) or 0
+            if z in members_normed:
+                members_normed[z]['cnt'] += cnt
+            else:
+                members_normed[z] = {'cnt': cnt, 'region': region}
 
-        # Totals for % of org calculations
-        total_ins_cy = sum(v['cnt'] for v in ins_cy.values())
-        total_ins_py = sum(v['cnt'] for v in ins_py.values())
-        total_ins_cy_rev = sum(v.get('rev', 0) or 0 for v in ins_cy.values())
-        total_ins_py_rev = sum(v.get('rev', 0) or 0 for v in ins_py.values())
-        total_travel_3yr = sum(v['cnt'] for v in travel_3yr_d.values())
-        total_travel_cy_rev = sum(v.get('rev', 0) for v in travel_cy.values())
-        total_travel_py_rev = sum(v.get('rev', 0) for v in travel_py.values())
-        total_members = sum(r.get('cnt', 0) for r in members_raw)
+        # Customer lookups (Account-based = unique people per zip)
+        ins_cust = _to_dict(data.get('ins_customers', []))
+        travel_cust_3yr = _to_dict(data.get('travel_customers_3yr', []))
+        travel_cust_cy = _to_dict(data.get('travel_customers_cy', []))
+        travel_cust_py = _to_dict(data.get('travel_customers_py', []))
+
+        # Revenue lookups (Opp-based)
+        ins_rev_cy_d = _to_dict(data.get('ins_rev_cy', []), val_key='rev')
+        ins_rev_py_d = _to_dict(data.get('ins_rev_py', []), val_key='rev')
+        travel_rev_cy_d = _to_dict(data.get('travel_rev_cy', []), val_key='rev')
+        travel_rev_py_d = _to_dict(data.get('travel_rev_py', []), val_key='rev')
+
+        # Totals — use accurate COUNTs from dedicated total queries
+        ins_total_raw = data.get('ins_customers_total', [])
+        total_ins = ins_total_raw[0].get('cnt', 0) if ins_total_raw else 0
+        total_ins_cy_rev = sum(v.get('rev', 0) or 0 for v in ins_rev_cy_d.values())
+        total_ins_py_rev = sum(v.get('rev', 0) or 0 for v in ins_rev_py_d.values())
+        travel_total_raw = data.get('travel_customers_3yr_total', [])
+        total_travel_3yr = travel_total_raw[0].get('cnt', 0) if travel_total_raw else 0
+        total_travel_cy_rev = sum(v.get('rev', 0) or 0 for v in travel_rev_cy_d.values())
+        total_travel_py_rev = sum(v.get('rev', 0) or 0 for v in travel_rev_py_d.values())
+        # Use accurate total from COUNT query (not filtered GROUP BY)
+        members_total_raw = data.get('members_total', [])
+        total_members = (members_total_raw[0].get('cnt', 0) if members_total_raw else 0)
+        # Sum of members in mapped zips (for penetration calculations)
+        mapped_members = sum(v['cnt'] for v in members_normed.values())
 
         # ── Load Census demographics from SQLite ──────────────────────────
         from database import SessionLocal
@@ -224,29 +318,26 @@ def territory_map_data(
             log.warning("Census lookup failed (tables may not be seeded yet): %s", e)
 
         # Build per-zip records
-        total_rev_cy = sum(v.get('rev', 0) or 0 for v in travel_cy.values()) + \
-                       sum(v.get('rev', 0) or 0 for v in ins_cy.values())
         zips = []
-        for rec in members_raw:
-            z = rec.get('zip', '')
-            if not z:
-                continue
-            member_cnt = rec.get('cnt', 0)
-            region = rec.get('region', '')
+        for z, m_data in members_normed.items():
+            member_cnt = m_data['cnt']
+            region = m_data['region']
 
             lat, lng, city = _zip_centroid(z)
             if lat is None:
                 continue
 
-            ic = ins_cy.get(z, {}).get('cnt', 0)
-            ip = ins_py.get(z, {}).get('cnt', 0)
-            ir_cy = ins_cy.get(z, {}).get('rev', 0) or 0
-            ir_py = ins_py.get(z, {}).get('rev', 0) or 0
-            tc = travel_3yr_d.get(z, {}).get('cnt', 0)
-            tr_cy = travel_cy.get(z, {}).get('rev', 0) or 0
-            tr_py = travel_py.get(z, {}).get('rev', 0) or 0
-            tc_cy = travel_cy.get(z, {}).get('cnt', 0)
-            tc_py = travel_py.get(z, {}).get('cnt', 0)
+            # Unique customers per zip (Account-based)
+            ic = ins_cust.get(z, {}).get('cnt', 0)
+            tc = travel_cust_3yr.get(z, {}).get('cnt', 0)
+            tc_cy = travel_cust_cy.get(z, {}).get('cnt', 0)
+            tc_py = travel_cust_py.get(z, {}).get('cnt', 0)
+
+            # Revenue per zip (Opp-based)
+            ir_cy = ins_rev_cy_d.get(z, {}).get('rev', 0) or 0
+            ir_py = ins_rev_py_d.get(z, {}).get('rev', 0) or 0
+            tr_cy = travel_rev_cy_d.get(z, {}).get('rev', 0) or 0
+            tr_py = travel_rev_py_d.get(z, {}).get('rev', 0) or 0
 
             ins_pct = round(ic / member_cnt * 100, 1) if member_cnt else 0
             travel_pct = round(tc / member_cnt * 100, 1) if member_cnt else 0
@@ -254,8 +345,7 @@ def territory_map_data(
             # Census enrichment
             census = census_lookup.get(z, {})
             pop = census.get('population', 0)
-            total_customers = ic + tc_cy
-            zip_rev = tr_cy + ir_cy  # total rev this year for this zip
+            zip_rev = tr_cy + ir_cy
 
             zips.append({
                 'zip': z,
@@ -264,17 +354,16 @@ def territory_map_data(
                 'city': city,
                 'region': region,
                 'members': member_cnt,
-                # Insurance
+                # Insurance (customers = accounts with Insurance Customer ID)
                 'ins_customers_cy': ic,
-                'ins_customers_py': ip,
                 'ins_rev_cy': round(ir_cy, 0),
                 'ins_rev_py': round(ir_py, 0),
                 'ins_penetration': ins_pct,
-                'ins_pct_of_total': round(ic / total_ins_cy * 100, 2) if total_ins_cy else 0,
-                # Travel
+                'ins_pct_of_total': round(ic / total_ins * 100, 2) if total_ins else 0,
+                # Travel (customers = unique accounts with won travel opp)
                 'travel_customers_3yr': tc,
-                'travel_bookings_cy': tc_cy,
-                'travel_bookings_py': tc_py,
+                'travel_customers_cy': tc_cy,
+                'travel_customers_py': tc_py,
                 'travel_penetration': travel_pct,
                 'travel_pct_of_total': round(tc / total_travel_3yr * 100, 2) if total_travel_3yr else 0,
                 # Revenue
@@ -319,8 +408,7 @@ def territory_map_data(
             'zips': zips,
             'totals': {
                 'members': total_members,
-                'ins_customers_cy': total_ins_cy,
-                'ins_customers_py': total_ins_py,
+                'ins_customers': total_ins,
                 'ins_rev_cy': round(total_ins_cy_rev, 0),
                 'ins_rev_py': round(total_ins_py_rev, 0),
                 'travel_customers_3yr': total_travel_3yr,

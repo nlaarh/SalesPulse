@@ -298,4 +298,101 @@ These high-frequency travelers are:
 
 ---
 
-*Last updated: 2026-04-10. Update this file when new data patterns, field behaviors, or business rules are discovered.*
+*Last updated: 2026-04-11. Update this file when new data patterns, field behaviors, or business rules are discovered.*
+
+---
+
+## 11. Active Member Filtering
+
+**Critical**: The `Account` table contains ALL accounts including expired/cancelled memberships.
+Unfiltered count: **~1,182,000**. Active members: **~874,000**.
+
+### Active member filter
+```sql
+(Member_Status__c = 'A' OR ImportantActiveMemExpiryDate__c >= TODAY)
+```
+
+This captures:
+- Members with active status (`A`) — 807K
+- Members whose membership hasn't expired yet (even if status != A) — adds ~67K
+- Total: ~874K (matches official AAA WCNY active member count)
+
+**Always apply this filter when:**
+- Showing member counts on dashboards
+- Calculating penetration rates (customers / members)
+- Market share analysis (members / population)
+- Cross-sell opportunity sizing
+
+**Member_Status__c values:**
+| Status | Count | Meaning |
+|--------|-------|---------|
+| A | 807,661 | Active |
+| X | 236,243 | Cancelled/expired |
+| L | 13,587 | Lapsed |
+| S | 12,095 | Suspended |
+| B | 9,033 | Unknown (billing?) |
+| C | 5,729 | Unknown |
+| P | 924 | Pending |
+| null | 96,931 | No status set |
+
+---
+
+## 12. Territory Map Data Architecture
+
+### ZIP+4 Normalization (CRITICAL)
+Insurance opportunities in Salesforce use ZIP+4 format (e.g., "14211-2506") for ~92% of records.
+Travel opportunities and Account records use standard 5-digit zips.
+
+**Always normalize to 5-digit**: `zip[:5]` and aggregate values when multiple ZIP+4 entries map to the same 5-digit zip.
+
+Without normalization, ~86% of insurance revenue ($3.19M of $3.7M) is invisible because
+ZIP+4 keys don't match 5-digit Account zip lookups.
+
+### Member Query Limits
+SOQL `GROUP BY` with `LIMIT 2000` + `HAVING COUNT(Id) >= N` misses the long tail.
+ZIP+4 fragmentation creates ~208K distinct postal codes in Accounts.
+
+**Solution**: Use a separate `COUNT(Id)` query (no GROUP BY) for accurate totals.
+The grouped query is only for per-zip map display. Current threshold: `MIN_MEMBERS = 10`.
+
+### Operating Regions
+Three regions: Western, Rochester, Central.
+Filter: `Billing_Region__c IN ('Western','Rochester','Central')`
+
+### County Boundaries
+26 counties in AAA WCNY territory. GeoJSON polygons stored in `geo_counties` table.
+Total polygon data: ~19KB (very lightweight). County boundaries loaded once and cached 1 hour.
+
+---
+
+## 13. Census / Demographic Data
+
+### Data Source
+US Census Bureau ACS (American Community Survey) via census.data.gov API.
+Seeded into SQLite tables: `geo_counties` (26 rows), `geo_zips` (1,107 rows).
+
+### Seed Data Files (in `backend/seed_data/`)
+- `census_counties.json` — 26 NY counties with boundaries + demographics
+- `census_zips.json` — 1,107 NY zip codes with demographics + centroids
+
+These JSON files are the source of truth for restoring census data after a fresh deployment.
+Run `seed_geodata.py` or the admin "Refresh Census Data" action to re-seed.
+
+### Fields Available
+| Field | Description | Source |
+|-------|-------------|--------|
+| population | Total population | ACS |
+| pop_18plus | Adult population (18+) | ACS |
+| median_income | Median household income ($) | ACS |
+| median_age | Median age | ACS |
+| housing_units | Total housing units | ACS |
+| median_home_value | Median home value ($) | ACS |
+| college_educated | Bachelor's degree or higher (25+) | ACS |
+| county_name | County name | ACS/FIPS lookup |
+| geojson | County boundary polygon (GeoJSON) | Census TIGER/Line |
+
+### Market Share Calculation
+```
+Market Share % = (AAA Active Members in zip / Census Population in zip) × 100
+```
+Uses active member filter (Section 11) for accurate numerator.
