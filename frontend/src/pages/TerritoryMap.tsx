@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query'
 import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import { fetchTerritoryMapData, type TerritoryZip, type TerritoryMapData } from '@/lib/api'
 import { useTheme } from '@/contexts/ThemeContext'
+import { useSales } from '@/contexts/SalesContext'
 import { cn } from '@/lib/utils'
 import {
   Loader2, Map as MapIcon, Shield, Plane, Users, Layers,
@@ -402,9 +403,11 @@ export default function TerritoryMap() {
 
   const level = zoomToLevel(zoom)
 
+  const { period, startDate, endDate } = useSales()
+
   const { data, isLoading, error } = useQuery<TerritoryMapData>({
-    queryKey: ['territory-map'],
-    queryFn: fetchTerritoryMapData,
+    queryKey: ['territory-map', period, startDate, endDate],
+    queryFn: () => fetchTerritoryMapData(period, startDate, endDate),
     staleTime: 5 * 60_000,
   })
 

@@ -309,6 +309,7 @@ function DestinationsTab() {
   const [loading, setLoading] = useState(true)
   const [sortField, setSortField] = useState<DestSort>('revenue')
   const [sortAsc, setSortAsc] = useState(false)
+  const [topN, setTopN] = useState(25)
 
   useEffect(() => {
     setLoading(true)
@@ -328,13 +329,15 @@ function DestinationsTab() {
   )
 
   const chartData = useMemo(
-    () => sorted.slice(0, 15).map(d => ({
+    () => sorted.slice(0, Math.min(topN, 20)).map(d => ({
       name: d.destination.length > 18 ? d.destination.slice(0, 16) + '…' : d.destination,
       fullName: d.destination,
       value: d.revenue,
     })),
-    [sorted],
+    [sorted, topN],
   )
+
+  const displayedDest = useMemo(() => sorted.slice(0, topN), [sorted, topN])
 
   const totalRev = useMemo(() => destinations.reduce((s, d) => s + d.revenue, 0), [destinations])
 
@@ -363,6 +366,13 @@ function DestinationsTab() {
 
   return (
     <div className="space-y-6">
+      {/* Top N control */}
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-muted-foreground">Show top</span>
+        <input type="number" min={1} max={200} value={topN}
+          onChange={e => setTopN(Math.max(1, Math.min(200, Number(e.target.value) || 25)))}
+          className="w-16 rounded-md border border-border bg-card px-2 py-1 text-sm text-foreground" />
+      </div>
       {/* Bar Chart */}
       <div className="rounded-xl border border-border bg-card p-5">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
@@ -390,9 +400,9 @@ function DestinationsTab() {
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="px-5 py-3 border-b border-border flex items-center justify-between">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            All Destinations — {sorted.length} markets
+            Top {displayedDest.length} Destinations — {sorted.length} total markets
           </h2>
-          <button onClick={() => exportToExcel(sorted.map((d, i) => ({
+          <button onClick={() => exportToExcel(displayedDest.map((d, i) => ({
             Rank: i + 1, Destination: d.destination, Revenue: d.revenue,
             Volume: d.volume, 'Avg Booking': d.avg_booking, 'YoY Growth %': d.yoy_growth_pct ?? '',
           })), 'Top_Destinations')}
@@ -422,7 +432,7 @@ function DestinationsTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
-              {sorted.map((d, idx) => {
+              {displayedDest.map((d, idx) => {
                 const share = totalRev > 0 ? (d.revenue / totalRev * 100) : 0
                 return (
                   <tr key={d.destination} className="hover:bg-muted/50 transition-colors">
@@ -464,7 +474,7 @@ interface RegionRow {
 }
 
 function RegionsTab() {
-  const { line } = useSales()
+  const { line, period, startDate, endDate } = useSales()
   const c = useChartColors()
 
   const [mapData, setMapData] = useState<TerritoryMapData | null>(null)
@@ -472,11 +482,11 @@ function RegionsTab() {
 
   useEffect(() => {
     setLoading(true)
-    fetchTerritoryMapData()
+    fetchTerritoryMapData(period, startDate, endDate)
       .then(setMapData)
       .catch(() => setMapData(null))
       .finally(() => setLoading(false))
-  }, [])
+  }, [period, startDate, endDate])
 
   const regions = useMemo((): RegionRow[] => {
     if (!mapData) return []
@@ -520,7 +530,7 @@ function RegionsTab() {
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Total Revenue</p>
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Total Bookings</p>
           <p className="mt-1 text-xl font-bold text-foreground">{fmt(totalRev)}</p>
         </div>
         <div className="rounded-xl border border-border bg-card p-4">
@@ -543,7 +553,7 @@ function RegionsTab() {
         {/* Horizontal bar */}
         <div className="rounded-xl border border-border bg-card p-5">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
-            Revenue by Region
+            Bookings by Region
           </h2>
           <ResponsiveContainer width="100%" height={regions.length * 60 + 40}>
             <BarChart data={regions} layout="vertical" margin={{ top: 0, right: 60, left: 10, bottom: 0 }}>

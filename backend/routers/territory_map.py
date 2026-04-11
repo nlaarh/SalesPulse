@@ -50,16 +50,21 @@ def _zip_centroid(zip_code: str) -> tuple:
 
 @router.get("/api/territory/map-data")
 def territory_map_data(
+    period: int = 12,
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
 ):
     """Return zip-level heatmap data for insurance + travel penetration."""
 
     today = date.today()
-    cy_start = f"{today.year}-01-01"
-    cy_end = today.isoformat()
-    py_start = f"{today.year - 1}-01-01"
-    py_end = f"{today.year - 1}-12-31"
+    # Use resolve_dates to honor period/custom dates like all other endpoints
+    cy_start, cy_end = _resolve_dates(start_date, end_date, period)
+    # Compute prior-year equivalent
+    from dateutil.relativedelta import relativedelta
+    sd = date.fromisoformat(cy_start)
+    ed = date.fromisoformat(cy_end)
+    py_start = (sd - relativedelta(years=1)).isoformat()
+    py_end = (ed - relativedelta(years=1)).isoformat()
     travel_3yr = f"{today.year - 3}-01-01"
 
     key = f"territory_map_{cy_start}_{cy_end}"

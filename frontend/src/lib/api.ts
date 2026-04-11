@@ -837,8 +837,14 @@ export interface TerritoryMapData {
   year: number
 }
 
-export async function fetchTerritoryMapData(): Promise<TerritoryMapData> {
-  const { data } = await api.get('/api/territory/map-data')
+export async function fetchTerritoryMapData(
+  period = 12,
+  startDate?: string | null,
+  endDate?: string | null,
+): Promise<TerritoryMapData> {
+  const { data } = await api.get('/api/territory/map-data', {
+    params: withDates({ period }, startDate, endDate),
+  })
   return data as TerritoryMapData
 }
 
