@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { fetchMonthlyTargets, saveMonthlyTargets, computeEstimates } from '@/lib/api'
 import type { MonthlyTargetAdvisor, EstimateAdvisor } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { Loader2, Save, Download, Calculator, AlertTriangle } from 'lucide-react'
+import { Loader2, Save, Download, Calculator, AlertTriangle, ChevronRight, Check, ArrowLeft } from 'lucide-react'
 import { exportToExcel } from '@/lib/exportExcel'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -47,6 +47,7 @@ export default function TargetGrid({ line }: Props) {
   const [estimating, setEstimating] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [existingCount, setExistingCount] = useState(0)
+  const [growthApplied, setGrowthApplied] = useState(false)
 
   // Booking estimates (editable) - advisor_target_id -> { month -> value }
   const [bookingEstimates, setBookingEstimates] = useState<Record<number, Record<number, number>>>({})
@@ -472,18 +473,70 @@ export default function TargetGrid({ line }: Props) {
     )
   }
 
+  // ── Step tracking ──────────────────────────────────────────────────────
+  // Step 1: Pick year + base years → Lookup base estimates
+  // Step 2: Set growth % + commission rate → Apply growth
+  // Step 3: Review & edit bookings/commissions → Save
+  const step = !estimateData ? 1 : !growthApplied ? 2 : 3
+
+  // Wrap applyGrowthToEstimates to track step progression
+  function handleApplyGrowth() {
+    applyGrowthToEstimates()
+    setGrowthApplied(true)
+    setActiveTab('bookings')
+  }
+
+  // Reset steps when year or base years change
+  function handleYearChange(y: number) {
+    setYear(y)
+    setEstimateData(null)
+    setGrowthApplied(false)
+  }
+
+  // Step indicator component
+  function StepIndicator({ num, label, active, done }: { num: number; label: string; active: boolean; done: boolean }) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className={cn(
+          'flex items-center justify-center w-7 h-7 rounded-full text-[12px] font-bold transition-all',
+          done ? 'bg-emerald-500 text-white' :
+          active ? 'bg-primary text-primary-foreground ring-2 ring-primary/30' :
+          'bg-secondary text-muted-foreground/50',
+        )}>
+          {done ? <Check className="w-3.5 h-3.5" /> : num}
+        </div>
+        <span className={cn(
+          'text-[12px] font-semibold transition-colors',
+          active ? 'text-foreground' : done ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground/50',
+        )}>{label}</span>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
 
-      {/* ── Year selector + Base year picker + Estimate button ──────────── */}
-      <div className="rounded-xl border border-border bg-secondary/20 p-4 space-y-3">
+      {/* ── Stepper header ─────────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 px-1">
+        <StepIndicator num={1} label="Load Base Data" active={step === 1} done={step > 1} />
+        <ChevronRight className="w-4 h-4 text-muted-foreground/30" />
+        <StepIndicator num={2} label="Apply Growth" active={step === 2} done={step > 2} />
+        <ChevronRight className="w-4 h-4 text-muted-foreground/30" />
+        <StepIndicator num={3} label="Review & Save" active={step === 3} done={saved} />
+        <div className="ml-auto text-[11px] text-muted-foreground">{rows.length} advisors</div>
+      </div>
+
+      {/* ── Step 1: Year + Base years + Lookup ─────────────────────────── */}
+      <div className={cn(
+        'rounded-xl border-2 p-4 transition-all',
+        step === 1 ? 'border-primary/40 bg-primary/5' : 'border-border bg-secondary/20',
+      )}>
         <div className="flex flex-wrap items-center gap-4">
-          {/* Target year */}
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Target Year</span>
             <select
               value={year}
-              onChange={e => setYear(Number(e.target.value))}
+              onChange={e => handleYearChange(Number(e.target.value))}
               className="rounded-lg border border-border bg-background px-3 py-1.5 text-[13px] font-bold"
             >
               {[currentYear - 1, currentYear, currentYear + 1].map(y => (
@@ -494,7 +547,6 @@ export default function TargetGrid({ line }: Props) {
 
           <div className="h-8 w-px bg-border/50" />
 
-          {/* Base years selection */}
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Base Year(s)</span>
             {[year - 1, year - 2, year - 3].map(y => (
@@ -519,145 +571,235 @@ export default function TargetGrid({ line }: Props) {
             onClick={handleComputeEstimates}
             disabled={estimating || baseYears.length === 0}
             className={cn(
-              'flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-[12px] font-semibold transition-all',
-              baseYears.length > 0
-                ? 'bg-primary text-primary-foreground hover:opacity-90'
+              'flex items-center gap-1.5 rounded-lg px-5 py-2 text-[13px] font-semibold transition-all',
+              baseYears.length > 0 && step === 1
+                ? 'bg-primary text-primary-foreground hover:opacity-90 shadow-sm'
+                : baseYears.length > 0
+                ? 'bg-secondary text-foreground border border-border hover:bg-secondary/80'
                 : 'bg-secondary text-muted-foreground cursor-not-allowed opacity-50',
             )}
           >
-            {estimating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Calculator className="h-3.5 w-3.5" />}
-            Lookup Base Estimates
+            {estimating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
+            {step === 1 ? 'Load Base Estimates' : 'Reload'}
           </button>
 
-          <span className="text-[11px] text-muted-foreground">{rows.length} advisors</span>
-        </div>
-
-        {/* Row 2: Growth % + Commission Rate controls */}
-        <div className="flex flex-wrap items-center gap-4 border-t border-border/50 pt-3">
-          {/* Avg Commission Rate */}
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Avg Commission Rate</span>
-            <input
-              type="number"
-              step="0.1"
-              value={commRate}
-              onChange={e => setCommRate(parseFloat(e.target.value) || 0)}
-              className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-[13px] font-bold tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
-            />
-            <span className="text-[13px] font-semibold text-muted-foreground">%</span>
-          </div>
-
-          <div className="h-8 w-px bg-border/50" />
-
-          {/* Growth target */}
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Growth Target</span>
-            <input
-              type="number"
-              value={growthPct}
-              onChange={e => setGrowthPct(Number(e.target.value) || 0)}
-              className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-[13px] font-bold tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
-            />
-            <span className="text-[13px] font-semibold text-muted-foreground">%</span>
-            <button
-              onClick={applyGrowthToEstimates}
-              disabled={!estimateData && rows.length === 0}
-              className={cn(
-                'rounded-lg px-4 py-1.5 text-[12px] font-semibold transition-all',
-                (estimateData || rows.length > 0)
-                  ? 'bg-primary text-primary-foreground hover:opacity-90'
-                  : 'bg-secondary text-muted-foreground cursor-not-allowed opacity-50',
-              )}
-            >
-              Calculate Target Estimates
-            </button>
-          </div>
+          {step > 1 && (
+            <span className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+              <Check className="w-3.5 h-3.5" /> Base data loaded
+            </span>
+          )}
         </div>
 
         {/* Confirm dialog */}
         {showConfirm && (
-          <div className="rounded-lg border border-border bg-secondary/40 p-3 flex items-center gap-3">
+          <div className="mt-3 rounded-lg border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-center gap-3">
             <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
             <span className="text-[12px] text-foreground">
               {existingCount} existing targets found for {year}. Recalculating will overwrite <strong>future months only</strong>. Continue?
             </span>
             <button
               onClick={handleComputeEstimates}
-              className="rounded-lg bg-primary px-3 py-1 text-[11px] font-semibold text-primary-foreground hover:opacity-90"
+              className="rounded-lg bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground hover:opacity-90"
             >
-              Yes, recalculate
+              Yes, continue
             </button>
             <button
               onClick={() => setShowConfirm(false)}
-              className="rounded-lg border border-border px-3 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-secondary"
+              className="rounded-lg border border-border px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:bg-secondary"
             >
               Cancel
             </button>
           </div>
         )}
-
-        {/* Commission rate info */}
-        {commRate > 0 && (
-          <div className="text-[11px] text-muted-foreground">
-            Avg commission rate: <span className="font-semibold text-foreground">{commRate}%</span>
-            {estimateData && baseYears.length > 0 && (
-              <span className="ml-2">• Base: {baseYears.join(', ')} averages</span>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* ── Tab bar ────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-1 border-b border-border">
-        {([
-          { key: 'base' as ActiveTab, label: 'Base Estimates', desc: 'Read-only' },
-          { key: 'bookings' as ActiveTab, label: 'Booking Estimates', desc: 'Editable' },
-          { key: 'commissions' as ActiveTab, label: 'Target Commissions', desc: 'Editable' },
-        ]).map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={cn(
-              'px-4 py-2 text-[12px] font-semibold border-b-2 transition-all -mb-px',
-              activeTab === tab.key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
-            )}
-          >
-            {tab.label}
-            <span className="ml-1.5 text-[10px] font-normal text-muted-foreground/60">({tab.desc})</span>
-          </button>
-        ))}
+      {/* ── Step 2: Growth % + Commission Rate ─────────────────────────── */}
+      {step >= 2 && (
+        <div className={cn(
+          'rounded-xl border-2 p-4 transition-all',
+          step === 2 ? 'border-primary/40 bg-primary/5' : 'border-border bg-secondary/20',
+        )}>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Avg Commission Rate</span>
+              <input
+                type="number"
+                step="0.1"
+                value={commRate}
+                onChange={e => setCommRate(parseFloat(e.target.value) || 0)}
+                className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-[13px] font-bold tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              <span className="text-[13px] font-semibold text-muted-foreground">%</span>
+            </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          {saved && <span className="text-[11px] font-medium text-emerald-500">Saved ✓</span>}
-          {error && <span className="text-[11px] font-medium text-destructive">{error}</span>}
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <Download className="h-3.5 w-3.5" />Export
-          </button>
-          {activeTab !== 'base' && (
+            <div className="h-8 w-px bg-border/50" />
+
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Growth Target</span>
+              <input
+                type="number"
+                value={growthPct}
+                onChange={e => setGrowthPct(Number(e.target.value) || 0)}
+                className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-[13px] font-bold tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              <span className="text-[13px] font-semibold text-muted-foreground">%</span>
+            </div>
+
             <button
-              onClick={handleSave}
-              disabled={!isEstimateDirty || saving}
+              onClick={handleApplyGrowth}
               className={cn(
-                'flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-[12px] font-semibold transition-all',
-                isEstimateDirty
-                  ? 'bg-primary text-primary-foreground hover:opacity-90'
-                  : 'bg-secondary text-muted-foreground cursor-not-allowed opacity-50',
+                'flex items-center gap-1.5 rounded-lg px-5 py-2 text-[13px] font-semibold transition-all',
+                step === 2
+                  ? 'bg-primary text-primary-foreground hover:opacity-90 shadow-sm'
+                  : 'bg-secondary text-foreground border border-border hover:bg-secondary/80',
               )}
             >
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              Save Changes
+              <Calculator className="h-4 w-4" />
+              {step === 2 ? 'Calculate Target Estimates' : 'Recalculate'}
             </button>
+
+            {step > 2 && (
+              <span className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                <Check className="w-3.5 h-3.5" /> +{growthPct}% growth applied
+              </span>
+            )}
+          </div>
+
+          {commRate > 0 && estimateData && baseYears.length > 0 && (
+            <div className="mt-2 text-[11px] text-muted-foreground">
+              Commission rate: <span className="font-semibold text-foreground">{commRate}%</span>
+              <span className="ml-2">• Base: {baseYears.join(', ')} averages</span>
+            </div>
           )}
         </div>
-      </div>
+      )}
 
-      {/* ── Tab content ────────────────────────────────────────────────── */}
-      {renderEstimateGrid(activeTab)}
+      {/* ── Step 3: Review & Save (Tab bar + Grid) ─────────────────────── */}
+      {step >= 3 && (<>
+        <div className={cn(
+          'rounded-xl border-2 p-4 transition-all',
+          'border-primary/40 bg-primary/5',
+        )}>
+          <div className="flex items-center gap-1 border-b border-border pb-2 mb-3">
+            {([
+              { key: 'bookings' as ActiveTab, label: 'Booking Targets', desc: 'Editable' },
+              { key: 'commissions' as ActiveTab, label: 'Commission Targets', desc: 'Editable' },
+              { key: 'base' as ActiveTab, label: 'Base Data', desc: 'Read-only' },
+            ]).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={cn(
+                  'px-4 py-2 text-[12px] font-semibold border-b-2 transition-all -mb-[9px]',
+                  activeTab === tab.key
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
+                )}
+              >
+                {tab.label}
+                <span className="ml-1.5 text-[10px] font-normal text-muted-foreground/60">({tab.desc})</span>
+              </button>
+            ))}
+
+            <div className="ml-auto flex items-center gap-2">
+              {saved && <span className="text-[11px] font-medium text-emerald-500">✓ Saved</span>}
+              {error && <span className="text-[11px] font-medium text-destructive">{error}</span>}
+              <button
+                onClick={handleExport}
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Download className="h-3.5 w-3.5" />Export
+              </button>
+              {activeTab !== 'base' && (
+                <button
+                  onClick={handleSave}
+                  disabled={!isEstimateDirty || saving}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-[12px] font-semibold transition-all',
+                    isEstimateDirty
+                      ? 'bg-primary text-primary-foreground hover:opacity-90'
+                      : 'bg-secondary text-muted-foreground cursor-not-allowed opacity-50',
+                  )}
+                >
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                  Save Changes
+                </button>
+              )}
+            </div>
+          </div>
+
+          {renderEstimateGrid(activeTab)}
+        </div>
+
+        {/* Back to step 2 link */}
+        <button
+          onClick={() => setGrowthApplied(false)}
+          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="w-3 h-3" /> Adjust growth settings
+        </button>
+      </>)}
+
+      {/* ── When no steps completed yet, show the base/estimate grid below step 1 ── */}
+      {step === 1 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-1 border-b border-border">
+            {([
+              { key: 'bookings' as ActiveTab, label: 'Booking Targets', desc: 'Current' },
+              { key: 'commissions' as ActiveTab, label: 'Commission Targets', desc: 'Current' },
+            ]).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={cn(
+                  'px-4 py-2 text-[12px] font-semibold border-b-2 transition-all -mb-px',
+                  activeTab === tab.key
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
+                )}
+              >
+                {tab.label}
+                <span className="ml-1.5 text-[10px] font-normal text-muted-foreground/60">({tab.desc})</span>
+              </button>
+            ))}
+            <div className="ml-auto flex items-center gap-2">
+              {saved && <span className="text-[11px] font-medium text-emerald-500">✓ Saved</span>}
+              {error && <span className="text-[11px] font-medium text-destructive">{error}</span>}
+              <button
+                onClick={handleExport}
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Download className="h-3.5 w-3.5" />Export
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!isEstimateDirty || saving}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-[12px] font-semibold transition-all',
+                  isEstimateDirty
+                    ? 'bg-primary text-primary-foreground hover:opacity-90'
+                    : 'bg-secondary text-muted-foreground cursor-not-allowed opacity-50',
+                )}
+              >
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                Save Changes
+              </button>
+            </div>
+          </div>
+          {renderEstimateGrid(activeTab === 'base' ? 'bookings' : activeTab)}
+        </div>
+      )}
+
+      {/* Step 2: Show base estimates grid */}
+      {step === 2 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-[13px] font-semibold">Base Estimates</h3>
+            <span className="text-[11px] text-muted-foreground">Prior year averages from {baseYears.join(', ')}</span>
+          </div>
+          {renderEstimateGrid('base')}
+        </div>
+      )}
 
     </div>
   )
