@@ -34,6 +34,8 @@ interface MapBubble {
   members: number
   ins_customers_cy: number
   ins_penetration: number
+  ins_rev_cy: number
+  ins_rev_py: number
   travel_customers_3yr: number
   travel_customers_cy: number
   travel_customers_py: number
@@ -116,6 +118,8 @@ function aggregateZips(zips: TerritoryZip[], groupBy: 'region' | 'city', totalRe
     const tc_py = group.reduce((s, z) => s + z.travel_customers_py, 0)
     const tr_cy = group.reduce((s, z) => s + z.travel_rev_cy, 0)
     const tr_py = group.reduce((s, z) => s + z.travel_rev_py, 0)
+    const ir_cy = group.reduce((s, z) => s + z.ins_rev_cy, 0)
+    const ir_py = group.reduce((s, z) => s + z.ins_rev_py, 0)
     const pop = group.reduce((s, z) => s + (z.population || 0), 0)
     const pop18 = group.reduce((s, z) => s + (z.pop_18plus || 0), 0)
     const housing = group.reduce((s, z) => s + (z.housing_units || 0), 0)
@@ -142,6 +146,8 @@ function aggregateZips(zips: TerritoryZip[], groupBy: 'region' | 'city', totalRe
       members,
       ins_customers_cy: ins_cy,
       ins_penetration: members ? Math.round(ins_cy / members * 1000) / 10 : 0,
+      ins_rev_cy: ir_cy,
+      ins_rev_py: ir_py,
       travel_customers_3yr: travel_3yr,
       travel_customers_cy: tc_cy,
       travel_customers_py: tc_py,
@@ -291,7 +297,7 @@ function BubbleTooltipContent({ b, year }: { b: MapBubble; year: number }) {
         <span className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{b.sublabel}</span>
       </div>
 
-      {/* Census + Market Share */}
+      {/* Census + Market Share — compact grid */}
       {b.population > 0 && (
         <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] mb-1.5 pb-1.5 border-b border-border">
           <div className="flex justify-between"><span className="text-muted-foreground">Population</span><span className="font-semibold">{fmt(b.population)}</span></div>
@@ -303,9 +309,12 @@ function BubbleTooltipContent({ b, year }: { b: MapBubble; year: number }) {
         </div>
       )}
 
-      {/* Members */}
-      <div className="text-[11px] mb-1.5 pb-1.5 border-b border-border">
+      {/* Members + Revenue */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] mb-1.5 pb-1.5 border-b border-border">
         <div className="flex justify-between"><span className="text-muted-foreground">AAA Members</span><span className="font-semibold">{fmt(b.members)}</span></div>
+        {b.rev_pct_of_total > 0 && (
+          <div className="flex justify-between"><span className="text-muted-foreground">% Total Rev</span><span className="font-bold text-amber-600">{fmtPct(b.rev_pct_of_total)}</span></div>
+        )}
       </div>
 
       {/* Insurance + Travel side by side */}
@@ -313,15 +322,14 @@ function BubbleTooltipContent({ b, year }: { b: MapBubble; year: number }) {
         <div>
           <p className="font-semibold text-blue-600 mb-0.5">🛡 Insurance</p>
           <div className="flex justify-between"><span className="text-muted-foreground">Customers</span><span className="font-medium">{fmt(b.ins_customers_cy)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">% of Members</span><span className="font-medium">{fmtPct(b.ins_penetration)}</span></div>
-          {b.population > 0 && <div className="flex justify-between"><span className="text-muted-foreground">% of Pop.</span><span className="font-medium">{fmtPct(b.ins_customers_cy / b.population * 100)}</span></div>}
+          <div className="flex justify-between"><span className="text-muted-foreground">Rev ({year})</span><span className="font-medium">{fmtCurrency(b.ins_rev_cy)} {yoyBadge(b.ins_rev_cy, b.ins_rev_py)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Penetration</span><span className="font-medium">{fmtPct(b.ins_penetration)}</span></div>
         </div>
         <div>
           <p className="font-semibold text-emerald-600 mb-0.5">✈ Travel</p>
-          <div className="flex justify-between"><span className="text-muted-foreground">Customers (3yr)</span><span className="font-medium">{fmt(b.travel_customers_3yr)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">% of Members</span><span className="font-medium">{fmtPct(b.travel_penetration)}</span></div>
-          {b.population > 0 && <div className="flex justify-between"><span className="text-muted-foreground">% of Pop.</span><span className="font-medium">{fmtPct(b.travel_customers_3yr / b.population * 100)}</span></div>}
+          <div className="flex justify-between"><span className="text-muted-foreground">Cust (3yr)</span><span className="font-medium">{fmt(b.travel_customers_3yr)}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Rev ({year})</span><span className="font-medium">{fmtCurrency(b.travel_rev_cy)} {yoyBadge(b.travel_rev_cy, b.travel_rev_py)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Penetration</span><span className="font-medium">{fmtPct(b.travel_penetration)}</span></div>
         </div>
       </div>
     </div>
@@ -340,7 +348,7 @@ function ZipTooltipContent({ z, year }: { z: TerritoryZip; year: number }) {
         </span>
       </div>
 
-      {/* Census + Market Share */}
+      {/* Census + Market Share — compact grid */}
       {z.population > 0 && (
         <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] mb-1.5 pb-1.5 border-b border-border">
           <div className="flex justify-between"><span className="text-muted-foreground">Population</span><span className="font-semibold">{fmt(z.population)}</span></div>
@@ -352,11 +360,14 @@ function ZipTooltipContent({ z, year }: { z: TerritoryZip; year: number }) {
         </div>
       )}
 
-      {/* Members + County */}
+      {/* Members + Revenue */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] mb-1.5 pb-1.5 border-b border-border">
         <div className="flex justify-between"><span className="text-muted-foreground">AAA Members</span><span className="font-semibold">{fmt(z.members)}</span></div>
+        {z.rev_pct_of_total > 0 && (
+          <div className="flex justify-between"><span className="text-muted-foreground">% Total Rev</span><span className="font-bold text-amber-600">{fmtPct(z.rev_pct_of_total)}</span></div>
+        )}
         {z.county_name && (
-          <div className="flex justify-between"><span className="text-muted-foreground">County</span><span className="font-medium">{z.county_name}</span></div>
+          <div className="flex justify-between col-span-2"><span className="text-muted-foreground">County</span><span className="font-medium">{z.county_name}</span></div>
         )}
       </div>
 
@@ -365,17 +376,16 @@ function ZipTooltipContent({ z, year }: { z: TerritoryZip; year: number }) {
         <div>
           <p className="font-semibold text-blue-600 mb-0.5">🛡 Insurance</p>
           <div className="flex justify-between"><span className="text-muted-foreground">Customers</span><span className="font-medium">{fmt(z.ins_customers_cy)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">% of Members</span><span className="font-medium">{fmtPct(z.ins_penetration)}</span></div>
-          {z.population > 0 && <div className="flex justify-between"><span className="text-muted-foreground">% of Pop.</span><span className="font-medium">{fmtPct(z.ins_customers_cy / z.population * 100)}</span></div>}
+          <div className="flex justify-between"><span className="text-muted-foreground">Rev ({year})</span><span className="font-medium">{fmtCurrency(z.ins_rev_cy)} {yoyBadge(z.ins_rev_cy, z.ins_rev_py)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Penetration</span><span className="font-medium">{fmtPct(z.ins_penetration)}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">% of Org</span><span className="font-medium">{fmtPct(z.ins_pct_of_total)}</span></div>
         </div>
         <div>
           <p className="font-semibold text-emerald-600 mb-0.5">✈ Travel</p>
-          <div className="flex justify-between"><span className="text-muted-foreground">Customers (3yr)</span><span className="font-medium">{fmt(z.travel_customers_3yr)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">% of Members</span><span className="font-medium">{fmtPct(z.travel_penetration)}</span></div>
-          {z.population > 0 && <div className="flex justify-between"><span className="text-muted-foreground">% of Pop.</span><span className="font-medium">{fmtPct(z.travel_customers_3yr / z.population * 100)}</span></div>}
-          <div className="flex justify-between"><span className="text-muted-foreground">% of Org</span><span className="font-medium">{fmtPct(z.travel_pct_of_total)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Cust (3yr)</span><span className="font-medium">{fmt(z.travel_customers_3yr)}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Rev ({year})</span><span className="font-medium">{fmtCurrency(z.travel_rev_cy)} {yoyBadge(z.travel_rev_cy, z.travel_rev_py)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Penetration</span><span className="font-medium">{fmtPct(z.travel_penetration)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">% of Org</span><span className="font-medium">{fmtPct(z.travel_pct_of_total)}</span></div>
         </div>
       </div>
     </div>
@@ -465,6 +475,7 @@ export default function TerritoryMap() {
         return {
           members: r.members,
           ins_customers: r.ins_cy,
+          ins_rev_cy: r.ins_rev_cy,
           travel_customers_3yr: r.travel_3yr,
           travel_rev_cy: r.travel_rev_cy,
           zip_count: r.zip_count,
@@ -528,8 +539,8 @@ export default function TerritoryMap() {
         <SummaryCard
           icon={TrendingUp}
           label={`Revenue (${year})`}
-          value={fmtCurrency(filteredStats.travel_rev_cy)}
-          sub={totals.travel_rev_py ? `PY: ${fmtCurrency(totals.travel_rev_py)}` : undefined}
+          value={fmtCurrency((filteredStats.ins_rev_cy || 0) + filteredStats.travel_rev_cy)}
+          sub={totals.travel_rev_py || totals.ins_rev_py ? `PY: ${fmtCurrency((totals.ins_rev_py || 0) + (totals.travel_rev_py || 0))}` : undefined}
           accent="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
         />
       </div>}
@@ -757,7 +768,7 @@ function PenetrationTable({
                 <td className="px-3 py-2 text-right font-medium">{fmtPct(z.ins_penetration)}</td>
                 <td className="px-3 py-2 text-right">{fmt(z.travel_customers_3yr)}</td>
                 <td className="px-3 py-2 text-right font-medium">{fmtPct(z.travel_penetration)}</td>
-                <td className="px-3 py-2 text-right">{fmtCurrency(z.travel_rev_cy)} {yoyBadge(z.travel_rev_cy, z.travel_rev_py)}</td>
+                <td className="px-3 py-2 text-right">{fmtCurrency(z.ins_rev_cy + z.travel_rev_cy)}</td>
               </tr>
             ))}
           </tbody>
