@@ -154,6 +154,66 @@ class GeoZip(Base):
     college_educated = Column(Integer, nullable=True)  # bachelor's+ (25+)
 
 
+class AIAuditLog(Base):
+    """Audit trail for AI chat queries."""
+    __tablename__ = 'ai_audit_log'
+    __table_args__ = (
+        Index('ix_ai_audit_user', 'user_id'),
+        Index('ix_ai_audit_ts', 'created_at'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)
+    user_email = Column(String, nullable=False)
+    query = Column(String, nullable=False)
+    intent = Column(String, nullable=True)
+    blocked = Column(Boolean, default=False)
+    block_reason = Column(String, nullable=True)
+    block_guard = Column(String, nullable=True)
+    response_len = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ApiRequestMetric(Base):
+    """Server-side API request timing samples."""
+    __tablename__ = 'api_request_metrics'
+    __table_args__ = (
+        Index('ix_api_request_metrics_created_at', 'created_at'),
+        Index('ix_api_request_metrics_path_created_at', 'path', 'created_at'),
+        Index('ix_api_request_metrics_status_created_at', 'status_code', 'created_at'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    method = Column(String, nullable=False)
+    path = Column(String, nullable=False, index=True)  # normalized route path when available
+    raw_path = Column(String, nullable=True)           # full raw request path
+    status_code = Column(Integer, nullable=False, index=True)
+    duration_ms = Column(Float, nullable=False)
+    user_id = Column(Integer, nullable=True, index=True)
+    user_email = Column(String, nullable=True, index=True)
+    source = Column(String, nullable=False, default='middleware')
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class ClientRenderMetric(Base):
+    """Client-side render timing events reported by frontend."""
+    __tablename__ = 'client_render_metrics'
+    __table_args__ = (
+        Index('ix_client_render_metrics_created_at', 'created_at'),
+        Index('ix_client_render_metrics_page_created_at', 'page', 'created_at'),
+        Index('ix_client_render_metrics_metric_created_at', 'metric', 'created_at'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    page = Column(String, nullable=False, index=True)
+    metric = Column(String, nullable=False, index=True)
+    duration_ms = Column(Float, nullable=False)
+    metadata_json = Column(String, nullable=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    user_email = Column(String, nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 class ActivityLog(Base):
     __tablename__ = 'activity_logs'
     __table_args__ = (

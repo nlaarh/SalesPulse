@@ -79,38 +79,99 @@ def _score_customer(total_spend: float, opp_count: int, ltv: str) -> tuple[int, 
     return total, priority
 
 
-def _build_reason(gap_type: str, total_spend: float, opp_count: int) -> str:
-    """Build human-readable reason for the cross-sell recommendation."""
+def _build_reason(gap_type: str, total_spend: float, opp_count: int,
+                   acct: dict | None = None, has_medicare: bool = False) -> str:
+    """Build smart, actionable reason using spend + age + membership + LTV + product ownership."""
     spend_str = f"${total_spend:,.0f}"
+    age = acct.get('age') if acct else None
+    membership = acct.get('membership', '') or '' if acct else ''
+    tenure = acct.get('tenure_years') if acct else None
+    ltv = (acct.get('ltv', '') or '').upper()[:1] if acct else ''
+
+    parts = []
+
     if gap_type == 'needs_insurance':
-        return (
-            f"Spent {spend_str} on travel ({opp_count} booking{'s' if opp_count != 1 else ''}) "
-            f"— no insurance products on file"
-        )
+        parts.append(f"{spend_str} travel spend ({opp_count} booking{'s' if opp_count != 1 else ''})")
+        # Age-based recommendation — check what they already have
+        if age:
+            if age >= 60:
+                if has_medicare:
+                    parts.append(f"Age {age}, already has Medicare — focus on auto, home, umbrella")
+                else:
+                    parts.append(f"Age {age} — strong Medicare supplement + auto candidate")
+            elif age >= 40:
+                parts.append(f"Age {age} — home, auto, and umbrella insurance fit")
+            elif age >= 25:
+                parts.append(f"Age {age} — auto + renters insurance fit")
+            else:
+                parts.append(f"Age {age} — auto insurance starter candidate")
+        elif not age and has_medicare:
+            parts.append("Already has Medicare — focus on auto, home, umbrella")
+        if membership:
+            parts.append(f"{membership} member{f' ({tenure}yr)' if tenure else ''} — bundled offer candidate")
+        if ltv in ('A', 'B'):
+            parts.append(f"LTV {ltv} — high-value, prioritize outreach")
     else:
-        return (
-            f"Has {opp_count} insurance polic{'ies' if opp_count != 1 else 'y'} ({spend_str}) "
-            f"— no travel bookings on file"
-        )
+        parts.append(f"{opp_count} insurance polic{'ies' if opp_count != 1 else 'y'} ({spend_str})")
+        if age:
+            if age >= 55:
+                parts.append(f"Age {age} — cruise, escorted tour, or destination travel")
+            elif age >= 35:
+                parts.append(f"Age {age} — family vacation + group travel packages")
+            else:
+                parts.append(f"Age {age} — adventure + budget travel packages")
+        if membership:
+            parts.append(f"{membership} member{f' ({tenure}yr)' if tenure else ''} — travel discounts available")
+        if ltv in ('A', 'B'):
+            parts.append(f"LTV {ltv} — premium travel packages likely fit")
+
+    return '. '.join(parts)
 
 
 def _enrich_accounts(account_ids: list[str]) -> dict[str, dict]:
-    """Fetch Account details (name, phone, email, city, LTV) in batches."""
+    """Fetch Account details (name, phone, email, city, LTV, age, membership) in batches."""
+    from datetime import date
+    today = date.today()
     result: dict[str, dict] = {}
     for i in range(0, len(account_ids), 200):
         batch = account_ids[i:i + 200]
         ids_csv = ','.join(f"'{aid}'" for aid in batch)
         rows = sf_query_all(
-            f"SELECT Id, Name, Phone, PersonEmail, BillingCity, LTV__c "
+            f"SELECT Id, Name, Phone, PersonEmail, BillingCity, LTV__c, "
+            f"PersonBirthdate, ImportantActiveMemCoverage__c, Account_Member_Since__c, Type "
             f"FROM Account WHERE Id IN ({ids_csv})"
         )
         for r in rows:
+            age = None
+            bd = r.get('PersonBirthdate')
+            if bd:
+                try:
+                    born = date.fromisoformat(bd)
+                    age = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+                except Exception:
+                    pass
+            # Normalize membership level
+            raw_mem = (r.get('ImportantActiveMemCoverage__c') or '').strip().upper()
+            membership = {'PLUS': 'Plus', 'PREMIER': 'Premier', 'B': 'Basic',
+                          'BASIC': 'Basic', 'CLASSIC': 'Classic'}.get(raw_mem, raw_mem.title() if raw_mem else '')
+            # Calculate tenure in years
+            tenure = None
+            ms = r.get('Account_Member_Since__c')
+            if ms:
+                try:
+                    since = date.fromisoformat(ms)
+                    tenure = today.year - since.year
+                except Exception:
+                    pass
             result[r['Id']] = {
                 'name': r.get('Name', ''),
                 'phone': r.get('Phone', ''),
                 'email': r.get('PersonEmail', ''),
                 'city': r.get('BillingCity', ''),
                 'ltv': r.get('LTV__c', ''),
+                'age': age,
+                'membership': membership,
+                'tenure_years': tenure,
             }
     return result
 
@@ -128,8 +189,12 @@ def cross_sell_insights(
     key = f"cross_sell_v2_{sd}_{ed}"
 
     def fetch():
-        # Fetch raw opportunity records (no GROUP BY to avoid queryMore limit)
+        from datetime import date
+        three_yr_ago = f"{date.today().year - 3}-01-01"
+
+        # ── Fetch activity data (current period) + ownership data (all-time) ──
         data = sf_parallel(
+            # Current period travel activity (for spend/engagement scoring)
             travel_raw=f"""
                 SELECT AccountId, Amount
                 FROM Opportunity
@@ -138,6 +203,7 @@ def cross_sell_insights(
                   AND CloseDate >= {sd} AND CloseDate <= {ed}
                   AND Amount != null AND AccountId != null
             """,
+            # Current period insurance activity
             insurance_raw=f"""
                 SELECT AccountId, Amount
                 FROM Opportunity
@@ -146,9 +212,46 @@ def cross_sell_insights(
                   AND CloseDate >= {sd} AND CloseDate <= {ed}
                   AND Amount != null AND AccountId != null
             """,
+            # ALL-TIME insurance customers (by Insurance Customer ID on Account)
+            ins_customers_alltime=f"""
+                SELECT Id
+                FROM Account
+                WHERE Insuance_Customer_ID__c != null
+                  AND Id IN (
+                    SELECT AccountId FROM Opportunity
+                    WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
+                      AND {WON_STAGES}
+                      AND CloseDate >= {sd} AND CloseDate <= {ed}
+                      AND Amount != null
+                  )
+            """,
+            # ALL-TIME travel customers (opp in last 3 years = still active)
+            travel_customers_3yr=f"""
+                SELECT AccountId
+                FROM Opportunity
+                WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
+                  AND {WON_STAGES}
+                  AND CloseDate >= {three_yr_ago}
+                  AND AccountId != null
+            """,
+            # ALL-TIME Medicare holders
+            medicare_holders=f"""
+                SELECT AccountId
+                FROM Opportunity
+                WHERE RecordType.Name = 'Medicare'
+                  AND AccountId != null
+            """,
+            # ALL-TIME insurance opp holders (broader than current period)
+            ins_opp_alltime=f"""
+                SELECT AccountId
+                FROM Opportunity
+                WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
+                  AND {WON_STAGES}
+                  AND AccountId != null
+            """,
         )
 
-        # Aggregate in Python: AccountId → {total, cnt}
+        # ── Aggregate current-period activity by account ──
         travel_by_acct: dict[str, dict] = {}
         for r in data.get('travel_raw', []):
             aid = r.get('AccountId')
@@ -169,15 +272,29 @@ def cross_sell_insights(
                 ins_by_acct[aid]['total'] += amt
                 ins_by_acct[aid]['cnt'] += 1
 
+        # ── Build TRUE product ownership sets (all-time, not just current period) ──
+        # Someone IS an insurance customer if they have Insurance_Customer_ID OR any insurance opp ever
+        ins_customer_by_id = {r.get('Id') for r in data.get('ins_customers_alltime', []) if r.get('Id')}
+        ins_opp_ever = {r.get('AccountId') for r in data.get('ins_opp_alltime', []) if r.get('AccountId')}
+        true_ins_customers = ins_customer_by_id | ins_opp_ever | set(ins_by_acct.keys())
+
+        # Someone IS a travel customer if they have a travel opp in the last 3 years
+        true_travel_customers = {r.get('AccountId') for r in data.get('travel_customers_3yr', []) if r.get('AccountId')}
+        true_travel_customers |= set(travel_by_acct.keys())
+
+        # Medicare holders
+        medicare_ids = {r.get('AccountId') for r in data.get('medicare_holders', []) if r.get('AccountId')}
+
         travel_account_ids = set(travel_by_acct.keys())
         ins_account_ids = set(ins_by_acct.keys())
 
-        # Customers with travel but NO insurance
-        needs_insurance_ids = travel_account_ids - ins_account_ids
-        # Customers with insurance but NO travel
-        needs_travel_ids = ins_account_ids - travel_account_ids
-        # Customers with both (for summary stats)
-        have_both_ids = travel_account_ids & ins_account_ids
+        # ── TRUE product gaps (using all-time ownership, not just current period) ──
+        # "Needs insurance" = active travel customer but NOT an insurance customer (ever)
+        needs_insurance_ids = travel_account_ids - true_ins_customers
+        # "Needs travel" = active insurance customer but NOT a travel customer (last 3yr)
+        needs_travel_ids = ins_account_ids - true_travel_customers
+        # Both = has both product lines
+        have_both_ids = (travel_account_ids & true_ins_customers) | (ins_account_ids & true_travel_customers)
 
         # Sort by spend descending, take top N for each
         needs_ins_sorted = sorted(
@@ -198,53 +315,39 @@ def cross_sell_insights(
 
         sf_base = sf_instance_url()
 
-        # Build "needs insurance" opportunities
-        needs_insurance = []
-        for aid in needs_ins_sorted:
-            spend = travel_by_acct[aid]
+        def _build_row(aid, spend, gap_type, gap_label, products_owned):
             acct = account_details.get(aid, {})
+            has_medicare = aid in medicare_ids
             score, priority = _score_customer(spend['total'], spend['cnt'], acct.get('ltv', ''))
-            needs_insurance.append({
+            return {
                 'account_id': aid,
                 'account_name': acct.get('name', ''),
                 'phone': acct.get('phone', ''),
                 'email': acct.get('email', ''),
                 'city': acct.get('city', ''),
                 'ltv': acct.get('ltv', ''),
-                'products_owned': ['Travel'],
-                'gap': 'Insurance',
-                'gap_type': 'needs_insurance',
+                'membership': acct.get('membership', ''),
+                'age': acct.get('age'),
+                'has_medicare': has_medicare,
+                'products_owned': products_owned,
+                'gap': gap_label,
+                'gap_type': gap_type,
                 'total_spend': round(spend['total'], 2),
                 'transaction_count': spend['cnt'],
                 'score': score,
                 'priority': priority,
-                'reason': _build_reason('needs_insurance', spend['total'], spend['cnt']),
+                'reason': _build_reason(gap_type, spend['total'], spend['cnt'], acct, has_medicare),
                 'sf_link': f"{sf_base}/{aid}",
-            })
+            }
 
-        # Build "needs travel" opportunities
-        needs_travel = []
-        for aid in needs_travel_sorted:
-            spend = ins_by_acct[aid]
-            acct = account_details.get(aid, {})
-            score, priority = _score_customer(spend['total'], spend['cnt'], acct.get('ltv', ''))
-            needs_travel.append({
-                'account_id': aid,
-                'account_name': acct.get('name', ''),
-                'phone': acct.get('phone', ''),
-                'email': acct.get('email', ''),
-                'city': acct.get('city', ''),
-                'ltv': acct.get('ltv', ''),
-                'products_owned': ['Insurance'],
-                'gap': 'Travel',
-                'gap_type': 'needs_travel',
-                'total_spend': round(spend['total'], 2),
-                'transaction_count': spend['cnt'],
-                'score': score,
-                'priority': priority,
-                'reason': _build_reason('needs_travel', spend['total'], spend['cnt']),
-                'sf_link': f"{sf_base}/{aid}",
-            })
+        needs_insurance = [
+            _build_row(aid, travel_by_acct[aid], 'needs_insurance', 'Insurance', ['Travel'])
+            for aid in needs_ins_sorted
+        ]
+        needs_travel = [
+            _build_row(aid, ins_by_acct[aid], 'needs_travel', 'Travel', ['Insurance'])
+            for aid in needs_travel_sorted
+        ]
 
         # Summary totals (computed from Python-aggregated data)
         total_travel_revenue = sum(v['total'] for v in travel_by_acct.values())

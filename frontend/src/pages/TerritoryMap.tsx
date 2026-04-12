@@ -7,17 +7,21 @@
  */
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { MapContainer, TileLayer, CircleMarker, Tooltip, GeoJSON, useMap, useMapEvents } from 'react-leaflet'
-import { fetchTerritoryMapData, fetchTerritoryBoundaries, type TerritoryZip, type TerritoryMapData, type CountyBoundaryData } from '@/lib/api'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { MapContainer, TileLayer, GeoJSON, useMap, useMapEvents } from 'react-leaflet'
+import { fetchTerritoryMapData, fetchTerritoryBoundaries, flushCache, reportClientRenderMetric, type TerritoryZip, type TerritoryMapData, type CountyBoundaryData } from '@/lib/api'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useSales } from '@/contexts/SalesContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
+import * as L from 'leaflet'
+import { type PathOptions } from 'leaflet'
 import {
   Loader2, Map as MapIcon, Shield, Plane, Users,
-  TrendingUp, Minus, Info, ZoomIn, BarChart3, Maximize2, Minimize2,
+  TrendingUp, Info, ZoomIn, BarChart3, Maximize2, Minimize2, RefreshCw,
 } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
+import type { TerritoryTotals } from '@/lib/api'
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
 
@@ -185,22 +189,15 @@ const fmtCurrency = (n: number) =>
       ? `$${(n / 1_000).toFixed(0)}K`
       : `$${n.toFixed(0)}`
 
-function yoyBadge(cy: number, py: number) {
-  if (!py) return null
-  const delta = ((cy - py) / py) * 100
-  if (Math.abs(delta) < 1) return <Minus className="w-3 h-3 text-muted-foreground inline" />
-  if (delta > 0)
-    return <span className="text-green-600 dark:text-green-400 text-xs font-medium">+{delta.toFixed(0)}%</span>
-  return <span className="text-red-600 dark:text-red-400 text-xs font-medium">{delta.toFixed(0)}%</span>
-}
-
 /* ── Zoom tracker ────────────────────────────────────────────────────────── */
 
-function ZoomTracker({ onZoom }: { onZoom: (z: number) => void }) {
+function ViewportTracker({ onZoomChange }: {
+  onZoomChange: (zoom: number) => void
+}) {
   const map = useMapEvents({
-    zoomend: () => onZoom(map.getZoom()),
+    zoomend: () => onZoomChange(map.getZoom()),
   })
-  useEffect(() => { onZoom(map.getZoom()) }, [map, onZoom])
+  useEffect(() => { onZoomChange(map.getZoom()) }, [map, onZoomChange])
   return null
 }
 
@@ -213,6 +210,59 @@ function MapResizer({ fullscreen }: { fullscreen: boolean }) {
   return null
 }
 
+/** Move the tooltip pane to document.body so it escapes all overflow:hidden ancestors */
+function TooltipOverflowFix() {
+  const map = useMap()
+  useEffect(() => {
+    const container = map.getContainer()
+    const tooltipPane = map.getPane('tooltipPane')
+    if (!tooltipPane || !container) return
+
+    // Reparent to body
+    document.body.appendChild(tooltipPane)
+    tooltipPane.style.position = 'fixed'
+    tooltipPane.style.zIndex = '10000'
+    tooltipPane.style.pointerEvents = 'none'
+    tooltipPane.style.top = '0'
+    tooltipPane.style.left = '0'
+
+    const sync = () => {
+      const mapPane = map.getPane('mapPane')
+      if (!mapPane) return
+      const rect = container.getBoundingClientRect()
+      // Combine container screen position + map pane internal transform
+      const mapTransform = mapPane.style.transform
+      // Extract translate values from "translate3d(Xpx, Ypx, 0px)"
+      const match = mapTransform.match(/translate3d\(([^,]+),\s*([^,]+)/)
+      const tx = match ? parseFloat(match[1]) : 0
+      const ty = match ? parseFloat(match[2]) : 0
+      tooltipPane.style.transform = `translate3d(${rect.left + tx}px, ${rect.top + ty}px, 0px)`
+    }
+    map.on('move zoom viewreset moveend zoomend', sync)
+    window.addEventListener('scroll', sync, true)
+    window.addEventListener('resize', sync)
+    sync()
+
+    return () => {
+      map.off('move zoom viewreset moveend zoomend', sync)
+      window.removeEventListener('scroll', sync, true)
+      window.removeEventListener('resize', sync)
+      // Move tooltip pane back to map pane on cleanup
+      const mapPane = map.getPane('mapPane')
+      if (mapPane && tooltipPane.parentElement === document.body) {
+        mapPane.appendChild(tooltipPane)
+        tooltipPane.style.position = ''
+        tooltipPane.style.zIndex = ''
+        tooltipPane.style.pointerEvents = ''
+        tooltipPane.style.top = ''
+        tooltipPane.style.left = ''
+        tooltipPane.style.transform = ''
+      }
+    }
+  }, [map])
+  return null
+}
+
 const REGION_CENTERS: Record<string, { lat: number; lng: number; zoom: number }> = {
   Western:   { lat: 42.89, lng: -78.85, zoom: 11 },
   Rochester: { lat: 43.16, lng: -77.61, zoom: 11 },
@@ -220,7 +270,7 @@ const REGION_CENTERS: Record<string, { lat: number; lng: number; zoom: number }>
   All:       { lat: 43.0,  lng: -77.50, zoom: 9 },
 }
 
-function FlyToRegion({ region, zips }: { region: RegionFilter; zips: TerritoryZip[] }) {
+function FlyToRegion({ region }: { region: RegionFilter }) {
   const map = useMap()
   const prevRegion = useRef(region)
   useEffect(() => {
@@ -228,7 +278,146 @@ function FlyToRegion({ region, zips }: { region: RegionFilter; zips: TerritoryZi
     prevRegion.current = region
     const center = REGION_CENTERS[region] || REGION_CENTERS.All
     map.flyTo([center.lat, center.lng], center.zoom, { duration: 0.8 })
-  }, [region, zips, map])
+  }, [region, map])
+  return null
+}
+
+type BubbleRenderData = {
+  key: string
+  lat: number
+  lng: number
+  radius: number
+  pathOptions: PathOptions
+  bubble: MapBubble
+}
+
+type ZipRenderData = {
+  key: string
+  lat: number
+  lng: number
+  radius: number
+  pathOptions: PathOptions
+  zip: TerritoryZip
+}
+
+/** Imperative circle layer — bypasses React reconciliation for 400+ markers */
+function ImperativeCircleLayer({
+  bubbleItems,
+  zipItems,
+  year,
+  totals,
+  canvasRenderer,
+}: {
+  bubbleItems: BubbleRenderData[]
+  zipItems: ZipRenderData[]
+  year: number
+  totals: TerritoryTotals
+  canvasRenderer: L.Canvas
+}) {
+  const map = useMap()
+  const layerGroupRef = useRef<L.LayerGroup | null>(null)
+
+  useEffect(() => {
+    // Clear previous markers
+    if (layerGroupRef.current) {
+      layerGroupRef.current.clearLayers()
+    } else {
+      layerGroupRef.current = L.layerGroup().addTo(map)
+    }
+    const group = layerGroupRef.current
+
+    // Draw bubble markers
+    for (const item of bubbleItems) {
+      const marker = L.circleMarker([item.lat, item.lng], {
+        ...item.pathOptions,
+        renderer: canvasRenderer,
+        radius: item.radius,
+      })
+      const b = item.bubble
+      const insPct = totals.ins_customers ? (b.ins_customers_cy / totals.ins_customers * 100).toFixed(1) : '0.0'
+      const travelPct = totals.travel_customers_3yr ? (b.travel_customers_3yr / totals.travel_customers_3yr * 100).toFixed(1) : '0.0'
+      marker.bindTooltip(`
+        <div style="min-width:260px;font-size:11px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <b style="font-size:13px">${b.label}</b>
+            <span style="opacity:0.6;font-size:10px">${b.sublabel}</span>
+          </div>
+          ${b.population > 0 ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid rgba(128,128,128,0.2)">
+            <span>Population <b>${fmt(b.population)}</b></span>
+            <span>Adults 18+ <b>${fmt(b.pop_18plus)}</b></span>
+            <span>Med. Income <b>${fmtCurrency(b.median_income)}</b></span>
+            <span>Med. Age <b>${b.median_age}</b></span>
+            <span style="color:#ea580c;font-weight:600">Mkt Share <b>${fmtPct(b.market_share)}</b></span>
+          </div>` : ''}
+          <div style="margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid rgba(128,128,128,0.2)">
+            <span>AAA Members <b>${fmt(b.members)}</b></span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 12px">
+            <div><b style="color:#2563eb">🛡 Insurance</b></div>
+            <div><b style="color:#059669">✈ Travel</b></div>
+            <span>Customers <b>${fmt(b.ins_customers_cy)}</b></span>
+            <span>Cust (3yr) <b>${fmt(b.travel_customers_3yr)}</b></span>
+            <span>% of Org <b style="color:#2563eb">${insPct}%</b></span>
+            <span>% of Org <b style="color:#059669">${travelPct}%</b></span>
+            <span>Rev (${year}) <b>${fmtCurrency(b.ins_rev_cy)}</b></span>
+            <span>Rev (${year}) <b>${fmtCurrency(b.travel_rev_cy)}</b></span>
+            <span>Penetration <b>${fmtPct(b.ins_penetration)}</b></span>
+            <span>Penetration <b>${fmtPct(b.travel_penetration)}</b></span>
+          </div>
+        </div>
+      `, { sticky: true, direction: 'auto', offset: [0, -10] })
+      group.addLayer(marker)
+    }
+
+    // Draw zip markers
+    for (const item of zipItems) {
+      const marker = L.circleMarker([item.lat, item.lng], {
+        ...item.pathOptions,
+        renderer: canvasRenderer,
+        radius: item.radius,
+      })
+      const z = item.zip
+      const insPct = totals.ins_customers ? (z.ins_customers_cy / totals.ins_customers * 100).toFixed(1) : '0.0'
+      const travelPct = totals.travel_customers_3yr ? (z.travel_customers_3yr / totals.travel_customers_3yr * 100).toFixed(1) : '0.0'
+      marker.bindTooltip(`
+        <div style="min-width:260px;font-size:11px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <b style="font-size:13px">${z.zip}</b>
+            <span style="opacity:0.6;font-size:10px">${z.city ? z.city + ' · ' : ''}${z.region}</span>
+          </div>
+          ${z.population > 0 ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid rgba(128,128,128,0.2)">
+            <span>Population <b>${fmt(z.population)}</b></span>
+            <span>Adults 18+ <b>${fmt(z.pop_18plus)}</b></span>
+            ${z.median_income > 0 ? `<span>Med. Income <b>${fmtCurrency(z.median_income)}</b></span>` : ''}
+            ${z.median_age > 0 ? `<span>Med. Age <b>${z.median_age}</b></span>` : ''}
+            <span style="color:#ea580c;font-weight:600">Mkt Share <b>${fmtPct(z.market_share)}</b></span>
+          </div>` : ''}
+          <div style="margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid rgba(128,128,128,0.2)">
+            <span>AAA Members <b>${fmt(z.members)}</b></span>
+            ${z.county_name ? `<span style="margin-left:12px">County <b>${z.county_name}</b></span>` : ''}
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 12px">
+            <div><b style="color:#2563eb">🛡 Insurance</b></div>
+            <div><b style="color:#059669">✈ Travel</b></div>
+            <span>Customers <b>${fmt(z.ins_customers_cy)}</b> <b style="color:#2563eb">(${insPct}%)</b></span>
+            <span>Cust (3yr) <b>${fmt(z.travel_customers_3yr)}</b> <b style="color:#059669">(${travelPct}%)</b></span>
+            <span>Rev (${year}) <b>${fmtCurrency(z.ins_rev_cy)}</b></span>
+            <span>Rev (${year}) <b>${fmtCurrency(z.travel_rev_cy)}</b></span>
+            <span>Penetration <b>${fmtPct(z.ins_penetration)}</b></span>
+            <span>Penetration <b>${fmtPct(z.travel_penetration)}</b></span>
+          </div>
+        </div>
+      `, { sticky: true, direction: 'auto', offset: [0, -10] })
+      group.addLayer(marker)
+    }
+
+    return () => {
+      if (layerGroupRef.current) {
+        layerGroupRef.current.clearLayers()
+      }
+    }
+  }, [map, bubbleItems, zipItems, year, totals, canvasRenderer])
+
   return null
 }
 
@@ -287,137 +476,83 @@ function SummaryCard({
   )
 }
 
-/* ── Bubble Tooltip (region/city level) ───────────────────────────────────── */
-
-function BubbleTooltipContent({ b, year }: { b: MapBubble; year: number }) {
-  return (
-    <div className="min-w-[280px] max-w-[320px]">
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="font-bold text-sm">{b.label}</span>
-        <span className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{b.sublabel}</span>
-      </div>
-
-      {/* Census + Market Share — compact grid */}
-      {b.population > 0 && (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] mb-1.5 pb-1.5 border-b border-border">
-          <div className="flex justify-between"><span className="text-muted-foreground">Population</span><span className="font-semibold">{fmt(b.population)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Adults 18+</span><span className="font-medium">{fmt(b.pop_18plus)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Med. Income</span><span className="font-medium">{fmtCurrency(b.median_income)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Med. Age</span><span className="font-medium">{b.median_age}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Housing</span><span className="font-medium">{fmt(b.housing_units)}</span></div>
-          <div className="flex justify-between"><span className="text-orange-600 font-semibold">Mkt Share</span><span className="font-bold text-orange-600">{fmtPct(b.market_share)}</span></div>
-        </div>
-      )}
-
-      {/* Members + Revenue */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] mb-1.5 pb-1.5 border-b border-border">
-        <div className="flex justify-between"><span className="text-muted-foreground">AAA Members</span><span className="font-semibold">{fmt(b.members)}</span></div>
-        {b.rev_pct_of_total > 0 && (
-          <div className="flex justify-between"><span className="text-muted-foreground">% Total Rev</span><span className="font-bold text-amber-600">{fmtPct(b.rev_pct_of_total)}</span></div>
-        )}
-      </div>
-
-      {/* Insurance + Travel side by side */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px]">
-        <div>
-          <p className="font-semibold text-blue-600 mb-0.5">🛡 Insurance</p>
-          <div className="flex justify-between"><span className="text-muted-foreground">Customers</span><span className="font-medium">{fmt(b.ins_customers_cy)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Rev ({year})</span><span className="font-medium">{fmtCurrency(b.ins_rev_cy)} {yoyBadge(b.ins_rev_cy, b.ins_rev_py)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Penetration</span><span className="font-medium">{fmtPct(b.ins_penetration)}</span></div>
-        </div>
-        <div>
-          <p className="font-semibold text-emerald-600 mb-0.5">✈ Travel</p>
-          <div className="flex justify-between"><span className="text-muted-foreground">Cust (3yr)</span><span className="font-medium">{fmt(b.travel_customers_3yr)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Rev ({year})</span><span className="font-medium">{fmtCurrency(b.travel_rev_cy)} {yoyBadge(b.travel_rev_cy, b.travel_rev_py)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Penetration</span><span className="font-medium">{fmtPct(b.travel_penetration)}</span></div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/* ── ZIP Tooltip ─────────────────────────────────────────────────────────── */
-
-function ZipTooltipContent({ z, year }: { z: TerritoryZip; year: number }) {
-  return (
-    <div className="min-w-[280px] max-w-[320px]">
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="font-bold text-sm">{z.zip}</span>
-        <span className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
-          {z.city ? `${z.city} · ` : ''}{z.region}
-        </span>
-      </div>
-
-      {/* Census + Market Share — compact grid */}
-      {z.population > 0 && (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] mb-1.5 pb-1.5 border-b border-border">
-          <div className="flex justify-between"><span className="text-muted-foreground">Population</span><span className="font-semibold">{fmt(z.population)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Adults 18+</span><span className="font-medium">{fmt(z.pop_18plus)}</span></div>
-          {z.median_income > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Med. Income</span><span className="font-medium">{fmtCurrency(z.median_income)}</span></div>}
-          {z.median_age > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Med. Age</span><span className="font-medium">{z.median_age}</span></div>}
-          {z.median_home_value > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Home Value</span><span className="font-medium">{fmtCurrency(z.median_home_value)}</span></div>}
-          <div className="flex justify-between"><span className="text-orange-600 font-semibold">Mkt Share</span><span className="font-bold text-orange-600">{fmtPct(z.market_share)}</span></div>
-        </div>
-      )}
-
-      {/* Members + Revenue */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] mb-1.5 pb-1.5 border-b border-border">
-        <div className="flex justify-between"><span className="text-muted-foreground">AAA Members</span><span className="font-semibold">{fmt(z.members)}</span></div>
-        {z.rev_pct_of_total > 0 && (
-          <div className="flex justify-between"><span className="text-muted-foreground">% Total Rev</span><span className="font-bold text-amber-600">{fmtPct(z.rev_pct_of_total)}</span></div>
-        )}
-        {z.county_name && (
-          <div className="flex justify-between col-span-2"><span className="text-muted-foreground">County</span><span className="font-medium">{z.county_name}</span></div>
-        )}
-      </div>
-
-      {/* Insurance + Travel side by side */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px]">
-        <div>
-          <p className="font-semibold text-blue-600 mb-0.5">🛡 Insurance</p>
-          <div className="flex justify-between"><span className="text-muted-foreground">Customers</span><span className="font-medium">{fmt(z.ins_customers_cy)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Rev ({year})</span><span className="font-medium">{fmtCurrency(z.ins_rev_cy)} {yoyBadge(z.ins_rev_cy, z.ins_rev_py)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Penetration</span><span className="font-medium">{fmtPct(z.ins_penetration)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">% of Org</span><span className="font-medium">{fmtPct(z.ins_pct_of_total)}</span></div>
-        </div>
-        <div>
-          <p className="font-semibold text-emerald-600 mb-0.5">✈ Travel</p>
-          <div className="flex justify-between"><span className="text-muted-foreground">Cust (3yr)</span><span className="font-medium">{fmt(z.travel_customers_3yr)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Rev ({year})</span><span className="font-medium">{fmtCurrency(z.travel_rev_cy)} {yoyBadge(z.travel_rev_cy, z.travel_rev_py)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Penetration</span><span className="font-medium">{fmtPct(z.travel_penetration)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">% of Org</span><span className="font-medium">{fmtPct(z.travel_pct_of_total)}</span></div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 /* ── Main Page ───────────────────────────────────────────────────────────── */
 
 export default function TerritoryMap() {
+  const mountStartRef = useRef<number>(typeof performance !== 'undefined' ? performance.now() : Date.now())
+  const renderMetricSentRef = useRef(false)
   const { theme } = useTheme()
+  const { isAdmin } = useAuth()
+  const queryClient = useQueryClient()
   const [region, setRegion] = useState<RegionFilter>('All')
   const [zoom, setZoom] = useState(9)
+  // viewBounds removed — canvas renderer handles clipping natively
   const [fullscreen, setFullscreen] = useState(false)
   const [showBoundaries, setShowBoundaries] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshMsg, setRefreshMsg] = useState('')
 
   const level = zoomToLevel(zoom)
 
   const { period, startDate, endDate } = useSales()
 
-  const { data, isLoading, error } = useQuery<TerritoryMapData>({
+  const { data, isLoading, error, refetch: refetchMap } = useQuery<TerritoryMapData>({
     queryKey: ['territory-map', period, startDate, endDate],
     queryFn: () => fetchTerritoryMapData(period, startDate, endDate),
-    staleTime: 5 * 60_000,
+    staleTime: 55 * 60_000,
+    gcTime: 120 * 60_000,
+    refetchOnWindowFocus: false,
   })
 
-  const { data: boundaries } = useQuery<CountyBoundaryData>({
-    queryKey: ['territory-boundaries'],
-    queryFn: fetchTerritoryBoundaries,
-    staleTime: 60 * 60_000, // 1 hour — boundaries don't change
+  const { data: boundaries, refetch: refetchBoundaries } = useQuery<CountyBoundaryData>({
+    queryKey: ['territory-boundaries', false],
+    queryFn: () => fetchTerritoryBoundaries(false),
+    staleTime: Infinity, // never stale until explicit invalidation/refresh
+    gcTime: 24 * 60 * 60_000,
+    refetchOnWindowFocus: false,
   })
 
-  const handleZoom = useCallback((z: number) => setZoom(z), [])
+  const handleZoomChange = useCallback((nextZoom: number) => {
+    setZoom((z) => (z === nextZoom ? z : nextZoom))
+  }, [])
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    setRefreshMsg('')
+    try {
+      // Admins can force backend cache refresh; non-admins still force local refetch.
+      if (isAdmin) {
+        await flushCache()
+      }
+      await queryClient.invalidateQueries({ queryKey: ['territory-map'] })
+      await queryClient.invalidateQueries({ queryKey: ['territory-boundaries'] })
+      await Promise.all([refetchMap(), refetchBoundaries()])
+      setRefreshMsg(isAdmin ? 'Data refreshed from source' : 'Map refreshed')
+    } catch {
+      setRefreshMsg('Refresh failed')
+    } finally {
+      setRefreshing(false)
+      window.setTimeout(() => setRefreshMsg(''), 3000)
+    }
+  }, [isAdmin, queryClient, refetchMap, refetchBoundaries, refreshing])
+  const canvasRenderer = useMemo(() => L.canvas({ padding: 0.5 }), [])
+  // paddedViewBounds removed — no longer filtering markers by viewport
+
+  useEffect(() => {
+    if (renderMetricSentRef.current) return
+    if (!data || !boundaries?.county_geojson) return
+    renderMetricSentRef.current = true
+    const elapsedMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - mountStartRef.current
+    void reportClientRenderMetric(
+      'territory_map',
+      'initial_render_ms',
+      Math.max(0, elapsedMs),
+      {
+        zip_count: data.zips.length,
+        county_count: boundaries.county_geojson.features?.length ?? 0,
+      }
+    ).catch(() => {})
+  }, [data, boundaries])
 
   // Escape exits fullscreen
   useEffect(() => {
@@ -442,10 +577,77 @@ export default function TerritoryMap() {
     return aggregateZips(filteredZips, level === 'region' ? 'region' : 'city', data?.totals.travel_rev_cy ?? 0)
   }, [filteredZips, level, data])
 
+  // No viewport filtering — canvas renderer handles clipping natively.
+  // Filtering on every pan/zoom was causing full marker teardown + rebuild.
+  const bubbleRenderItems = useMemo<BubbleRenderData[]>(() => {
+    if (level === 'zip') return []
+    return bubbles.map((b) => {
+      const pct = getBubblePenetration(b)
+      const color = penetrationColor(pct)
+      return {
+        key: b.key,
+        lat: b.lat,
+        lng: b.lng,
+        radius: bubbleRadius(b.members, level),
+        pathOptions: {
+          renderer: canvasRenderer,
+          fillColor: color,
+          fillOpacity: penetrationOpacity(pct),
+          color,
+          weight: 2,
+          opacity: 0.9,
+        },
+        bubble: b,
+      }
+    })
+  }, [bubbles, level, canvasRenderer])
+
+  const zipRenderItems = useMemo<ZipRenderData[]>(() => {
+    if (level !== 'zip') return []
+    return filteredZips.map((z) => {
+      const pct = getPenetration(z)
+      const color = penetrationColor(pct)
+      return {
+        key: z.zip,
+        lat: z.lat,
+        lng: z.lng,
+        radius: bubbleRadius(z.members, 'zip'),
+        pathOptions: {
+          renderer: canvasRenderer,
+          fillColor: color,
+          fillOpacity: penetrationOpacity(pct),
+          color,
+          weight: 1.5,
+          opacity: 0.8,
+        },
+        zip: z,
+      }
+    })
+  }, [filteredZips, level, canvasRenderer])
+
   // Tile layer URL based on theme
   const tileUrl = theme === 'dark'
     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
     : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+  const countyBoundaryStyle = useMemo<PathOptions>(() => ({
+    color: theme === 'dark' ? 'rgba(148,163,184,0.5)' : 'rgba(71,85,105,0.45)',
+    weight: 1.5,
+    fillColor: 'transparent',
+    fillOpacity: 0,
+    dashArray: '4 3',
+  }), [theme])
+  const countyBoundaryStyleFn = useCallback(() => countyBoundaryStyle, [countyBoundaryStyle])
+  const onCountyFeature = useCallback((feature: { properties?: { [key: string]: unknown } | null }, leafletLayer: L.Layer) => {
+    const p = feature.properties
+    if (p?.name && 'bindTooltip' in leafletLayer) {
+      const countyName = String(p.name)
+      const pop = Number(p.population || 0)
+      ;(leafletLayer as L.Path).bindTooltip(
+        `<strong>${countyName} County</strong><br/>Pop: ${pop.toLocaleString()}`,
+        { sticky: true, direction: 'auto', className: 'county-tooltip' }
+      )
+    }
+  }, [])
 
   if (isLoading) {
     return (
@@ -500,6 +702,29 @@ export default function TerritoryMap() {
             <h1 className="text-xl font-bold text-foreground">Territory Map</h1>
             <p className="text-sm text-muted-foreground">Customer penetration heatmap by zip code</p>
           </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {refreshMsg && (
+            <span className={cn(
+              'text-xs font-medium',
+              refreshMsg === 'Refresh failed' ? 'text-destructive' : 'text-muted-foreground'
+            )}>
+              {refreshMsg}
+            </span>
+          )}
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium',
+              'bg-card text-foreground hover:bg-muted/50 transition-colors',
+              refreshing && 'opacity-60 cursor-not-allowed'
+            )}
+            title={isAdmin ? 'Force refresh from source data' : 'Refresh map data'}
+          >
+            {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            Refresh
+          </button>
         </div>
 
       </div>
@@ -608,81 +833,33 @@ export default function TerritoryMap() {
           className="h-full w-full"
           zoomControl={true}
           attributionControl={false}
+          preferCanvas={true}
         >
           <TileLayer url={tileUrl} />
-          <ZoomTracker onZoom={handleZoom} />
+          <ViewportTracker onZoomChange={handleZoomChange} />
           <MapResizer fullscreen={fullscreen} />
-          <FlyToRegion region={region} zips={data?.zips ?? []} />
+          <FlyToRegion region={region} />
+          <TooltipOverflowFix />
 
           {/* County boundary polygons */}
           {showBoundaries && boundaries?.county_geojson && (
             <GeoJSON
               key="county-boundaries"
               data={boundaries.county_geojson}
-              style={() => ({
-                color: theme === 'dark' ? 'rgba(148,163,184,0.5)' : 'rgba(71,85,105,0.45)',
-                weight: 1.5,
-                fillColor: 'transparent',
-                fillOpacity: 0,
-                dashArray: '4 3',
-              })}
-              onEachFeature={(feature, leafletLayer) => {
-                const p = feature.properties
-                if (p?.name) {
-                  leafletLayer.bindTooltip(
-                    `<strong>${p.name} County</strong><br/>Pop: ${(p.population || 0).toLocaleString()}`,
-                    { sticky: true, direction: 'auto', className: 'county-tooltip' }
-                  )
-                }
-              }}
+              style={countyBoundaryStyleFn}
+              onEachFeature={onCountyFeature}
             />
           )}
 
           {/* Region / City bubbles */}
-          {level !== 'zip' && bubbles.map((b) => {
-            const pct = getBubblePenetration(b)
-            return (
-              <CircleMarker
-                key={b.key}
-                center={[b.lat, b.lng]}
-                radius={bubbleRadius(b.members, level)}
-                pathOptions={{
-                  fillColor: penetrationColor(pct),
-                  fillOpacity: penetrationOpacity(pct),
-                  color: penetrationColor(pct),
-                  weight: 2,
-                  opacity: 0.9,
-                }}
-              >
-                <Tooltip sticky direction="auto" offset={[0, -10]}>
-                  <BubbleTooltipContent b={b} year={year} />
-                </Tooltip>
-              </CircleMarker>
-            )
-          })}
-
-          {/* Zip-level circles */}
-          {level === 'zip' && filteredZips.map((z) => {
-            const pct = getPenetration(z)
-            return (
-              <CircleMarker
-                key={z.zip}
-                center={[z.lat, z.lng]}
-                radius={bubbleRadius(z.members, 'zip')}
-                pathOptions={{
-                  fillColor: penetrationColor(pct),
-                  fillOpacity: penetrationOpacity(pct),
-                  color: penetrationColor(pct),
-                  weight: 1.5,
-                  opacity: 0.8,
-                }}
-              >
-                <Tooltip sticky direction="auto" offset={[0, -10]}>
-                  <ZipTooltipContent z={z} year={year} />
-                </Tooltip>
-              </CircleMarker>
-            )
-          })}
+          {/* Single imperative layer — bypasses React reconciliation for 400+ markers */}
+          <ImperativeCircleLayer
+            bubbleItems={level !== 'zip' ? bubbleRenderItems : []}
+            zipItems={level === 'zip' ? zipRenderItems : []}
+            year={year}
+            totals={totals}
+            canvasRenderer={canvasRenderer}
+          />
         </MapContainer>
 
         <Legend level={level} />

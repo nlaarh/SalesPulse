@@ -13,10 +13,11 @@ DB_PATH = DB_DIR / 'salesinsight.db'
 
 engine = create_engine(
     f'sqlite:///{DB_PATH}',
-    connect_args={'check_same_thread': False},
+    connect_args={'check_same_thread': False, 'timeout': 15},
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=600,     # recycle connections every 10min to avoid stale WAL handles
 )
 
 @event.listens_for(engine, 'connect')

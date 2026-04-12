@@ -314,8 +314,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 /* Allow Leaflet tooltips to overflow map container */
 .leaflet-tooltip-pane {
   z-index: 1000;
+  overflow: visible !important;
 }
 .leaflet-tooltip {
   max-height: none !important;
   white-space: normal !important;
+  z-index: 1001;
 }

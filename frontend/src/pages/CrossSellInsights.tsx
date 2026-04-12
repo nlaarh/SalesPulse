@@ -1,10 +1,8 @@
 /**
  * CrossSellInsights — Product Gap Analysis
  *
- * Shows customers who have one product line but are missing another:
- * - Travel customers → sell Insurance
- * - Insurance customers → sell Travel packages
- * Each row shows contact info, spend, and a direct Salesforce link.
+ * Shows customers who have one product line but are missing another,
+ * with smart reasons (age, membership, LTV, spend) and pagination.
  */
 
 import { useEffect, useState, useMemo } from 'react'
@@ -17,9 +15,13 @@ import {
 import {
   Loader2, Lightbulb, ShieldAlert, Plane,
   DollarSign, Phone, ExternalLink,
-  ArrowRightLeft,
+  ArrowRightLeft, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+/* ── Constants ──────────────────────────────────────────────────────────── */
+
+const PAGE_SIZE = 25
 
 /* ── Formatters ──────────────────────────────────────────────────────────── */
 
@@ -31,29 +33,6 @@ function fmt(n: number) {
 
 function fmtFull(n: number) {
   return `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
-}
-
-function priorityColor(p: string) {
-  if (p === 'high') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-  if (p === 'medium') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-  return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-}
-
-function ltvBadge(ltv: string) {
-  const l = (ltv || '').toUpperCase().charAt(0)
-  const colors: Record<string, string> = {
-    A: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-    B: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    C: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    D: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-    E: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-  }
-  return colors[l] || 'bg-muted text-muted-foreground'
-}
-
-function gapBadge(gap: string) {
-  if (gap === 'Insurance') return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-  return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
 }
 
 /* ── Summary Card ────────────────────────────────────────────────────────── */
@@ -79,7 +58,7 @@ function SummaryCard({ icon: Icon, label, value, sub, accent }: {
   )
 }
 
-/* ── Customer Table ──────────────────────────────────────────────────────── */
+/* ── Customer Table with Pagination ──────────────────────────────────────── */
 
 function CustomerTable({ customers, title, icon: Icon, iconColor }: {
   customers: CrossSellCustomer[]
@@ -88,6 +67,10 @@ function CustomerTable({ customers, title, icon: Icon, iconColor }: {
   iconColor: string
 }) {
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(0)
+
+  // Reset page when search changes
+  useEffect(() => { setPage(0) }, [search])
 
   const filtered = useMemo(() => {
     if (!search.trim()) return customers
@@ -99,15 +82,19 @@ function CustomerTable({ customers, title, icon: Icon, iconColor }: {
     )
   }, [customers, search])
 
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  const pageData = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
   if (customers.length === 0) return null
 
   return (
     <div className="rounded-xl bg-card border border-border overflow-hidden">
-      <div className="px-5 py-4 border-b border-border flex items-center gap-3">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-border flex items-center gap-3 flex-wrap">
         <Icon className={cn('h-5 w-5', iconColor)} />
         <h2 className="text-lg font-semibold text-foreground">{title}</h2>
         <span className="text-sm text-muted-foreground">
-          {customers.length} customers
+          {filtered.length} customers
         </span>
         <div className="ml-auto">
           <input
@@ -119,85 +106,179 @@ function CustomerTable({ customers, title, icon: Icon, iconColor }: {
           />
         </div>
       </div>
+
+      {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-muted/50 text-muted-foreground text-xs uppercase tracking-wider">
+            <tr className="border-b border-border text-muted-foreground text-xs uppercase tracking-wider">
               <th className="text-left px-4 py-3 font-medium">Customer</th>
               <th className="text-left px-4 py-3 font-medium">Phone</th>
               <th className="text-left px-4 py-3 font-medium">City</th>
               <th className="text-center px-4 py-3 font-medium">LTV</th>
-              <th className="text-right px-4 py-3 font-medium">Total Spend</th>
+              <th className="text-right px-4 py-3 font-medium">Spend</th>
               <th className="text-center px-4 py-3 font-medium">Sell</th>
               <th className="text-center px-4 py-3 font-medium">Priority</th>
-              <th className="text-left px-4 py-3 font-medium">Why</th>
-              <th className="text-center px-4 py-3 font-medium">SF</th>
+              <th className="text-left px-4 py-3 font-medium" style={{ minWidth: 280 }}>Recommendation</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((c, i) => (
+            {pageData.map((c, i) => (
               <tr
                 key={c.account_id || i}
-                className="border-t border-border hover:bg-muted/30 transition-colors"
+                className={cn(
+                  'border-b border-border/50 transition-colors hover:bg-muted/20',
+                  i % 2 === 0 ? 'bg-background' : 'bg-muted/5',
+                )}
               >
+                {/* Customer name + SF link */}
                 <td className="px-4 py-3 font-medium text-foreground whitespace-nowrap">
-                  {c.account_name || '—'}
+                  <div className="flex items-center gap-2">
+                    {c.account_name || '—'}
+                    {c.sf_link && (
+                      <a
+                        href={c.sf_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary/60 hover:text-primary transition-colors"
+                        title="Open in Salesforce"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                  </div>
                 </td>
-                <td className="px-4 py-3 text-foreground whitespace-nowrap">
+
+                {/* Phone */}
+                <td className="px-4 py-3 whitespace-nowrap">
                   {c.phone ? (
                     <a
                       href={`tel:${c.phone}`}
-                      className="flex items-center gap-1.5 text-primary hover:underline"
-                      onClick={e => e.stopPropagation()}
+                      className="flex items-center gap-1.5 text-foreground/70 hover:text-primary transition-colors"
                     >
-                      <Phone className="h-3.5 w-3.5" />
-                      {c.phone}
+                      <Phone className="h-3 w-3" />
+                      <span className="text-xs">{c.phone}</span>
                     </a>
                   ) : (
-                    <span className="text-muted-foreground">—</span>
+                    <span className="text-muted-foreground/40">—</span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{c.city || '—'}</td>
+
+                {/* City */}
+                <td className="px-4 py-3 text-foreground/70 whitespace-nowrap text-xs">{c.city || '—'}</td>
+
+                {/* LTV — soft muted badges */}
                 <td className="px-4 py-3 text-center">
                   {c.ltv ? (
-                    <span className={cn('px-2 py-0.5 rounded-full text-xs font-semibold', ltvBadge(c.ltv))}>
+                    <span className={cn('px-2 py-0.5 rounded text-xs font-semibold', {
+                      'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400': c.ltv.startsWith('A'),
+                      'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400': c.ltv.startsWith('B'),
+                      'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400': c.ltv.startsWith('C'),
+                      'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400': c.ltv.startsWith('D'),
+                      'bg-gray-50 text-gray-600 dark:bg-gray-800/30 dark:text-gray-400': c.ltv.startsWith('E'),
+                    })}>
                       {c.ltv}
                     </span>
-                  ) : '—'}
+                  ) : <span className="text-muted-foreground/40">—</span>}
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums font-semibold text-foreground">
+
+                {/* Spend */}
+                <td className="px-4 py-3 text-right tabular-nums font-semibold text-foreground/80 text-xs">
                   {fmtFull(c.total_spend)}
                 </td>
-                <td className="px-4 py-3 text-center">
-                  <span className={cn('px-2.5 py-1 rounded-full text-xs font-medium', gapBadge(c.gap))}>
+
+                {/* Gap — subtle outline badges */}
+                <td className="px-4 py-3 text-center whitespace-nowrap">
+                  <span className={cn('inline-block px-2 py-0.5 rounded text-xs font-medium border', {
+                    'border-blue-200 text-blue-700 bg-blue-50/50 dark:border-blue-800 dark:text-blue-400 dark:bg-blue-900/10': c.gap === 'Insurance',
+                    'border-violet-200 text-violet-700 bg-violet-50/50 dark:border-violet-800 dark:text-violet-400 dark:bg-violet-900/10': c.gap === 'Travel',
+                  })}>
                     {c.gap}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-center">
-                  <span className={cn('px-2.5 py-1 rounded-full text-xs font-medium', priorityColor(c.priority))}>
-                    {c.priority}
+
+                {/* Priority — soft color dots */}
+                <td className="px-4 py-3 text-center whitespace-nowrap">
+                  <span className="flex items-center justify-center gap-1.5">
+                    <span className={cn('w-2 h-2 rounded-full', {
+                      'bg-rose-500': c.priority === 'high',
+                      'bg-amber-400': c.priority === 'medium',
+                      'bg-emerald-400': c.priority === 'low',
+                    })} />
+                    <span className={cn('text-xs font-medium capitalize', {
+                      'text-rose-600 dark:text-rose-400': c.priority === 'high',
+                      'text-amber-600 dark:text-amber-400': c.priority === 'medium',
+                      'text-emerald-600 dark:text-emerald-400': c.priority === 'low',
+                    })}>
+                      {c.priority}
+                    </span>
                   </span>
                 </td>
-                <td className="px-4 py-3 text-muted-foreground text-xs max-w-[280px] truncate" title={c.reason}>
-                  {c.reason}
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <a
-                    href={c.sf_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-primary hover:text-primary/80 transition-colors"
-                    onClick={e => e.stopPropagation()}
-                    title="Open in Salesforce"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
+
+                {/* Reason — 2 lines, no truncation */}
+                <td className="px-4 py-3">
+                  <p className="text-xs text-foreground/70 leading-relaxed line-clamp-2" style={{ minWidth: 260 }}>
+                    {c.reason}
+                  </p>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-muted/10">
+          <p className="text-xs text-muted-foreground">
+            Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(p => Math.max(0, p - 1))}
+              disabled={page === 0}
+              className="p-1.5 rounded-md hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+              // Show pages around current
+              let pageNum: number
+              if (totalPages <= 7) {
+                pageNum = i
+              } else if (page < 3) {
+                pageNum = i
+              } else if (page > totalPages - 4) {
+                pageNum = totalPages - 7 + i
+              } else {
+                pageNum = page - 3 + i
+              }
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setPage(pageNum)}
+                  className={cn(
+                    'w-8 h-8 rounded-md text-xs font-medium transition-colors',
+                    page === pageNum
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-muted',
+                  )}
+                >
+                  {pageNum + 1}
+                </button>
+              )
+            })}
+            <button
+              onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+              disabled={page >= totalPages - 1}
+              className="p-1.5 rounded-md hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {filtered.length === 0 && search && (
         <div className="px-5 py-8 text-center text-muted-foreground text-sm">
           No customers matching "{search}"
@@ -257,7 +338,7 @@ export default function CrossSellInsights() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-amber-100 dark:bg-amber-900/30 p-2">
+        <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 p-2">
           <Lightbulb className="h-6 w-6 text-amber-600 dark:text-amber-400" />
         </div>
         <div>
@@ -275,21 +356,21 @@ export default function CrossSellInsights() {
           label="Need Insurance"
           value={summary.needs_insurance_count.toLocaleString()}
           sub={`${fmt(summary.needs_insurance_value)} in travel spend`}
-          accent="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
+          accent="bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400"
         />
         <SummaryCard
           icon={Plane}
           label="Need Travel"
           value={summary.needs_travel_count.toLocaleString()}
           sub={`${fmt(summary.needs_travel_value)} in insurance spend`}
-          accent="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400"
+          accent="bg-violet-50 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400"
         />
         <SummaryCard
           icon={ArrowRightLeft}
           label="Have Both Products"
           value={summary.customers_with_both.toLocaleString()}
           sub="Fully cross-sold"
-          accent="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
+          accent="bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400"
         />
         <SummaryCard
           icon={DollarSign}
@@ -298,12 +379,12 @@ export default function CrossSellInsights() {
             ? ((summary.customers_with_both / (summary.total_travel_customers + summary.total_insurance_customers - summary.customers_with_both)) * 100).toFixed(1)
             : 0}%`}
           sub={`${(summary.total_travel_customers + summary.total_insurance_customers - summary.customers_with_both).toLocaleString()} unique customers`}
-          accent="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
+          accent="bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400"
         />
       </div>
 
       {/* Tab Selector */}
-      <div className="flex gap-1 bg-muted/50 rounded-lg p-1 w-fit">
+      <div className="flex gap-1 bg-muted/30 rounded-lg p-1 w-fit">
         {tabs.map(t => (
           <button
             key={t.key}
@@ -316,7 +397,7 @@ export default function CrossSellInsights() {
             )}
           >
             {t.label}
-            <span className="ml-2 text-xs opacity-70">({t.count.toLocaleString()})</span>
+            <span className="ml-2 text-xs opacity-60">({t.count.toLocaleString()})</span>
           </button>
         ))}
       </div>
@@ -336,7 +417,7 @@ export default function CrossSellInsights() {
           customers={data.needs_travel}
           title="Insurance Customers → Sell Travel"
           icon={Plane}
-          iconColor="text-purple-500"
+          iconColor="text-violet-500"
         />
       )}
     </div>

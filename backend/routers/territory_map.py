@@ -19,7 +19,7 @@ from shared import (
     WON_STAGES, OPP_RT_TRAVEL_ID, OPP_RT_INSURANCE_ID,
     resolve_dates as _resolve_dates,
 )
-from constants import CACHE_TTL_HOUR, CACHE_TTL_DAY
+from constants import CACHE_TTL_HOUR, CACHE_TTL_DAY, CACHE_TTL_NEVER
 import cache
 
 router = APIRouter()
@@ -71,8 +71,41 @@ def territory_map_data(
     key = f"territory_map_{cy_start}_{cy_end}"
 
     def fetch():
-        # ── Batch 1: Member & customer counts (Account-based = unique people) ──
-        batch1 = sf_parallel(
+        # ── Load census data in a background thread while SOQL runs ──
+        import threading
+        census_result: dict[str, dict] = {}
+        census_error = None
+
+        def _load_census():
+            nonlocal census_result, census_error
+            try:
+                from database import SessionLocal
+                from models import GeoZip
+                db = SessionLocal()
+                geo_zips = db.query(GeoZip).all()
+                for gz in geo_zips:
+                    census_result[gz.zip_code] = {
+                        'population': gz.population or 0,
+                        'pop_18plus': gz.pop_18plus or 0,
+                        'median_income': gz.median_income or 0,
+                        'median_age': gz.median_age or 0,
+                        'housing_units': gz.housing_units or 0,
+                        'median_home_value': gz.median_home_value or 0,
+                        'college_educated': gz.college_educated or 0,
+                        'county_name': gz.county_name or '',
+                    }
+                db.close()
+            except Exception as e:
+                census_error = e
+
+        census_thread = threading.Thread(target=_load_census, daemon=True)
+        census_thread.start()
+
+        # ── ALL 12 SOQL queries in ONE parallel batch ──
+        # Previously 3 sequential batches (batch1→batch2→batch3).
+        # No data dependencies between any of these queries, so run all at once.
+        data = sf_parallel(
+            # -- Members & totals --
             members=f"""
                 SELECT BillingPostalCode zip, Billing_Region__c region,
                        COUNT(Id) cnt
@@ -85,15 +118,8 @@ def territory_map_data(
                 ORDER BY COUNT(Id) DESC
                 LIMIT 2000
             """,
-            members_total=f"""
-                SELECT COUNT(Id) cnt
-                FROM Account
-                WHERE BillingPostalCode != null
-                  AND {NY_STATE} AND {REGION_FILTER}
-                  AND {ACTIVE_MEMBER}
-            """,
-            # Insurance customers: accounts with an Insurance Customer ID
-            # No active-member filter — insurance customers may have lapsed AAA membership
+
+            # -- Insurance customers --
             ins_customers=f"""
                 SELECT BillingPostalCode zip, COUNT(Id) cnt
                 FROM Account
@@ -104,14 +130,8 @@ def territory_map_data(
                 ORDER BY COUNT(Id) DESC
                 LIMIT 2000
             """,
-            ins_customers_total=f"""
-                SELECT COUNT(Id) cnt
-                FROM Account
-                WHERE Insuance_Customer_ID__c != null
-                  AND BillingPostalCode != null
-                  AND {NY_STATE} AND {REGION_FILTER}
-            """,
-            # Travel customers: unique accounts with a won travel opp (3yr)
+
+            # -- Travel customers 3yr + CY + PY --
             travel_customers_3yr=f"""
                 SELECT BillingPostalCode zip, COUNT(Id) cnt
                 FROM Account
@@ -127,21 +147,7 @@ def territory_map_data(
                 ORDER BY COUNT(Id) DESC
                 LIMIT 2000
             """,
-        )
-        # ── Batch 2: Travel customer counts CY/PY + totals ──
-        batch2 = sf_parallel(
-            travel_customers_3yr_total=f"""
-                SELECT COUNT(Id) cnt
-                FROM Account
-                WHERE Id IN (
-                    SELECT AccountId FROM Opportunity
-                    WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
-                      AND {WON_STAGES}
-                      AND CloseDate >= {travel_3yr} AND CloseDate <= {cy_end}
-                )
-                  AND BillingPostalCode != null
-                  AND {NY_STATE} AND {REGION_FILTER}
-            """,
+
             travel_customers_cy=f"""
                 SELECT BillingPostalCode zip, COUNT(Id) cnt
                 FROM Account
@@ -172,9 +178,7 @@ def territory_map_data(
                 ORDER BY COUNT(Id) DESC
                 LIMIT 2000
             """,
-        )
-        # ── Batch 3: Revenue from Opportunities (insurance + travel) ──
-        batch3 = sf_parallel(
+            # -- Revenue (insurance + travel, CY + PY) --
             ins_rev_cy=f"""
                 SELECT Account.BillingPostalCode zip,
                        SUM(Amount) rev
@@ -230,7 +234,9 @@ def territory_map_data(
                 LIMIT 2000
             """,
         )
-        data = {**batch1, **batch2, **batch3}
+
+        # Wait for census thread to finish (should be done by now — SQLite is fast)
+        census_thread.join(timeout=5)
 
         # Build lookup dicts from query results
         # Normalize ZIP+4 (e.g. 14211-2506) to 5-digit and aggregate
@@ -280,42 +286,21 @@ def territory_map_data(
         travel_rev_cy_d = _to_dict(data.get('travel_rev_cy', []), val_key='rev')
         travel_rev_py_d = _to_dict(data.get('travel_rev_py', []), val_key='rev')
 
-        # Totals — use accurate COUNTs from dedicated total queries
-        ins_total_raw = data.get('ins_customers_total', [])
-        total_ins = ins_total_raw[0].get('cnt', 0) if ins_total_raw else 0
+        # Totals — computed in Python to reduce SOQL concurrency contention
+        total_ins = sum(v.get('cnt', 0) or 0 for v in ins_cust.values())
         total_ins_cy_rev = sum(v.get('rev', 0) or 0 for v in ins_rev_cy_d.values())
         total_ins_py_rev = sum(v.get('rev', 0) or 0 for v in ins_rev_py_d.values())
-        travel_total_raw = data.get('travel_customers_3yr_total', [])
-        total_travel_3yr = travel_total_raw[0].get('cnt', 0) if travel_total_raw else 0
+        total_travel_3yr = sum(v.get('cnt', 0) or 0 for v in travel_cust_3yr.values())
         total_travel_cy_rev = sum(v.get('rev', 0) or 0 for v in travel_rev_cy_d.values())
         total_travel_py_rev = sum(v.get('rev', 0) or 0 for v in travel_rev_py_d.values())
-        # Use accurate total from COUNT query (not filtered GROUP BY)
-        members_total_raw = data.get('members_total', [])
-        total_members = (members_total_raw[0].get('cnt', 0) if members_total_raw else 0)
+        total_members = sum(v.get('cnt', 0) or 0 for v in members_normed.values())
         # Sum of members in mapped zips (for penetration calculations)
         mapped_members = sum(v['cnt'] for v in members_normed.values())
 
-        # ── Load Census demographics from SQLite ──────────────────────────
-        from database import SessionLocal
-        from models import GeoZip
-        census_lookup: dict[str, dict] = {}
-        try:
-            db = SessionLocal()
-            geo_zips = db.query(GeoZip).all()
-            for gz in geo_zips:
-                census_lookup[gz.zip_code] = {
-                    'population': gz.population or 0,
-                    'pop_18plus': gz.pop_18plus or 0,
-                    'median_income': gz.median_income or 0,
-                    'median_age': gz.median_age or 0,
-                    'housing_units': gz.housing_units or 0,
-                    'median_home_value': gz.median_home_value or 0,
-                    'college_educated': gz.college_educated or 0,
-                    'county_name': gz.county_name or '',
-                }
-            db.close()
-        except Exception as e:
-            log.warning("Census lookup failed (tables may not be seeded yet): %s", e)
+        # Census data already loaded by background thread above
+        census_lookup = census_result
+        if census_error:
+            log.warning("Census lookup failed (tables may not be seeded yet): %s", census_error)
 
         # Build per-zip records
         zips = []
@@ -428,10 +413,12 @@ def territory_map_data(
 # ── County Boundaries + Population endpoint ──────────────────────────────────
 
 @router.get("/api/territory/boundaries")
-def territory_boundaries():
-    """Return county boundary GeoJSON + population data from SQLite seed."""
+def territory_boundaries(
+    include_zips: bool = Query(False, description="Include zip-level demographic payload"),
+):
+    """Return county boundary GeoJSON + optional zip demographic payload."""
 
-    key = "territory_boundaries_v2"
+    key = f"territory_boundaries_v3_include_zips_{1 if include_zips else 0}"
 
     def fetch():
         from database import SessionLocal
@@ -485,23 +472,25 @@ def territory_boundaries():
                     'geometry': json.loads(c.geojson),
                 })
 
-            # Get all zips with demographics
-            zips = db.query(GeoZip).filter(GeoZip.lat.isnot(None)).all()
-            zip_list = [{
-                'zip': z.zip_code,
-                'city': z.city,
-                'county_fips': z.county_fips,
-                'county_name': z.county_name,
-                'lat': z.lat,
-                'lng': z.lng,
-                'population': z.population or 0,
-                'pop_18plus': z.pop_18plus or 0,
-                'median_income': z.median_income or 0,
-                'median_age': z.median_age or 0,
-                'housing_units': z.housing_units or 0,
-                'median_home_value': z.median_home_value or 0,
-                'college_educated': z.college_educated or 0,
-            } for z in zips]
+            zip_list = []
+            if include_zips:
+                # Optional heavy payload; not needed for map boundary rendering path.
+                zips = db.query(GeoZip).filter(GeoZip.lat.isnot(None)).all()
+                zip_list = [{
+                    'zip': z.zip_code,
+                    'city': z.city,
+                    'county_fips': z.county_fips,
+                    'county_name': z.county_name,
+                    'lat': z.lat,
+                    'lng': z.lng,
+                    'population': z.population or 0,
+                    'pop_18plus': z.pop_18plus or 0,
+                    'median_income': z.median_income or 0,
+                    'median_age': z.median_age or 0,
+                    'housing_units': z.housing_units or 0,
+                    'median_home_value': z.median_home_value or 0,
+                    'college_educated': z.college_educated or 0,
+                } for z in zips]
 
             return {
                 'county_geojson': {
@@ -513,7 +502,8 @@ def territory_boundaries():
         finally:
             db.close()
 
-    return cache.cached_query(key, fetch, ttl=CACHE_TTL_DAY, disk_ttl=CACHE_TTL_DAY)
+    # Static geography/census source data: keep indefinitely until explicit admin refresh.
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_NEVER, disk_ttl=CACHE_TTL_NEVER)
 
 
 # ── Census Demographics Data Table ──────────────────────────────────────────
@@ -594,4 +584,5 @@ def territory_census_data(
         finally:
             db.close()
 
-    return cache.cached_query(key, fetch, ttl=CACHE_TTL_DAY, disk_ttl=CACHE_TTL_DAY)
+    # Static geography/census source data: keep indefinitely until explicit admin refresh.
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_NEVER, disk_ttl=CACHE_TTL_NEVER)

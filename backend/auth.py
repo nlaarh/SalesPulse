@@ -61,3 +61,10 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role not in ('admin', 'superadmin'):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Admin access required')
     return user
+
+
+def require_ai_access(user: User = Depends(get_current_user)) -> User:
+    """FastAPI dependency — AI chat access for superadmin and officers only."""
+    if user.role not in ('superadmin', 'officer'):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='AI chat access restricted to admin and officer roles')
+    return user
