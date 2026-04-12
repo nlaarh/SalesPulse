@@ -9,7 +9,6 @@ from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -194,21 +193,7 @@ def _ensure_monthly_targets(db: Session, year: int, advisor_ids: dict[str, int],
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
-class MonthlyTargetUpdate(BaseModel):
-    advisor_target_id: int
-    months: dict[str, float]
-
-class MonthlyTargetSaveRequest(BaseModel):
-    year: int
-    updates: list[MonthlyTargetUpdate]
-    base: str = 'commission'   # 'bookings' or 'commission' — unit of the submitted values
-    line: str = 'Travel'       # needed to look up comm_rate when base='bookings'
-
-
-class EstimateRequest(BaseModel):
-    year: int
-    line: str = 'Travel'
-    base_years: list[int]       # 1-3 prior years to average
+from schemas import MonthlyTargetUpdate, MonthlyTargetSaveRequest, EstimateRequest
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────

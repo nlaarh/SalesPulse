@@ -22,7 +22,7 @@ def get(key: str):
     """Get from L1 memory cache. Returns None if missing or expired."""
     with _lock:
         entry = _store.get(key)
-        if entry and time.time() < entry['expires']:
+        if entry and (entry['expires'] is None or time.time() < entry['expires']):
             return entry['data']
     # L1 miss — try L2 (shared across all workers via filesystem)
     disk_data = disk_get(key)
@@ -34,8 +34,9 @@ def get(key: str):
 
 def put(key: str, data, ttl: int = 3600):
     """Store in L1 memory cache with TTL."""
+    expires = None if ttl is None or ttl < 0 else time.time() + ttl
     with _lock:
-        _store[key] = {'data': data, 'expires': time.time() + ttl}
+        _store[key] = {'data': data, 'expires': expires}
 
 
 def invalidate(key: str):
@@ -64,7 +65,8 @@ def disk_get(key: str):
     try:
         with open(path) as f:
             entry = json.load(f)
-        if time.time() < entry.get('expires', 0):
+        expires = entry.get('expires', 0)
+        if expires is None or time.time() < expires:
             return entry['data']
         path.unlink(missing_ok=True)
     except Exception:
@@ -77,8 +79,9 @@ def disk_put(key: str, data, ttl: int = 86400):
     path = _disk_path(key)
     tmp = path.with_suffix('.tmp')
     try:
+        expires = None if ttl is None or ttl < 0 else time.time() + ttl
         with open(tmp, 'w') as f:
-            json.dump({'data': data, 'expires': time.time() + ttl}, f, default=str)
+            json.dump({'data': data, 'expires': expires}, f, default=str)
         tmp.replace(path)  # atomic on POSIX
     except Exception as e:
         log.warning(f"Disk cache write failed for '{key}': {e}")
@@ -88,6 +91,19 @@ def disk_put(key: str, data, ttl: int = 86400):
 def disk_invalidate(key: str):
     """Remove from L2."""
     _disk_path(key).unlink(missing_ok=True)
+
+
+def clear_all() -> tuple[int, int]:
+    """Clear full L1 + L2 cache. Returns (l1_count, l2_count)."""
+    with _lock:
+        l1_count = len(_store)
+        _store.clear()
+    l2_count = 0
+    if _CACHE_DIR.exists():
+        for f in _CACHE_DIR.glob('*.json'):
+            f.unlink(missing_ok=True)
+            l2_count += 1
+    return l1_count, l2_count
 
 
 # ── Stampede protection ───────────────────────────────────────────────────────

@@ -6,8 +6,9 @@
  * Drill-down shows impacted customers grouped by advisor.
  */
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useSales } from '@/contexts/SalesContext'
 import {
   fetchMarketPulse,
@@ -103,17 +104,15 @@ function ImpactedCustomersPanel({
   endDate?: string | null
 }) {
   const navigate = useNavigate()
-  const [data, setData] = useState<ImpactedCustomersData | null>(null)
-  const [loading, setLoading] = useState(true)
   const [expandedAdvisor, setExpandedAdvisor] = useState<string | null>(null)
 
-  useEffect(() => {
-    setLoading(true)
-    fetchImpactedCustomers(destination, period, startDate, endDate)
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false))
-  }, [destination, period, startDate, endDate])
+  const { data, isLoading: loading } = useQuery<ImpactedCustomersData | null>({
+    queryKey: ['market-pulse-impacted-customers', destination, period, startDate, endDate],
+    queryFn: () => fetchImpactedCustomers(destination, period, startDate, endDate),
+    staleTime: 24 * 60 * 60_000,
+    gcTime: 24 * 60 * 60_000,
+    refetchOnWindowFocus: false,
+  })
 
   if (loading) {
     return (
@@ -205,9 +204,7 @@ function AlertCard({ alert, period, startDate, endDate }: {
   startDate?: string | null
   endDate?: string | null
 }) {
-  const [expanded, setExpanded] = useState(
-    alert.severity === 'critical' || alert.severity === 'high'
-  )
+  const [expanded, setExpanded] = useState(false)
   const s = SEVERITY_CONFIG[alert.severity] || SEVERITY_CONFIG.info
   const Icon = ALERT_ICONS[alert.icon] || AlertTriangle
 
@@ -308,19 +305,15 @@ function SummaryCard({ icon: Icon, label, value, sub, accent }: {
 export default function MarketPulse() {
   const { viewMode, startDate, endDate } = useSales()
   const period = viewMode === 'month' ? 1 : viewMode === 'quarter' ? 3 : viewMode === '6m' ? 6 : viewMode === 'ytd' ? Math.ceil((new Date().getMonth() + 1)) : 12
-  const [data, setData] = useState<MarketPulseData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
   const [filter, setFilter] = useState<'all' | 'travel_advisory' | 'medicare' | 'seasonal'>('all')
 
-  useEffect(() => {
-    setLoading(true)
-    setError('')
-    fetchMarketPulse(period, startDate, endDate)
-      .then(setData)
-      .catch((e) => setError(e?.message || 'Failed to load'))
-      .finally(() => setLoading(false))
-  }, [period, startDate, endDate])
+  const { data, isLoading: loading, error } = useQuery<MarketPulseData>({
+    queryKey: ['market-pulse', period, startDate, endDate],
+    queryFn: () => fetchMarketPulse(period, startDate, endDate),
+    staleTime: 24 * 60 * 60_000,
+    gcTime: 24 * 60 * 60_000,
+    refetchOnWindowFocus: false,
+  })
 
   if (loading) {
     return (
@@ -333,7 +326,7 @@ export default function MarketPulse() {
   if (error || !data) {
     return (
       <div className="flex items-center justify-center py-32 text-destructive">
-        {error || 'No data available'}
+        {(error as Error)?.message || 'No data available'}
       </div>
     )
   }

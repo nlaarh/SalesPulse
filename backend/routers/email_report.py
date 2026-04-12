@@ -12,7 +12,6 @@ import logging
 import requests as _req
 from typing import Optional
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr
 
 from routers.sales_agent_profile import agent_profile as _agent_profile
 
@@ -22,13 +21,7 @@ log = logging.getLogger('email_report')
 
 # ── Request body ─────────────────────────────────────────────────────────────
 
-class EmailReportRequest(BaseModel):
-    to: str                    # recipient email
-    agent_name: str            # advisor name (used to fetch data)
-    line: str = 'Travel'
-    period: int = 12
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
+from schemas import EmailReportRequest, DashboardEmailRequest
 
 
 # ── HTML builder ─────────────────────────────────────────────────────────────
@@ -260,12 +253,7 @@ def send_agent_report(body: EmailReportRequest):
 
 from routers.sales_advisor import advisor_summary as _advisor_summary
 
-class DashboardEmailRequest(BaseModel):
-    to: str
-    line: str = 'Travel'
-    period: int = 12
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
+
 
 
 def _build_dashboard_email_html(summary: dict, leaders: list, line: str, period_label: str) -> str:

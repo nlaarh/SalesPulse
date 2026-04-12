@@ -3,7 +3,6 @@
 import os, json, logging
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from auth import require_admin
 from models import User
 
@@ -35,9 +34,10 @@ def _load() -> dict:
         except Exception:
             pass
     # Fall back to env vars on first load
+    # Always check env vars first, then JSON file
     return {
         **DEFAULT_CONFIG,
-        'provider': os.getenv('AI_PROVIDER', 'openai'),
+        'provider': os.getenv('AI_PROVIDER', os.getenv('AI_MODEL', 'openai').startswith('gpt') and 'openai' or 'openai'),
         'model':    os.getenv('AI_MODEL', 'gpt-4.1-mini'),
         'api_key':  os.getenv('OPENAI_API_KEY', ''),
         'base_url': os.getenv('OPENAI_BASE_URL', ''),
@@ -83,11 +83,7 @@ def call_ai(messages: list[dict], max_tokens: int = 1024, cfg: dict | None = Non
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
-class AIConfigUpdate(BaseModel):
-    provider: str | None = None
-    model: str | None = None
-    api_key: str | None = None   # empty string = clear, None = no change
-    base_url: str | None = None
+from schemas import AIConfigUpdate
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@ import { SalesProvider } from '@/contexts/SalesContext'
 import Layout from '@/components/Layout'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import Login from '@/pages/Login'
-import LandingPage from '@/pages/LandingPage'
+const Landing = lazy(() => import('@/pages/Landing'))
 
 /* ── Lazy-loaded pages (code-split per route) ────────────────────────────── */
 
@@ -59,7 +59,7 @@ export default function App() {
           <SalesProvider>
             <Routes>
               {/* Public */}
-              <Route index element={<LandingPage />} />
+              <Route index element={<Suspense fallback={LazyFallback}><Landing /></Suspense>} />
               <Route path="login" element={<Login />} />
 
               {/* Protected — ErrorBoundary wraps <Outlet /> inside Layout */}

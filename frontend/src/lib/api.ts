@@ -562,6 +562,30 @@ export async function refreshGeoData() {
   return data as { ok: boolean; counties: number; zips: number; total_population: number; last_refreshed: string | null }
 }
 
+export async function refreshGeographyData() {
+  const { data } = await api.post('/api/admin/geo/refresh-geography')
+  return data as {
+    ok: boolean
+    counties: number
+    zips: number
+    zip_county_assigned: number
+    last_refreshed: string | null
+    type: 'geography'
+  }
+}
+
+export async function refreshCensusData() {
+  const { data } = await api.post('/api/admin/geo/refresh-census')
+  return data as {
+    ok: boolean
+    counties: number
+    zips: number
+    total_population: number
+    last_refreshed: string | null
+    type: 'census'
+  }
+}
+
 export async function fetchGeoStatus() {
   const { data } = await api.get('/api/admin/geo/status')
   return data as { seeded: boolean; counties: number; zips: number; last_refreshed: string | null; source: string }
@@ -570,6 +594,60 @@ export async function fetchGeoStatus() {
 export async function fetchDbInfo() {
   const { data } = await api.get('/api/admin/db/info')
   return data as { path: string; exists: boolean; size_kb: number; backups: { name: string; size_kb: number; created: number }[] }
+}
+
+export interface PerformanceSummaryResponse {
+  window_minutes: number
+  server: {
+    total_requests: number
+    avg_ms: number
+    p50_ms: number
+    p95_ms: number
+    by_route: Array<{
+      path: string
+      requests: number
+      avg_ms: number
+      p50_ms: number
+      p95_ms: number
+      error_rate_pct: number
+    }>
+  }
+  client: {
+    total_events: number
+    by_page: Array<{
+      page: string
+      events: number
+      avg_ms: number
+      p50_ms: number
+      p95_ms: number
+      metrics: Array<{
+        metric: string
+        count: number
+        avg_ms: number
+        p50_ms: number
+        p95_ms: number
+      }>
+    }>
+  }
+}
+
+export async function fetchPerformanceSummary(windowMinutes = 60): Promise<PerformanceSummaryResponse> {
+  const { data } = await api.get('/api/admin/performance/summary', {
+    params: { window_minutes: windowMinutes },
+  })
+  return data as PerformanceSummaryResponse
+}
+
+export async function reportClientRenderMetric(
+  page: string,
+  metric: string,
+  durationMs: number,
+  metadata?: Record<string, unknown>,
+) {
+  const { data } = await api.post('/api/perf/client-render', {
+    page, metric, duration_ms: durationMs, metadata: metadata || {},
+  })
+  return data as { ok: boolean }
 }
 
 export async function downloadDbBackup() {
@@ -860,8 +938,10 @@ export interface CountyBoundaryData {
   }>
 }
 
-export async function fetchTerritoryBoundaries(): Promise<CountyBoundaryData> {
-  const { data } = await api.get('/api/territory/boundaries')
+export async function fetchTerritoryBoundaries(includeZips = false): Promise<CountyBoundaryData> {
+  const { data } = await api.get('/api/territory/boundaries', {
+    params: { include_zips: includeZips },
+  })
   return data as CountyBoundaryData
 }
 
@@ -905,3 +985,5 @@ export async function fetchCensusData(level: 'zip' | 'county' = 'zip'): Promise<
   const { data } = await api.get('/api/territory/census-data', { params: { level } })
   return data as CensusDataResponse
 }
+
+export { api }

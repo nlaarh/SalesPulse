@@ -1,6 +1,6 @@
 """SalesInsight — FastAPI backend for AAA Travel & Insurance analytics."""
 
-import os, sys, logging
+import os, sys, logging, time
 
 sys.path.insert(0, os.path.dirname(__file__))
 from dotenv import load_dotenv
@@ -91,6 +91,31 @@ async def lifespan(app: FastAPI):
 
     warmer_task = asyncio.create_task(cache_warmer())
 
+    # ── Pre-warm expensive caches in background thread on startup ──
+    import threading
+    def _startup_warm():
+        """Pre-fetch territory map + market pulse so first user doesn't wait 30s+."""
+        import time
+        time.sleep(2)  # let server finish startup first
+        try:
+            from routers.territory_map import territory_map_data
+            from shared import resolve_dates
+            sd, ed = resolve_dates(None, None, 4)
+            log.info("Cache warm-up: fetching territory map data...")
+            territory_map_data(period=4, start_date=sd, end_date=ed)
+            log.info("Cache warm-up: territory map done")
+        except Exception as e:
+            log.warning(f"Cache warm-up territory failed: {e}")
+        try:
+            from routers.market_pulse import market_pulse
+            log.info("Cache warm-up: fetching market pulse data...")
+            market_pulse(period=6)
+            log.info("Cache warm-up: market pulse done")
+        except Exception as e:
+            log.warning(f"Cache warm-up market pulse failed: {e}")
+
+    threading.Thread(target=_startup_warm, daemon=True).start()
+
     yield  # app runs here
 
     warmer_task.cancel()
@@ -111,6 +136,66 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def request_timing_middleware(request, call_next):
+    """Capture API request durations for p50/p95 operational visibility."""
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+
+    path = request.url.path
+    # Only track API routes; avoid static assets/noisy paths.
+    if not path.startswith('/api/'):
+        return response
+
+    # Skip self-ingest endpoint to avoid recursion/noise.
+    if path.startswith('/api/perf/client-render'):
+        return response
+
+    try:
+        from database import SessionLocal
+        from models import ApiRequestMetric
+        from auth import decode_token
+
+        route = request.scope.get('route')
+        normalized_path = getattr(route, 'path', path)
+
+        user_id = None
+        user_email = None
+        auth_header = request.headers.get('authorization', '')
+        if auth_header.lower().startswith('bearer '):
+            token = auth_header.split(' ', 1)[1].strip()
+            try:
+                payload = decode_token(token)
+                sub = payload.get('sub')
+                if sub is not None:
+                    user_id = int(sub)
+                user_email = payload.get('email')
+            except Exception:
+                # Ignore auth parsing failures for timing telemetry.
+                pass
+
+        db = SessionLocal()
+        try:
+            db.add(ApiRequestMetric(
+                method=request.method,
+                path=normalized_path,
+                raw_path=path,
+                status_code=response.status_code,
+                duration_ms=round(duration_ms, 3),
+                user_id=user_id,
+                user_email=user_email,
+                source='middleware',
+            ))
+            db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        log.debug(f"request_timing_middleware failed: {e}")
+
+    return response
+
 # ── Initialize database ──────────────────────────────────────────────────────
 
 from database import init_db
@@ -118,7 +203,7 @@ init_db()
 
 # ── Register routers ─────────────────────────────────────────────────────────
 
-from routers import sales_advisor, sales_pipeline, sales_travel, sales_leads, sales_performance, sales_opportunities, sales_agent_profile, sales_narrative, users, activity_logs, advisor_targets, advisor_targets_monthly, advisor_targets_achievement, email_report, issues, ai_config, customer_profile, cross_sell, market_pulse, territory_map
+from routers import sales_advisor, sales_pipeline, sales_travel, sales_leads, sales_performance, sales_opportunities, sales_agent_profile, sales_narrative, users, activity_logs, advisor_targets, advisor_targets_monthly, advisor_targets_achievement, email_report, issues, ai_config, customer_profile, cross_sell, market_pulse, territory_map, ai_queries, performance_metrics
 
 app.include_router(sales_advisor.router)
 app.include_router(sales_pipeline.router)
@@ -140,6 +225,8 @@ app.include_router(customer_profile.router)
 app.include_router(cross_sell.router)
 app.include_router(market_pulse.router)
 app.include_router(territory_map.router)
+app.include_router(ai_queries.router)
+app.include_router(performance_metrics.router)
 
 
 # ── Health check ─────────────────────────────────────────────────────────────

@@ -1,8 +1,9 @@
 """Auth + User management endpoints."""
 
 import logging
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, EmailStr
+from pydantic import EmailStr
 from sqlalchemy.orm import Session
 from database import get_db
 from models import User, VALID_ROLES
@@ -13,23 +14,15 @@ router = APIRouter()
 log = logging.getLogger('salesinsight.users')
 
 
+def _clear_geo_related_cache():
+    """Geo/Census refresh is admin-explicit, so clear full cache for consistency."""
+    import cache
+    return cache.clear_all()
+
+
 # ── Request schemas ──────────────────────────────────────────────────────────
 
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
-class CreateUserRequest(BaseModel):
-    email: str
-    name: str
-    password: str
-    role: str = 'officer'
-
-class UpdateUserRequest(BaseModel):
-    name: str | None = None
-    role: str | None = None
-    is_active: bool | None = None
-    password: str | None = None
+from schemas import LoginRequest, CreateUserRequest, UpdateUserRequest, ResetAdminRequest
 
 
 # ── Auth endpoints ───────────────────────────────────────────────────────────
@@ -147,10 +140,6 @@ def delete_user(user_id: int, request: Request, admin: User = Depends(require_ad
 
 # ── Emergency superadmin reset (ADMIN_PIN protected, no auth required) ────────
 
-class ResetAdminRequest(BaseModel):
-    pin: str
-    new_password: str
-
 @router.post('/api/admin/reset-admin')
 def reset_admin(body: ResetAdminRequest, db: Session = Depends(get_db)):
     """Reset superadmin password. Protected by ADMIN_PIN env var."""
@@ -229,16 +218,7 @@ def geo_refresh(admin: User = Depends(require_admin)):
     finally:
         db.close()
 
-    # Clear boundary + census caches
-    import cache
-    with cache._lock:
-        keys_to_remove = [k for k in cache._store if 'boundar' in k or 'census' in k]
-        for k in keys_to_remove:
-            del cache._store[k]
-    for f in cache._CACHE_DIR.glob('*.json'):
-        fname = f.name
-        if 'boundar' in fname or 'census' in fname:
-            f.unlink(missing_ok=True)
+    _clear_geo_related_cache()
 
     return {
         'ok': True,
@@ -246,6 +226,147 @@ def geo_refresh(admin: User = Depends(require_admin)):
         'zips': zip_count,
         'total_population': total_pop,
         'last_refreshed': last_refreshed.value if last_refreshed else None,
+    }
+
+
+@router.post('/api/admin/geo/refresh-geography')
+def geo_refresh_geography(admin: User = Depends(require_admin)):
+    """Refresh county boundary polygons and county assignment only."""
+    from seed_geodata import _fetch_county_boundaries, _assign_zip_to_county, WCNY_COUNTY_FIPS
+    from database import SessionLocal
+    from models import GeoCounty, GeoZip, GeoMeta
+
+    boundaries = _fetch_county_boundaries()
+
+    db = SessionLocal()
+    try:
+        # Ensure county rows exist and update only geography (geojson/name)
+        for fips, name in WCNY_COUNTY_FIPS.items():
+            county = db.query(GeoCounty).filter(GeoCounty.fips == fips).first()
+            if county:
+                county.name = name
+                if fips in boundaries:
+                    county.geojson = boundaries[fips]
+            else:
+                db.add(GeoCounty(
+                    fips=fips,
+                    name=name,
+                    geojson=boundaries.get(fips, ''),
+                ))
+
+        # Recompute zip -> county assignment from latest boundaries
+        zips = db.query(GeoZip).all()
+        assigned = 0
+        for z in zips:
+            if z.lat is None or z.lng is None:
+                continue
+            county_fips, county_name = _assign_zip_to_county(z.lat, z.lng, boundaries)
+            z.county_fips = county_fips
+            z.county_name = county_name
+            assigned += 1
+
+        now = datetime.now(timezone.utc).isoformat()
+        db.merge(GeoMeta(key='last_refreshed_geography', value=now))
+        db.merge(GeoMeta(key='last_refreshed', value=now))
+        db.merge(GeoMeta(key='source_geography', value='US Census county boundaries (NY)'))
+        db.commit()
+
+        county_count = db.query(GeoCounty).count()
+        zip_count = db.query(GeoZip).count()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+    _clear_geo_related_cache()
+    return {
+        'ok': True,
+        'counties': county_count,
+        'zips': zip_count,
+        'zip_county_assigned': assigned,
+        'last_refreshed': now,
+        'type': 'geography',
+    }
+
+
+@router.post('/api/admin/geo/refresh-census')
+def geo_refresh_census(admin: User = Depends(require_admin)):
+    """Refresh Census demographics only (county + zip metrics)."""
+    from seed_geodata import _fetch_county_population, _fetch_zip_population, WCNY_COUNTY_FIPS, seed_geodata
+    from database import SessionLocal
+    from models import GeoCounty, GeoZip, GeoMeta
+    from sqlalchemy import func
+
+    db = SessionLocal()
+    try:
+        # If base geo rows don't exist yet, bootstrap once.
+        if db.query(GeoZip).count() == 0 or db.query(GeoCounty).count() == 0:
+            db.close()
+            seed_geodata(force=False)
+            db = SessionLocal()
+
+        county_pops = _fetch_county_population()
+        for fips, name in WCNY_COUNTY_FIPS.items():
+            pop = county_pops.get(fips, {})
+            county = db.query(GeoCounty).filter(GeoCounty.fips == fips).first()
+            if county:
+                county.name = name
+                county.population = pop.get('population', 0)
+                county.pop_18plus = pop.get('pop_18plus', 0)
+                county.median_income = pop.get('median_income', 0)
+                county.median_age = pop.get('median_age', 0)
+                county.housing_units = pop.get('housing_units', 0)
+                county.median_home_value = pop.get('median_home_value', 0)
+                county.college_educated = pop.get('college_educated', 0)
+            else:
+                db.add(GeoCounty(
+                    fips=fips,
+                    name=name,
+                    population=pop.get('population', 0),
+                    pop_18plus=pop.get('pop_18plus', 0),
+                    median_income=pop.get('median_income', 0),
+                    median_age=pop.get('median_age', 0),
+                    housing_units=pop.get('housing_units', 0),
+                    median_home_value=pop.get('median_home_value', 0),
+                    college_educated=pop.get('college_educated', 0),
+                ))
+
+        zip_codes = [z[0] for z in db.query(GeoZip.zip_code).all()]
+        zip_pops = _fetch_zip_population(zip_codes)
+        for z in db.query(GeoZip).all():
+            pop = zip_pops.get(z.zip_code, {})
+            z.population = pop.get('population', 0)
+            z.pop_18plus = pop.get('pop_18plus', 0)
+            z.median_income = pop.get('median_income', 0)
+            z.median_age = pop.get('median_age', 0)
+            z.housing_units = pop.get('housing_units', 0)
+            z.median_home_value = pop.get('median_home_value', 0)
+            z.college_educated = pop.get('college_educated', 0)
+
+        now = datetime.now(timezone.utc).isoformat()
+        db.merge(GeoMeta(key='last_refreshed_census', value=now))
+        db.merge(GeoMeta(key='last_refreshed', value=now))
+        db.merge(GeoMeta(key='source', value='US Census Bureau ACS 5-Year 2022'))
+        db.commit()
+
+        county_count = db.query(GeoCounty).count()
+        zip_count = db.query(GeoZip).count()
+        total_pop = db.query(func.sum(GeoZip.population)).scalar() or 0
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+    _clear_geo_related_cache()
+    return {
+        'ok': True,
+        'counties': county_count,
+        'zips': zip_count,
+        'total_population': total_pop,
+        'last_refreshed': now,
+        'type': 'census',
     }
 
 

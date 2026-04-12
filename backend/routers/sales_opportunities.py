@@ -402,11 +402,9 @@ Be direct and actionable. No fluff."""
 # ── Opportunity Email ─────────────────────────────────────────────────────────
 
 import requests as _req
-from pydantic import BaseModel
 from fastapi import HTTPException
 
-class OppEmailRequest(BaseModel):
-    to: str
+from schemas import OppEmailRequest
 
 def _fmt(v, compact=False):
     if v is None: return '—'

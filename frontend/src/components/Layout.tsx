@@ -13,6 +13,7 @@ import SalesPulseLogo from '@/components/SalesPulseLogo'
 import CommandPalette from '@/components/CommandPalette'
 import ReportIssue from '@/components/ReportIssue'
 import Dropdown from '@/components/Dropdown'
+import AIAssistantChat from '@/components/AIAssistantChat'
 
 const APP_VERSION = __APP_VERSION__
 import DateRangeSummary from '@/components/DateRangeSummary'
@@ -509,6 +510,9 @@ export default function Layout() {
           </ErrorBoundary>
         </div>
       </main>
+
+      {/* ── AI Assistant Chat ── */}
+      <AIAssistantChat />
     </div>
   )
 }

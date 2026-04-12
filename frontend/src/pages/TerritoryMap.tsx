@@ -347,6 +347,7 @@ function ImperativeCircleLayer({
             <span>Adults 18+ <b>${fmt(b.pop_18plus)}</b></span>
             <span>Med. Income <b>${fmtCurrency(b.median_income)}</b></span>
             <span>Med. Age <b>${b.median_age}</b></span>
+            <span>Housing <b>${fmt(b.housing_units)}</b></span>
             <span style="color:#ea580c;font-weight:600">Mkt Share <b>${fmtPct(b.market_share)}</b></span>
           </div>` : ''}
           <div style="margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid rgba(128,128,128,0.2)">
@@ -390,6 +391,7 @@ function ImperativeCircleLayer({
             <span>Adults 18+ <b>${fmt(z.pop_18plus)}</b></span>
             ${z.median_income > 0 ? `<span>Med. Income <b>${fmtCurrency(z.median_income)}</b></span>` : ''}
             ${z.median_age > 0 ? `<span>Med. Age <b>${z.median_age}</b></span>` : ''}
+            ${z.housing_units > 0 ? `<span>Housing <b>${fmt(z.housing_units)}</b></span>` : ''}
             <span style="color:#ea580c;font-weight:600">Mkt Share <b>${fmtPct(z.market_share)}</b></span>
           </div>` : ''}
           <div style="margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid rgba(128,128,128,0.2)">

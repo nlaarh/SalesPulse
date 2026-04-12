@@ -10,6 +10,7 @@ CACHE_TTL_MEDIUM = 1800      # 30 minutes
 CACHE_TTL_HOUR = 3600        # 1 hour
 CACHE_TTL_12H = 43200        # 12 hours
 CACHE_TTL_DAY = 86400        # 24 hours
+CACHE_TTL_NEVER = -1         # never expire (until explicit invalidation)
 
 # ── Opportunity Scoring (sales_opportunities) ─────────────────────────────
 

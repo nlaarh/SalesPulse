@@ -7,7 +7,6 @@ from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -99,20 +98,7 @@ def _map_columns(headers: list[str]) -> dict:
 
 # ── Request/Response schemas ────────────────────────────────────────────────
 
-class AdvisorPreview(BaseModel):
-    raw_name: str
-    sf_name: str
-    branch: str | None = None
-    title: str | None = None
-    monthly_target: float | None = None
-    monthly_targets: dict[str, float] | None = None  # {"1": 50000, "2": 60000, ...}
-
-
-class ConfirmRequest(BaseModel):
-    filename: str
-    line: str = 'Travel'
-    year: int = 2026
-    advisors: list[AdvisorPreview]
+from schemas import AdvisorPreview, ConfirmRequest
 
 
 # ── Endpoints ───────────────────────────────────────────────────────────────

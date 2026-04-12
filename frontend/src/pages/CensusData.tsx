@@ -26,7 +26,9 @@ export default function CensusData() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['census-data', level],
     queryFn: () => fetchCensusData(level),
-    staleTime: 30 * 60 * 1000,
+    staleTime: Infinity, // static until admin geo refresh
+    gcTime: 24 * 60 * 60_000,
+    refetchOnWindowFocus: false,
   })
 
   const handleSort = (field: SortField) => {
