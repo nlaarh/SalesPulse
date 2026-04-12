@@ -47,12 +47,39 @@ jobs:
           static/
         echo "Package size: $(du -h ../deploy.zip | cut -f1)"
 
-    - name: Deploy to Azure
-      uses: azure/webapps-deploy@v3
-      with:
-        app-name: ${{ env.AZURE_WEBAPP_NAME }}
-        publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-        package: deploy.zip
+    - name: Deploy to Azure via Kudu ZIP Deploy
+      env:
+        DEPLOY_USER: ${{ secrets.AZURE_DEPLOY_USER }}
+        DEPLOY_PASS: ${{ secrets.AZURE_DEPLOY_PASS }}
+      run: |
+        echo "Deploying to ${{ env.AZURE_WEBAPP_NAME }} (pre-built, no Oryx)..."
+
+        # Write temp netrc for auth
+        echo "machine ${{ env.AZURE_WEBAPP_NAME }}.scm.azurewebsites.net" > /tmp/.netrc
+        echo "login ${DEPLOY_USER}" >> /tmp/.netrc
+        echo "password ${DEPLOY_PASS}" >> /tmp/.netrc
+        chmod 600 /tmp/.netrc
+
+        RESPONSE=$(curl -s -w "\n%{http_code}" \
+          -X POST \
+          "https://${{ env.AZURE_WEBAPP_NAME }}.scm.azurewebsites.net/api/zipdeploy?isAsync=true" \
+          --netrc-file /tmp/.netrc \
+          --data-binary @deploy.zip \
+          -H "Content-Type: application/octet-stream" \
+          --max-time 300)
+
+        rm -f /tmp/.netrc
+
+        HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+        echo "Kudu response: HTTP $HTTP_CODE"
+
+        if [ "$HTTP_CODE" = "202" ] || [ "$HTTP_CODE" = "200" ]; then
+          echo "Deploy accepted — Azure is building in background"
+        else
+          echo "Deploy failed with HTTP $HTTP_CODE"
+          echo "$RESPONSE" | head -5
+          exit 1
+        fi
 
     - name: Verify health
       run: |
