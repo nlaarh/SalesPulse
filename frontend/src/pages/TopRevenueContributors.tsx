@@ -19,11 +19,11 @@ import { useChartColors, tooltipStyle } from '@/lib/chart-theme'
 import { cn } from '@/lib/utils'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Cell, PieChart, Pie,
+  Tooltip, ResponsiveContainer, Cell,
 } from 'recharts'
 import {
   Loader2, Users, ExternalLink, ArrowUp, ArrowDown,
-  Search, X, MapPin, Globe, DollarSign, TrendingUp,
+  Search, X, Globe,
   Download, UserCheck, Plane, Map,
 } from 'lucide-react'
 import { exportToExcel } from '@/lib/exportExcel'

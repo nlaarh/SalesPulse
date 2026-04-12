@@ -5,7 +5,7 @@ import { exportToExcel } from '@/lib/exportExcel'
 import { cn } from '@/lib/utils'
 import {
   Download, Search, BarChart3, Users, Home, GraduationCap,
-  DollarSign, ChevronUp, ChevronDown, MapPin,
+  DollarSign, ChevronUp, ChevronDown,
 } from 'lucide-react'
 
 type Level = 'zip' | 'county'
@@ -38,13 +38,6 @@ export default function CensusData() {
       setSortField(field)
       setSortDir('desc')
     }
-  }
-
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return null
-    return sortDir === 'asc'
-      ? <ChevronUp className="inline h-3 w-3 ml-0.5" />
-      : <ChevronDown className="inline h-3 w-3 ml-0.5" />
   }
 
   const filteredRows = useMemo(() => {
@@ -227,7 +220,7 @@ export default function CensusData() {
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.map((r, i) => {
+                {filteredRows.map((r, _i) => {
                   const isZip = level === 'zip'
                   const row = r as any
                   return (

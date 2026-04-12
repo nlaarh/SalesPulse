@@ -5,7 +5,7 @@
  */
 import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Bot, X, ChevronDown, ChevronUp, Loader2, AlertCircle, Sparkles, BarChart3, Map, Users, TrendingUp, Target, Shield, Plane } from 'lucide-react'
+import { Send, Bot, X, ChevronDown, ChevronUp, Loader2, AlertCircle, Sparkles, BarChart3, Map, Users, TrendingUp, Shield } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'

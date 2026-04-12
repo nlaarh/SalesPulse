@@ -5,7 +5,7 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
 import {
-  Users, GitBranch, Plane, Megaphone, Table2, Target, UserCheck, DollarSign,
+  Users, GitBranch, Megaphone, Table2, Target, DollarSign,
   Sun, Moon, Calendar, Command, Radio, Map, BarChart3,
   ArrowRight, X, HelpCircle, Settings, LogOut, Bug, Lightbulb,
 } from 'lucide-react'
