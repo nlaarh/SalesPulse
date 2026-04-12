@@ -17,13 +17,14 @@ from shared import (
     resolve_dates as _resolve_dates,
     OPP_RT_TRAVEL_ID, OPP_RT_INSURANCE_ID, WON_STAGES,
 )
-from constants import CACHE_TTL_HOUR, CACHE_TTL_DAY
+from constants import CACHE_TTL_DAY
 import cache
 
 router = APIRouter()
 log = logging.getLogger(__name__)
 
 OPP_RT_MEDICARE_ID = '012Pb0000006hIhIAI'
+DOMESTIC_DESTINATIONS = {'United States', 'Alaska', 'Hawaii', 'Walt Disney World'}
 
 # ── Travel Advisory levels ───────────────────────────────────────────────────
 
@@ -188,13 +189,12 @@ def _seasonal_alerts(today: date) -> list[dict]:
             'icon': 'umbrella',
         })
 
-    # Membership renewal: always relevant
+    # Membership renewal: always relevant (placeholder — enriched in endpoint with real data)
     alerts.append({
         'type': 'membership',
         'severity': 'info',
         'title': 'Membership Renewals — Upgrade Opportunity',
-        'summary': 'Members approaching renewal are receptive to tier upgrades. '
-                   'Basic→Plus and Plus→Premier based on travel activity and roadside usage.',
+        'summary': '',  # Filled in by endpoint with real tier breakdown
         'action': 'Review expiring memberships for upgrade candidates',
         'icon': 'arrow-up-circle',
     })
@@ -326,6 +326,92 @@ def _match_advisories_to_trips(advisories: list[dict], trip_counts: dict) -> lis
     return matched
 
 
+def _safe_birthday_window(today: date) -> tuple[date, date]:
+    """Return birthdate range for members turning 65 in next 12 months."""
+    try:
+        start = date(today.year - 65, today.month, today.day)
+    except ValueError:
+        # Handles Feb 29 on non-leap years.
+        start = date(today.year - 65, today.month, 28)
+    try:
+        end = date(today.year - 64, today.month, today.day)
+    except ValueError:
+        end = date(today.year - 64, today.month, 28)
+    return start, end
+
+
+def _fetch_membership_metrics(today: date) -> dict[str, int]:
+    """Daily-cached account-side metrics (expensive + period-independent)."""
+    key = f"market_pulse_membership_metrics_{today.isoformat()}"
+
+    def fetch():
+        birth_start, birth_end = _safe_birthday_window(today)
+        exp_end_90 = (today + timedelta(days=90)).isoformat()
+        exp_end_30 = (today + timedelta(days=30)).isoformat()
+        _exp_base = (
+            f"IsPersonAccount = true AND Member_Status__c = 'A'"
+            f" AND ImportantActiveMemExpiryDate__c >= {today.isoformat()}"
+        )
+        data = sf_parallel(
+            turning_65=f"""
+                SELECT COUNT(Id) cnt
+                FROM Account
+                WHERE IsPersonAccount = true
+                  AND Member_Status__c = 'A'
+                  AND PersonBirthdate != null
+                  AND PersonBirthdate >= {birth_start.isoformat()}
+                  AND PersonBirthdate <= {birth_end.isoformat()}
+            """,
+            expiring_90d=f"""
+                SELECT COUNT(Id) cnt FROM Account
+                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_90}
+            """,
+            expiring_30d=f"""
+                SELECT COUNT(Id) cnt FROM Account
+                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_30}
+            """,
+            expiring_premier=f"""
+                SELECT COUNT(Id) cnt FROM Account
+                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_90}
+                  AND ImportantActiveMemCoverage__c = 'PREMIER'
+            """,
+            expiring_plus=f"""
+                SELECT COUNT(Id) cnt FROM Account
+                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_90}
+                  AND ImportantActiveMemCoverage__c = 'PLUS'
+            """,
+            expiring_basic=f"""
+                SELECT COUNT(Id) cnt FROM Account
+                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_90}
+                  AND ImportantActiveMemCoverage__c = 'B'
+            """,
+            basic_members=f"""
+                SELECT COUNT(Id) cnt
+                FROM Account
+                WHERE IsPersonAccount = true
+                  AND Member_Status__c = 'A'
+                  AND ImportantActiveMemCoverage__c = 'B'
+            """,
+        )
+        _cnt = lambda k: (data.get(k, [{}])[0] or {}).get('cnt', 0) or 0
+        return {
+            'members_turning_65': _cnt('turning_65'),
+            'expiring_memberships_90d': _cnt('expiring_90d'),
+            'expiring_memberships_30d': _cnt('expiring_30d'),
+            'expiring_premier': _cnt('expiring_premier'),
+            'expiring_plus': _cnt('expiring_plus'),
+            'expiring_basic': _cnt('expiring_basic'),
+            'basic_tier_members': _cnt('basic_members'),
+        }
+
+    # These values shift slowly; cache aggressively.
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_DAY, disk_ttl=CACHE_TTL_DAY) or {
+        'members_turning_65': 0,
+        'expiring_memberships_90d': 0,
+        'basic_tier_members': 0,
+    }
+
+
 # ── Endpoint ─────────────────────────────────────────────────────────────────
 
 @router.get("/api/market-pulse")
@@ -342,13 +428,28 @@ def market_pulse(
     def fetch():
         today = date.today()
 
-        # Parallel SF queries for context
-        # For advisory matching, only count FUTURE trips (travel not yet departed)
+        # For advisory matching, only count FUTURE trips (travel not yet departed).
         future_start = max(sd, today.isoformat())
+
+        # Fetch travel advisories in a thread while SOQL runs
+        import threading
+        advisory_result = []
+        def _fetch_adv():
+            advisory_result.extend(_fetch_travel_advisories())
+        adv_thread = threading.Thread(target=_fetch_adv, daemon=True)
+        adv_thread.start()
+
+        # ── ALL queries in ONE parallel batch (travel + medicare + membership) ──
+        birth_start, birth_end = _safe_birthday_window(today)
+        exp_end_90 = (today + timedelta(days=90)).isoformat()
+        exp_end_30 = (today + timedelta(days=30)).isoformat()
+        _exp_base = (
+            f"IsPersonAccount = true AND Member_Status__c = 'A'"
+            f" AND ImportantActiveMemExpiryDate__c >= {today.isoformat()}"
+        )
         data = sf_parallel(
-            # Trip counts by destination — future only for advisory relevance
-            dest_counts=f"""
-                SELECT Destination_Region__c dest, COUNT(Id) cnt
+            travel_rollup=f"""
+                SELECT Destination_Region__c dest, COUNT(Id) cnt, SUM(Amount) total
                 FROM Opportunity
                 WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
                   AND {WON_STAGES}
@@ -357,18 +458,6 @@ def market_pulse(
                 GROUP BY Destination_Region__c
                 ORDER BY COUNT(Id) DESC
             """,
-            # International vs domestic split — future only
-            intl_trips=f"""
-                SELECT COUNT(Id) cnt, SUM(Amount) total
-                FROM Opportunity
-                WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
-                  AND {WON_STAGES}
-                  AND CloseDate >= {future_start} AND CloseDate <= {ed}
-                  AND Amount != null
-                  AND Destination_Region__c NOT IN ('United States','Alaska','Hawaii','Walt Disney World')
-                  AND Destination_Region__c != null
-            """,
-            # Medicare opps this period
             medicare_count=f"""
                 SELECT COUNT(Id) cnt
                 FROM Opportunity
@@ -376,57 +465,107 @@ def market_pulse(
                   AND {WON_STAGES}
                   AND CloseDate >= {sd} AND CloseDate <= {ed}
             """,
-            # Members turning 65 in next 12 months
+            # Membership metrics — merged into same batch
             turning_65=f"""
-                SELECT COUNT(Id) cnt
-                FROM Account
-                WHERE IsPersonAccount = true
-                  AND Member_Status__c = 'A'
+                SELECT COUNT(Id) cnt FROM Account
+                WHERE IsPersonAccount = true AND Member_Status__c = 'A'
                   AND PersonBirthdate != null
-                  AND PersonBirthdate >= {date(today.year - 65, today.month, today.day).isoformat()}
-                  AND PersonBirthdate <= {date(today.year - 64, today.month, today.day).isoformat()}
+                  AND PersonBirthdate >= {birth_start.isoformat()}
+                  AND PersonBirthdate <= {birth_end.isoformat()}
             """,
-            # Expiring memberships (next 90 days)
-            expiring_memberships=f"""
-                SELECT COUNT(Id) cnt
-                FROM Account
-                WHERE IsPersonAccount = true
-                  AND Member_Status__c = 'A'
-                  AND ImportantActiveMemExpiryDate__c >= {today.isoformat()}
-                  AND ImportantActiveMemExpiryDate__c <= {(today + timedelta(days=90)).isoformat()}
+            expiring_90d=f"""
+                SELECT COUNT(Id) cnt FROM Account
+                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_90}
             """,
-            # Basic tier members (upgrade candidates)
+            expiring_30d=f"""
+                SELECT COUNT(Id) cnt FROM Account
+                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_30}
+            """,
+            expiring_premier=f"""
+                SELECT COUNT(Id) cnt FROM Account
+                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_90}
+                  AND ImportantActiveMemCoverage__c = 'PREMIER'
+            """,
+            expiring_plus=f"""
+                SELECT COUNT(Id) cnt FROM Account
+                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_90}
+                  AND ImportantActiveMemCoverage__c = 'PLUS'
+            """,
+            expiring_basic=f"""
+                SELECT COUNT(Id) cnt FROM Account
+                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_90}
+                  AND ImportantActiveMemCoverage__c = 'B'
+            """,
             basic_members=f"""
-                SELECT COUNT(Id) cnt
-                FROM Account
-                WHERE IsPersonAccount = true
-                  AND Member_Status__c = 'A'
+                SELECT COUNT(Id) cnt FROM Account
+                WHERE IsPersonAccount = true AND Member_Status__c = 'A'
                   AND ImportantActiveMemCoverage__c = 'B'
             """,
         )
 
+        _cnt = lambda k: (data.get(k, [{}])[0] or {}).get('cnt', 0) or 0
+
         # Build destination count map
         trip_counts = {}
-        for row in data.get('dest_counts', []):
+        travel_rows = data.get('travel_rollup', [])
+        for row in travel_rows:
             trip_counts[row.get('dest', '')] = row.get('cnt', 0)
 
-        # Fetch travel advisories and match
-        advisories = _fetch_travel_advisories()
-        advisory_alerts = _match_advisories_to_trips(advisories, trip_counts)
+        # Wait for advisory thread
+        adv_thread.join(timeout=10)
+        advisory_alerts = _match_advisories_to_trips(advisory_result, trip_counts)
 
         # Calendar & seasonal alerts
         medicare_alerts = _medicare_calendar_alerts(today)
         seasonal_alerts = _seasonal_alerts(today)
 
         # Internal data metrics
-        intl = data.get('intl_trips', [{}])
-        intl_count = (intl[0] if intl else {}).get('cnt', 0) or 0
-        intl_value = (intl[0] if intl else {}).get('total', 0) or 0
+        intl_count = 0
+        intl_value = 0
+        for row in travel_rows:
+            dest = row.get('dest', '')
+            if not dest or dest in DOMESTIC_DESTINATIONS:
+                continue
+            cnt = row.get('cnt') or 0
+            total = row.get('total') or 0
+            intl_count += cnt
+            intl_value += total
 
-        medicare_won = (data.get('medicare_count', [{}])[0] or {}).get('cnt', 0) or 0
-        turning_65 = (data.get('turning_65', [{}])[0] or {}).get('cnt', 0) or 0
-        expiring = (data.get('expiring_memberships', [{}])[0] or {}).get('cnt', 0) or 0
-        basic_count = (data.get('basic_members', [{}])[0] or {}).get('cnt', 0) or 0
+        medicare_won = _cnt('medicare_count')
+        membership_metrics = {
+            'members_turning_65': _cnt('turning_65'),
+            'expiring_memberships_90d': _cnt('expiring_90d'),
+            'expiring_memberships_30d': _cnt('expiring_30d'),
+            'expiring_premier': _cnt('expiring_premier'),
+            'expiring_plus': _cnt('expiring_plus'),
+            'expiring_basic': _cnt('expiring_basic'),
+            'basic_tier_members': _cnt('basic_members'),
+        }
+
+        # Enrich membership renewal alert with real tier breakdown
+        mm = membership_metrics
+        exp_90 = mm['expiring_memberships_90d']
+        exp_30 = mm['expiring_memberships_30d']
+        exp_premier = mm['expiring_premier']
+        exp_plus = mm['expiring_plus']
+        exp_basic = mm['expiring_basic']
+
+        for alert in seasonal_alerts:
+            if alert.get('type') == 'membership' and exp_90 > 0:
+                urgent = f" ({exp_30:,} within 30 days)" if exp_30 else ""
+                alert['severity'] = 'high' if exp_30 > 1000 else 'medium'
+                alert['title'] = f'{exp_90:,} Memberships Expiring — Renewal & Upgrade Window'
+                alert['summary'] = (
+                    f"{exp_90:,} active memberships expiring in the next 90 days{urgent}. "
+                    f"Breakdown: {exp_premier:,} Premier (highest retention value), "
+                    f"{exp_plus:,} Plus, {exp_basic:,} Basic. "
+                    f"Premier members are your top retention priority. "
+                    f"Basic members are upgrade candidates (Basic→Plus)."
+                )
+                alert['action'] = (
+                    f"Prioritize {exp_premier:,} Premier renewals, "
+                    f"then target {exp_basic:,} Basic members for tier upgrades"
+                )
 
         # Compile all alerts, sorted by severity
         all_alerts = advisory_alerts + medicare_alerts + seasonal_alerts
@@ -440,12 +579,16 @@ def market_pulse(
                 'international_trips': intl_count,
                 'international_value': round(intl_value, 2),
                 'medicare_enrolled_period': medicare_won,
-                'members_turning_65': turning_65,
-                'expiring_memberships_90d': expiring,
-                'basic_tier_members': basic_count,
+                'members_turning_65': membership_metrics['members_turning_65'],
+                'expiring_memberships_90d': membership_metrics['expiring_memberships_90d'],
+                'expiring_memberships_30d': membership_metrics['expiring_memberships_30d'],
+                'expiring_premier': membership_metrics['expiring_premier'],
+                'expiring_plus': membership_metrics['expiring_plus'],
+                'expiring_basic': membership_metrics['expiring_basic'],
+                'basic_tier_members': membership_metrics['basic_tier_members'],
                 'top_destinations': [
                     {'destination': r.get('dest', ''), 'trips': r.get('cnt', 0)}
-                    for r in (data.get('dest_counts', []))[:10]
+                    for r in travel_rows[:10]
                 ],
             },
             'advisory_count': len(advisory_alerts),
@@ -453,7 +596,7 @@ def market_pulse(
             'generated_at': datetime.utcnow().isoformat() + 'Z',
         }
 
-    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_DAY, disk_ttl=CACHE_TTL_DAY)
 
 
 @router.get("/api/market-pulse/impacted-customers")
@@ -466,7 +609,7 @@ def impacted_customers(
     """Return customers traveling to advisory-affected destinations,
     grouped by advisor.  Loaded on-demand when user expands an alert."""
     sd, ed = _resolve_dates(start_date, end_date, period)
-    destinations = [d.strip() for d in destination.split(',') if d.strip()]
+    destinations = sorted({d.strip() for d in destination.split(',') if d.strip()})
     if not destinations:
         return {'advisors': [], 'total': 0}
 
@@ -515,4 +658,4 @@ def impacted_customers(
             'total': sum(a['trips'] for a in advisors),
         }
 
-    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_DAY, disk_ttl=CACHE_TTL_DAY)
