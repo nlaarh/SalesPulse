@@ -12,17 +12,22 @@ import pytest
 
 @pytest.fixture
 def v2_enabled(monkeypatch, tmp_path):
-    """Enable cache v2 with isolated dirs."""
+    """Enable cache v2 with isolated dirs. Restores v1 state on teardown."""
     monkeypatch.setenv('ENABLE_CACHE_V2', 'true')
     cache_dir = tmp_path / 'cache'
     cache_dir.mkdir()
-    # Reset module state
     import importlib
     import cache
     importlib.reload(cache)
     monkeypatch.setattr(cache, '_CACHE_DIR', cache_dir)
     cache._store.clear()
-    return cache
+    # Also clear breaker state between tests
+    cache._breaker_failures.clear()
+    cache._breaker_open_until.clear()
+    yield cache
+    # Teardown: restore v1 state
+    monkeypatch.delenv('ENABLE_CACHE_V2', raising=False)
+    importlib.reload(cache)
 
 
 def test_cache_version_bump_invalidates_old_entries(v2_enabled, tmp_path):
