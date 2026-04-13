@@ -135,21 +135,32 @@ def _build_endpoint_list():
     from routers.market_pulse import market_pulse
     from routers.cross_sell import cross_sell_insights
 
-    # Travel + Insurance for each relevant endpoint, period=12 (covers 90% of traffic)
+    # IMPORTANT: FastAPI endpoints use Query(None) as default for optional params.
+    # When called directly (not via HTTP), Python passes the Query object, not None.
+    # We must pass explicit None for each Query-defaulted param (start_date, end_date).
     endpoints = []
 
     for line in ('Travel', 'Insurance'):
-        endpoints.append((f'monthly_{line}', lambda l=line: performance_monthly(line=l, period=12)))
-        endpoints.append((f'leaderboard_{line}', lambda l=line: advisor_leaderboard(line=l, period=12)))
-        endpoints.append((f'yoy_{line}', lambda l=line: advisor_yoy(line=l)))
-        endpoints.append((f'funnel_{line}', lambda l=line: performance_funnel(line=l, period=12)))
-        endpoints.append((f'leads_volume_{line}', lambda l=line: leads_volume(line=l, period=12)))
-        endpoints.append((f'close_speed_{line}', lambda l=line: agent_close_speed(line=l, period=12)))
+        endpoints.append((f'monthly_{line}',
+            lambda l=line: performance_monthly(line=l, period=12, start_date=None, end_date=None)))
+        endpoints.append((f'leaderboard_{line}',
+            lambda l=line: advisor_leaderboard(line=l, period=12, start_date=None, end_date=None)))
+        endpoints.append((f'yoy_{line}',
+            lambda l=line: advisor_yoy(line=l, year=None)))
+        endpoints.append((f'funnel_{line}',
+            lambda l=line: performance_funnel(line=l, period=12, start_date=None, end_date=None)))
+        endpoints.append((f'leads_volume_{line}',
+            lambda l=line: leads_volume(line=l, period=12, start_date=None, end_date=None)))
+        endpoints.append((f'close_speed_{line}',
+            lambda l=line: agent_close_speed(line=l, period=12, start_date=None, end_date=None)))
 
     # Line-independent endpoints
-    endpoints.append(('territory_map', lambda: territory_map_data(period=12)))
-    endpoints.append(('market_pulse', lambda: market_pulse(period=6)))
-    endpoints.append(('cross_sell', lambda: cross_sell_insights(period=12)))
+    endpoints.append(('territory_map',
+        lambda: territory_map_data(period=12, start_date=None, end_date=None)))
+    endpoints.append(('market_pulse',
+        lambda: market_pulse(period=6, start_date=None, end_date=None)))
+    endpoints.append(('cross_sell',
+        lambda: cross_sell_insights(period=12, start_date=None, end_date=None)))
 
     return endpoints
 
