@@ -190,3 +190,26 @@ def test_cache_dir_uses_home_on_azure(monkeypatch, tmp_path):
 
     # Also verify the current module's _CACHE_DIR ends with /cache (sanity)
     assert str(cache._CACHE_DIR).endswith('/cache')
+
+
+def test_fetcher_timeout_raises_and_records_breaker_failure(v2_enabled):
+    """A fetcher exceeding FETCHER_TIMEOUT raises TimeoutError and records a breaker failure."""
+    cache = v2_enabled
+
+    # Use a very short timeout for test speed
+    original_timeout = cache.FETCHER_TIMEOUT
+    cache.FETCHER_TIMEOUT = 0.1  # 100ms
+
+    def hung_fetch():
+        time.sleep(5)  # Way longer than 0.1s timeout
+        return {'should': 'not reach'}
+
+    try:
+        with pytest.raises(TimeoutError, match="Fetch timeout"):
+            cache.cached_query('hung_key', hung_fetch, ttl=60)
+
+        # Verify breaker recorded the failure
+        assert 'hung_key' in cache._breaker_failures or 'hung_key' in cache._breaker_open_until, \
+            "Breaker should have recorded a failure for hung_key"
+    finally:
+        cache.FETCHER_TIMEOUT = original_timeout

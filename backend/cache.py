@@ -9,6 +9,7 @@ all firing independent Salesforce queries.
 
 import os, time, json, threading, logging, hashlib
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutTimeout
 from pathlib import Path
 
 log = logging.getLogger('cache')
@@ -262,7 +263,18 @@ def cached_query(key: str, fetch_fn, ttl: int = 3600, disk_ttl: int = 86400):
 
     # Fetcher path
     try:
-        data = fetch_fn()
+        if ENABLE_V2:
+            # Enforce fetcher timeout — prevent hung queries from blocking forever
+            with ThreadPoolExecutor(max_workers=1) as exe:
+                fut = exe.submit(fetch_fn)
+                try:
+                    data = fut.result(timeout=FETCHER_TIMEOUT)
+                except FutTimeout:
+                    log.error(f"Fetcher timed out after {FETCHER_TIMEOUT}s for '{key}'")
+                    # breaker_record_failure handled by outer except block
+                    raise TimeoutError(f"Fetch timeout after {FETCHER_TIMEOUT}s for '{key}'")
+        else:
+            data = fetch_fn()
         if data is not None:
             put(key, data, ttl)
             disk_put(key, data, disk_ttl)
