@@ -29,9 +29,13 @@ def _run_warm_sequence(endpoints, trigger='nightly', sleep_between=SLEEP_BETWEEN
     for name, fn in endpoints:
         q_start = time.time()
         try:
-            with ThreadPoolExecutor(max_workers=1) as exe:
+            exe = ThreadPoolExecutor(max_workers=1)
+            try:
                 fut = exe.submit(fn)
                 fut.result(timeout=PER_QUERY_TIMEOUT)
+            finally:
+                # Don't block on hung threads — prevents stuck SF calls from stalling warmer
+                exe.shutdown(wait=False, cancel_futures=True)
             duration_ms = int((time.time() - q_start) * 1000)
             log_entries.append({
                 'endpoint': name,
