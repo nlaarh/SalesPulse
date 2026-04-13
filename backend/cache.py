@@ -130,24 +130,38 @@ def clear_all() -> tuple[int, int]:
 _inflight: dict[str, threading.Event] = {}
 _inflight_lock = threading.Lock()
 
-_FETCH_TIMEOUT = 45  # max seconds to wait for another thread's fetch
+# ── Timeouts ─────────────────────────────────────────────────────────────────
+# User-visible timeout: how long a user-facing HTTP request will wait on a
+# concurrent fetcher before giving up and either (a) retrying inline or
+# (b) returning stale data.
+USER_WAIT_TIMEOUT = 25.0  # seconds
+
+# Fetcher timeout: how long the designated fetcher may run before giving up.
+# Kept long enough to cover the slowest cold query (leaderboard ~120s).
+FETCHER_TIMEOUT = 240.0  # seconds
+
+# v1 compat alias (read by old tests)
+_FETCH_TIMEOUT = 45  # kept for v1 compat; v2 uses USER_WAIT_TIMEOUT/FETCHER_TIMEOUT
 
 
 # ── Convenience ──────────────────────────────────────────────────────────────
 
 def cached_query(key: str, fetch_fn, ttl: int = 3600, disk_ttl: int = 86400):
-    """Cache-aside with stampede protection.
+    """Cache-aside with stampede protection, decoupled timeouts, no-silent-null.
 
-    Only one thread fetches per key at a time. All other concurrent
-    requests for the same cold key wait up to _FETCH_TIMEOUT seconds,
-    then read the freshly cached result.
+    Fast path: return L1/L2 hit immediately.
+    Fetcher path: one thread fetches, records result.
+    Waiter path: wait up to USER_WAIT_TIMEOUT; if still empty, retry inline once.
     """
-    # Fast path — already in L1 or L2
+    # Fast path
     data = get(key)
     if data is not None:
         return data
 
-    # Determine if we're the fetcher or a waiter
+    # Pick timeout based on v2 flag
+    wait_timeout = USER_WAIT_TIMEOUT if ENABLE_V2 else _FETCH_TIMEOUT
+
+    # Determine role
     with _inflight_lock:
         if key in _inflight:
             event = _inflight[key]
@@ -158,18 +172,40 @@ def cached_query(key: str, fetch_fn, ttl: int = 3600, disk_ttl: int = 86400):
             is_fetcher = True
 
     if not is_fetcher:
-        # Wait for the designated fetcher to finish, then read from cache
-        event.wait(timeout=_FETCH_TIMEOUT)
-        return get(key)  # may still be None if fetcher failed
+        if ENABLE_V2:
+            # Waiter: bounded wait
+            event.wait(timeout=wait_timeout)
+            data = get(key)
+            if data is not None:
+                return data
+            # Fetcher failed, timed out, or returned None — retry inline ONCE.
+            # No infinite retry loop: if this inline fetch also fails, raise.
+            log.warning(f"Cache waiter for '{key}' got no data after {wait_timeout}s; retrying inline")
+            try:
+                result = fetch_fn()
+                if result is not None:
+                    put(key, result, ttl)
+                    disk_put(key, result, disk_ttl)
+                return result
+            except Exception as e:
+                log.error(f"Inline retry for '{key}' also failed: {e}")
+                raise
+        else:
+            # v1 behavior: wait then return (may be None)
+            event.wait(timeout=wait_timeout)
+            return get(key)
 
-    # We are the designated fetcher
+    # Fetcher path
     try:
         data = fetch_fn()
         if data is not None:
             put(key, data, ttl)
             disk_put(key, data, disk_ttl)
         return data
+    except Exception as e:
+        log.error(f"Fetch failed for '{key}': {e}")
+        raise
     finally:
         with _inflight_lock:
             _inflight.pop(key, None)
-        event.set()  # wake all waiters
+        event.set()
