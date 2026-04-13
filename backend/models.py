@@ -1,7 +1,7 @@
 """User + ActivityLog models for authentication, role-based access, and audit trail."""
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Index
+from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Index, Text
 from database import Base
 
 VALID_ROLES = ('superadmin', 'admin', 'officer', 'travel_manager', 'travel_director', 'insurance_manager')
@@ -243,3 +243,21 @@ class ActivityLog(Base):
             'ip_address': self.ip_address,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
+
+
+# ── Cache Warm Runs ─────────────────────────────────────────────────────────
+
+class CacheWarmRun(Base):
+    """Record of each cache warm job (nightly or deploy-triggered)."""
+    __tablename__ = 'cache_warm_runs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    started_at = Column(DateTime, nullable=False, index=True)
+    ended_at = Column(DateTime, nullable=True)
+    trigger = Column(String(32), nullable=False)       # 'nightly' | 'deploy' | 'manual'
+    status = Column(String(32), nullable=False)        # 'running' | 'success' | 'partial' | 'failed'
+    endpoints_total = Column(Integer, default=0)
+    endpoints_success = Column(Integer, default=0)
+    endpoints_failed = Column(Integer, default=0)
+    duration_ms = Column(Integer, nullable=True)
+    log_json = Column(Text, nullable=True)  # JSON array of per-endpoint results
