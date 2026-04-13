@@ -6,7 +6,6 @@ import time
 import json
 import threading
 from pathlib import Path
-from unittest.mock import patch
 import pytest
 
 
@@ -53,7 +52,6 @@ def test_cached_at_timestamp_present(v2_enabled):
     t0 = time.time()
     cache.disk_put('k_time', {'x': 1}, ttl=3600)
     # Read raw file to verify cached_at was persisted
-    import json
     path = cache._disk_path('k_time')
     with open(path) as f:
         entry = json.load(f)
@@ -166,7 +164,6 @@ def test_concurrent_disk_writes_no_corruption(v2_enabled):
     for t in threads: t.join()
 
     # File must exist and be valid JSON with expected shape
-    import json
     path = cache._disk_path('concurrent')
     assert path.exists()
     with open(path) as f:
