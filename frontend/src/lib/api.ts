@@ -15,9 +15,16 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Retry on 502/503/504 + redirect on 401
+// Retry on 502/503/504 + redirect on 401 + expose cached_at header
 api.interceptors.response.use(
-  (r) => r,
+  (response) => {
+    // Expose cached_at if server included it (cache warming metadata)
+    const cachedAt = response.headers['x-cache-cached-at']
+    if (cachedAt) {
+      ;(response as any).cachedAt = cachedAt
+    }
+    return response
+  },
   async (err) => {
     const status = err?.response?.status
 
