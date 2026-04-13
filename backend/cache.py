@@ -134,6 +134,38 @@ def clear_all() -> tuple[int, int]:
     return l1_count, l2_count
 
 
+def stats() -> dict:
+    """Return current cache stats under proper locking. Safe for admin observability."""
+    with _lock:
+        l1_entries = len(_store)
+    l2_files = list(_CACHE_DIR.glob('*.json'))
+    l2_bytes = 0
+    oldest_mtime = None
+    newest_mtime = None
+    for f in l2_files:
+        try:
+            st = f.stat()
+            l2_bytes += st.st_size
+            if oldest_mtime is None or st.st_mtime < oldest_mtime:
+                oldest_mtime = st.st_mtime
+            if newest_mtime is None or st.st_mtime > newest_mtime:
+                newest_mtime = st.st_mtime
+        except FileNotFoundError:
+            # Race: file vanished between glob and stat. Skip it.
+            continue
+    now = time.time()
+    return {
+        'l1_entries': l1_entries,
+        'l1_max_entries': L1_MAX_ENTRIES,
+        'l2_entries': len(l2_files),
+        'l2_total_bytes': l2_bytes,
+        'l2_oldest_age_seconds': (now - oldest_mtime) if oldest_mtime else None,
+        'l2_newest_age_seconds': (now - newest_mtime) if newest_mtime else None,
+        'version': CACHE_VERSION,
+        'v2_enabled': ENABLE_V2,
+    }
+
+
 # ── Stampede protection ───────────────────────────────────────────────────────
 # Per-process dict of in-flight fetches. When a key is being fetched, any
 # concurrent requests for the same key block on the Event instead of firing
