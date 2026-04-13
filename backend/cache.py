@@ -8,6 +8,7 @@ all firing independent Salesforce queries.
 """
 
 import os, time, json, threading, logging, hashlib
+from collections import OrderedDict
 from pathlib import Path
 
 log = logging.getLogger('cache')
@@ -18,29 +19,37 @@ ENABLE_V2 = os.getenv('ENABLE_CACHE_V2', 'false').lower() == 'true'
 
 # ── L1: In-memory ────────────────────────────────────────────────────────────
 
-_store: dict = {}
+L1_MAX_ENTRIES = 2000  # entries (not bytes) — tuned for 500MB worst-case
+_store: OrderedDict = OrderedDict()
 _lock = threading.Lock()
 
 
 def get(key: str):
-    """Get from L1 memory cache. Returns None if missing or expired."""
+    """Get from L1 memory cache. Returns None if missing or expired.
+    Moves entry to MRU end on access."""
     with _lock:
         entry = _store.get(key)
         if entry and (entry['expires'] is None or time.time() < entry['expires']):
+            _store.move_to_end(key)  # LRU touch
             return entry['data']
-    # L1 miss — try L2 (shared across all workers via filesystem)
+    # L1 miss — try L2
     disk_data = disk_get(key)
     if disk_data is not None:
-        put(key, disk_data, 3600)  # Promote to L1 for 1h
+        put(key, disk_data, 3600)
         return disk_data
     return None
 
 
 def put(key: str, data, ttl: int = 3600):
-    """Store in L1 memory cache with TTL."""
+    """Store in L1 memory cache with TTL. Evicts LRU entry if over cap."""
     expires = None if ttl is None or ttl < 0 else time.time() + ttl
     with _lock:
+        if key in _store:
+            _store.move_to_end(key)
         _store[key] = {'data': data, 'expires': expires}
+        # Evict oldest until within cap
+        while len(_store) > L1_MAX_ENTRIES:
+            _store.popitem(last=False)
 
 
 def invalidate(key: str):
