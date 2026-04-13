@@ -145,3 +145,25 @@ def test_l1_cap_evicts_lru_to_disk(v2_enabled, monkeypatch):
     with cache._lock:
         assert 'a' not in cache._store
         assert len(cache._store) == 3
+
+
+def test_concurrent_disk_writes_no_corruption(v2_enabled):
+    """10 threads write the same key concurrently — file is always valid JSON."""
+    cache = v2_enabled
+
+    def writer(i):
+        for _ in range(20):
+            cache.disk_put('concurrent', {'writer': i, 'n': _}, ttl=60)
+
+    threads = [threading.Thread(target=writer, args=(i,)) for i in range(10)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+
+    # File must exist and be valid JSON with expected shape
+    import json
+    path = cache._disk_path('concurrent')
+    assert path.exists()
+    with open(path) as f:
+        entry = json.load(f)
+    assert 'data' in entry
+    assert 'writer' in entry['data']
