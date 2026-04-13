@@ -98,7 +98,9 @@ def disk_get(key: str):
 def disk_put(key: str, data, ttl: int = 86400):
     """Store in L2 disk cache with TTL + version stamp. Atomic write."""
     path = _disk_path(key)
-    tmp = path.with_suffix('.tmp')
+    # Use a unique temp file per write to avoid concurrent-write corruption
+    # (multiple threads sharing a single .tmp path can clobber each other).
+    tmp = path.with_suffix(f'.{threading.get_ident()}.tmp')
     try:
         now = time.time()
         expires = None if ttl is None or ttl < 0 else now + ttl
@@ -107,7 +109,7 @@ def disk_put(key: str, data, ttl: int = 86400):
             entry['version'] = CACHE_VERSION
         with open(tmp, 'w') as f:
             json.dump(entry, f, default=str)
-        tmp.replace(path)
+        tmp.replace(path)  # atomic on POSIX
     except Exception as e:
         log.warning(f"Disk cache write failed for '{key}': {e}")
         tmp.unlink(missing_ok=True)
