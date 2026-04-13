@@ -261,3 +261,23 @@ class CacheWarmRun(Base):
     endpoints_failed = Column(Integer, default=0)
     duration_ms = Column(Integer, nullable=True)
     log_json = Column(Text, nullable=True)  # JSON array of per-endpoint results
+
+    def to_dict(self) -> dict:
+        """Serialize to JSON-safe dict. Gracefully handles malformed log_json."""
+        import json as _json
+        try:
+            log_data = _json.loads(self.log_json) if self.log_json else []
+        except (_json.JSONDecodeError, TypeError):
+            log_data = []
+        return {
+            'id': self.id,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'ended_at': self.ended_at.isoformat() if self.ended_at else None,
+            'trigger': self.trigger,
+            'status': self.status,
+            'endpoints_total': self.endpoints_total,
+            'endpoints_success': self.endpoints_success,
+            'endpoints_failed': self.endpoints_failed,
+            'duration_ms': self.duration_ms,
+            'log': log_data,
+        }
