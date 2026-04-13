@@ -143,6 +143,52 @@ FETCHER_TIMEOUT = 240.0  # seconds
 # v1 compat alias (read by old tests)
 _FETCH_TIMEOUT = 45  # kept for v1 compat; v2 uses USER_WAIT_TIMEOUT/FETCHER_TIMEOUT
 
+# ── Circuit Breaker ──────────────────────────────────────────────────────────
+# Per-key failure tracking. 3 failures within WINDOW → OPEN state for COOLDOWN.
+# While OPEN, cached_query raises CircuitBreakerOpen instead of hammering the source.
+
+class CircuitBreakerOpen(Exception):
+    """Raised when circuit breaker is OPEN for a cache key."""
+
+
+BREAKER_THRESHOLD = 3            # failures to trip
+BREAKER_WINDOW = 60.0            # seconds — failures must be within this window
+BREAKER_COOLDOWN = 60.0          # seconds to stay OPEN
+
+_breaker_failures: dict[str, list[float]] = {}
+_breaker_open_until: dict[str, float] = {}
+_breaker_lock = threading.Lock()
+
+
+def _breaker_is_open(key: str) -> bool:
+    with _breaker_lock:
+        open_until = _breaker_open_until.get(key, 0.0)
+        if open_until and time.time() < open_until:
+            return True
+        # Clear stale OPEN state
+        if open_until:
+            _breaker_open_until.pop(key, None)
+        return False
+
+
+def _breaker_record_failure(key: str):
+    with _breaker_lock:
+        now = time.time()
+        failures = _breaker_failures.setdefault(key, [])
+        # Prune old failures
+        failures[:] = [t for t in failures if now - t < BREAKER_WINDOW]
+        failures.append(now)
+        if len(failures) >= BREAKER_THRESHOLD:
+            _breaker_open_until[key] = now + BREAKER_COOLDOWN
+            _breaker_failures[key] = []  # reset count
+            log.error(f"Circuit breaker OPEN for '{key}' until {now + BREAKER_COOLDOWN}")
+
+
+def _breaker_reset(key: str):
+    with _breaker_lock:
+        _breaker_failures.pop(key, None)
+        _breaker_open_until.pop(key, None)
+
 
 # ── Convenience ──────────────────────────────────────────────────────────────
 
@@ -157,6 +203,10 @@ def cached_query(key: str, fetch_fn, ttl: int = 3600, disk_ttl: int = 86400):
     data = get(key)
     if data is not None:
         return data
+
+    # Circuit breaker: fail-fast if OPEN
+    if ENABLE_V2 and _breaker_is_open(key):
+        raise CircuitBreakerOpen(f"Circuit breaker OPEN for '{key}'")
 
     # Pick timeout based on v2 flag
     wait_timeout = USER_WAIT_TIMEOUT if ENABLE_V2 else _FETCH_TIMEOUT
@@ -186,9 +236,13 @@ def cached_query(key: str, fetch_fn, ttl: int = 3600, disk_ttl: int = 86400):
                 if result is not None:
                     put(key, result, ttl)
                     disk_put(key, result, disk_ttl)
+                    if ENABLE_V2:
+                        _breaker_reset(key)
                 return result
             except Exception as e:
                 log.error(f"Inline retry for '{key}' also failed: {e}")
+                if ENABLE_V2:
+                    _breaker_record_failure(key)
                 raise
         else:
             # v1 behavior: wait then return (may be None)
@@ -201,9 +255,13 @@ def cached_query(key: str, fetch_fn, ttl: int = 3600, disk_ttl: int = 86400):
         if data is not None:
             put(key, data, ttl)
             disk_put(key, data, disk_ttl)
+            if ENABLE_V2:
+                _breaker_reset(key)  # success clears failure count
         return data
     except Exception as e:
         log.error(f"Fetch failed for '{key}': {e}")
+        if ENABLE_V2:
+            _breaker_record_failure(key)
         raise
     finally:
         with _inflight_lock:
