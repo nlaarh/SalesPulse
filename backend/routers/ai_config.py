@@ -10,7 +10,9 @@ router = APIRouter()
 log = logging.getLogger('salesinsight.ai_config')
 
 # Config lives alongside the SQLite DB so it survives deploys on Azure
-CONFIG_DIR = Path.home() / '.salesinsight'
+# Azure App Service Linux: /home/ is persistent, /root/ is ephemeral.
+_azure_home = Path('/home')
+CONFIG_DIR = (_azure_home / '.salesinsight') if _azure_home.is_dir() and os.getenv('WEBSITE_SITE_NAME') else (Path.home() / '.salesinsight')
 CONFIG_FILE = CONFIG_DIR / 'ai_config.json'
 
 SUPPORTED_PROVIDERS = {

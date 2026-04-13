@@ -48,7 +48,10 @@ def invalidate(key: str):
 
 # ── L2: Disk (JSON) — shared across all gunicorn workers ─────────────────────
 
-_CACHE_DIR = Path(os.path.expanduser('~/.salesinsight/cache'))
+# Azure App Service Linux: /home/ is persistent, /root/ is ephemeral.
+_azure_home = Path('/home')
+_BASE_DIR = (_azure_home / '.salesinsight') if _azure_home.is_dir() and os.getenv('WEBSITE_SITE_NAME') else Path(os.path.expanduser('~/.salesinsight'))
+_CACHE_DIR = _BASE_DIR / 'cache'
 _CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 

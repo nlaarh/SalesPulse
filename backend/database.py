@@ -7,7 +7,10 @@ from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 log = logging.getLogger('salesinsight.db')
 
-DB_DIR = Path.home() / '.salesinsight'
+# Azure App Service Linux: /home/ is persistent, /root/ is ephemeral.
+# Use /home/.salesinsight/ on Azure, ~/.salesinsight/ locally.
+_azure_home = Path('/home')
+DB_DIR = (_azure_home / '.salesinsight') if _azure_home.is_dir() and os.getenv('WEBSITE_SITE_NAME') else (Path.home() / '.salesinsight')
 DB_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DB_DIR / 'salesinsight.db'
 
