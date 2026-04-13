@@ -1,0 +1,272 @@
+"""Tests for cache v2 — feature-flagged cache with fingerprint, circuit breaker,
+decoupled timeouts, schema versioning."""
+
+import os
+import time
+import json
+import threading
+from pathlib import Path
+import pytest
+
+
+@pytest.fixture
+def v2_enabled(monkeypatch, tmp_path):
+    """Enable cache v2 with isolated dirs. Restores v1 state on teardown."""
+    monkeypatch.setenv('ENABLE_CACHE_V2', 'true')
+    cache_dir = tmp_path / 'cache'
+    cache_dir.mkdir()
+    import importlib
+    import cache
+    importlib.reload(cache)
+    monkeypatch.setattr(cache, '_CACHE_DIR', cache_dir)
+    cache._store.clear()
+    # Also clear breaker state between tests
+    cache._breaker_failures.clear()
+    cache._breaker_open_until.clear()
+    yield cache
+    # Teardown: restore v1 state
+    monkeypatch.delenv('ENABLE_CACHE_V2', raising=False)
+    importlib.reload(cache)
+
+
+def test_cache_version_bump_invalidates_old_entries(v2_enabled, tmp_path):
+    """When CACHE_VERSION changes, old entries are invalidated on read."""
+    cache = v2_enabled
+
+    # Write an entry with "v0" fingerprint
+    path = cache._disk_path('k1')
+    path.write_text(json.dumps({
+        'data': {'x': 1},
+        'expires': time.time() + 3600,
+        'cached_at': time.time(),
+        'version': 'v0',
+    }))
+
+    # Current CACHE_VERSION is 'v1' — should refuse to return old-version entry
+    assert cache.get('k1') is None
+
+
+def test_cached_at_timestamp_present(v2_enabled):
+    """Every cached entry stores a cached_at timestamp."""
+    cache = v2_enabled
+    t0 = time.time()
+    cache.disk_put('k_time', {'x': 1}, ttl=3600)
+    # Read raw file to verify cached_at was persisted
+    path = cache._disk_path('k_time')
+    with open(path) as f:
+        entry = json.load(f)
+    assert entry['cached_at'] >= t0
+    assert entry['version'] == cache.CACHE_VERSION
+
+
+def test_waiter_times_out_at_user_wait_but_fetcher_continues(v2_enabled):
+    """User-wait timeout (25s) is less than fetcher timeout (240s).
+    Waiter gives up early with TimeoutError while fetcher continues in
+    the background and eventually populates the cache."""
+    cache = v2_enabled
+
+    fetch_started = threading.Event()
+    fetch_done = threading.Event()
+    slow_result = {'x': 42}
+
+    def slow_fetch():
+        fetch_started.set()
+        # Simulate long fetch — but test uses short timeouts via monkeypatch
+        time.sleep(0.5)
+        fetch_done.set()
+        return slow_result
+
+    # Override timeouts for test speed: USER_WAIT=0.1s, FETCHER=2s
+    original_user_wait = cache.USER_WAIT_TIMEOUT
+    original_fetcher = cache.FETCHER_TIMEOUT
+    cache.USER_WAIT_TIMEOUT = 0.1
+    cache.FETCHER_TIMEOUT = 2.0
+
+    try:
+        # Start fetcher in background
+        fetcher_thread = threading.Thread(
+            target=lambda: cache.cached_query('slow_key', slow_fetch, ttl=60)
+        )
+        fetcher_thread.start()
+
+        # Give fetcher time to grab the lock
+        time.sleep(0.05)
+
+        # Waiter sees the fetcher is still in-flight and raises TimeoutError
+        # instead of stampeding with its own fetch
+        with pytest.raises(TimeoutError, match="still pending"):
+            cache.cached_query('slow_key', slow_fetch, ttl=60)
+
+        # Fetcher is still running — wait for it to complete
+        fetcher_thread.join(timeout=3)
+        fetch_done.wait(timeout=1)
+
+        # After fetcher completes, the cache should have the data
+        result = cache.get('slow_key')
+        assert result == slow_result, f"Fetcher should have populated cache, got {result}"
+    finally:
+        cache.USER_WAIT_TIMEOUT = original_user_wait
+        cache.FETCHER_TIMEOUT = original_fetcher
+
+
+def test_circuit_breaker_trips_after_3_failures(v2_enabled):
+    """3 failures within 60s → subsequent calls for same key fail-fast with stale data
+    or raise BreakerOpen, no new fetch attempted."""
+    cache = v2_enabled
+
+    call_count = {'n': 0}
+    def failing_fetch():
+        call_count['n'] += 1
+        raise RuntimeError("SF down")
+
+    # First 3 attempts: actually call, all raise
+    for _ in range(3):
+        with pytest.raises(RuntimeError):
+            cache.cached_query('breaker_key', failing_fetch, ttl=60)
+
+    assert call_count['n'] == 3
+
+    # 4th attempt: breaker OPEN — should NOT call failing_fetch
+    with pytest.raises(cache.CircuitBreakerOpen):
+        cache.cached_query('breaker_key', failing_fetch, ttl=60)
+
+    assert call_count['n'] == 3, "breaker did not prevent the 4th call"
+
+
+def test_l1_cap_evicts_lru_to_disk(v2_enabled, monkeypatch):
+    """When L1 exceeds size cap, oldest entries are evicted to L2."""
+    cache = v2_enabled
+
+    # Monkeypatch a tiny cap for test
+    monkeypatch.setattr(cache, 'L1_MAX_ENTRIES', 3)
+
+    cache.put('a', {'v': 1}, ttl=60)
+    cache.put('b', {'v': 2}, ttl=60)
+    cache.put('c', {'v': 3}, ttl=60)
+    cache.put('d', {'v': 4}, ttl=60)  # forces eviction of 'a'
+
+    # 'a' should have been evicted from L1 but may still be on L2 (if persisted)
+    with cache._lock:
+        assert 'a' not in cache._store
+        assert len(cache._store) == 3
+
+
+def test_concurrent_disk_writes_no_corruption(v2_enabled):
+    """10 threads write the same key concurrently — file is always valid JSON."""
+    cache = v2_enabled
+
+    def writer(i):
+        for _ in range(20):
+            cache.disk_put('concurrent', {'writer': i, 'n': _}, ttl=60)
+
+    threads = [threading.Thread(target=writer, args=(i,)) for i in range(10)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+
+    # File must exist and be valid JSON with expected shape
+    path = cache._disk_path('concurrent')
+    assert path.exists()
+    with open(path) as f:
+        entry = json.load(f)
+    assert 'data' in entry
+    assert 'writer' in entry['data']
+
+
+def test_cache_dir_uses_home_on_azure(monkeypatch, tmp_path):
+    """On Azure (WEBSITE_SITE_NAME set + /home exists), cache lives in /home/."""
+    # This test verifies the path-selection logic without actually reloading
+    # (reload would try to mkdir /home/.salesinsight on macOS which fails).
+    # Instead, test the logic expression directly.
+    import cache
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    monkeypatch.setenv('WEBSITE_SITE_NAME', 'salespulse-nyaaa')
+
+    # Replicate the logic from cache.py module level
+    azure_home = fake_home
+    is_azure = azure_home.is_dir() and os.getenv('WEBSITE_SITE_NAME')
+    base = (azure_home / '.salesinsight') if is_azure else Path(os.path.expanduser('~/.salesinsight'))
+    cache_dir = base / 'cache'
+
+    assert str(cache_dir).endswith('/cache')
+    assert str(cache_dir).startswith(str(fake_home)), "Should use /home path on Azure"
+
+    # Also verify the current module's _CACHE_DIR ends with /cache (sanity)
+    assert str(cache._CACHE_DIR).endswith('/cache')
+
+
+def test_fetcher_timeout_raises_and_records_breaker_failure(v2_enabled):
+    """A fetcher exceeding FETCHER_TIMEOUT raises TimeoutError and records a breaker failure."""
+    cache = v2_enabled
+
+    # Use a very short timeout for test speed
+    original_timeout = cache.FETCHER_TIMEOUT
+    cache.FETCHER_TIMEOUT = 0.1  # 100ms
+
+    def hung_fetch():
+        time.sleep(5)  # Way longer than 0.1s timeout
+        return {'should': 'not reach'}
+
+    try:
+        with pytest.raises(TimeoutError, match="Fetch timeout"):
+            cache.cached_query('hung_key', hung_fetch, ttl=60)
+
+        # Verify breaker recorded the failure
+        assert 'hung_key' in cache._breaker_failures or 'hung_key' in cache._breaker_open_until, \
+            "Breaker should have recorded a failure for hung_key"
+    finally:
+        cache.FETCHER_TIMEOUT = original_timeout
+
+
+def test_waiters_do_not_stampede_while_fetcher_active(v2_enabled):
+    """When one fetcher is active and multiple waiters time out, the waiters
+    must NOT call fetch_fn themselves — the fetch call count stays at 1."""
+    cache = v2_enabled
+
+    call_count = {'n': 0}
+    fetch_started = threading.Event()
+    fetch_release = threading.Event()
+
+    def slow_fetch():
+        call_count['n'] += 1
+        fetch_started.set()
+        # Block until test releases — simulates a long-running SF query
+        fetch_release.wait(timeout=5)
+        return {'data': 'ok'}
+
+    # Very short user-wait so waiters time out quickly
+    cache.USER_WAIT_TIMEOUT = 0.1
+
+    results = []
+    errors = []
+
+    def waiter():
+        try:
+            r = cache.cached_query('stampede_key', slow_fetch, ttl=60)
+            results.append(r)
+        except Exception as e:
+            errors.append(e)
+
+    # Start fetcher thread
+    fetcher_t = threading.Thread(target=waiter)
+    fetcher_t.start()
+    fetch_started.wait(timeout=2)  # Wait for fetcher to grab the lock
+
+    # Start 5 waiter threads — all should see the key is still in-flight
+    waiter_threads = [threading.Thread(target=waiter) for _ in range(5)]
+    for t in waiter_threads:
+        t.start()
+
+    # Let waiters time out (they should NOT fire their own fetch_fn calls)
+    for t in waiter_threads:
+        t.join(timeout=3)
+
+    # Release the fetcher so it completes
+    fetch_release.set()
+    fetcher_t.join(timeout=3)
+
+    # The critical assertion: fetch_fn was called exactly ONCE (by the fetcher)
+    assert call_count['n'] == 1, (
+        f"Expected 1 fetch call (fetcher only), got {call_count['n']} — "
+        "waiters stampeded with their own fetches"
+    )

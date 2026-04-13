@@ -16,8 +16,9 @@ import { flushCache, refreshGeographyData, refreshCensusData, fetchGeoStatus, fe
 
 const HelpPage = lazy(() => import('@/pages/Help'))
 const IssuesPage = lazy(() => import('@/pages/Issues'))
+const CacheStatusTab = lazy(() => import('@/pages/settings/CacheStatusTab'))
 
-type SettingsTab = 'users' | 'logs' | 'targets' | 'ai' | 'performance' | 'help' | 'issues'
+type SettingsTab = 'users' | 'logs' | 'targets' | 'ai' | 'performance' | 'help' | 'issues' | 'cache'
 
 const ROLES: { value: UserRole; label: string; icon: typeof Shield; desc: string }[] = [
   { value: 'superadmin', label: 'Super Admin', icon: Crown, desc: 'Full access + settings' },
@@ -228,6 +229,7 @@ export default function Settings() {
           { key: 'logs' as SettingsTab, label: 'Activity Logs', icon: ScrollText },
           { key: 'performance' as SettingsTab, label: 'Performance', icon: Gauge },
           { key: 'ai' as SettingsTab, label: 'AI & Integrations', icon: Zap },
+          { key: 'cache' as SettingsTab, label: 'Cache', icon: Database },
           { key: 'issues' as SettingsTab, label: 'Issues', icon: Bug },
           { key: 'help' as SettingsTab, label: 'Help & Guide', icon: HelpCircle },
         ]).map(({ key, label, icon: Icon }) => (
@@ -255,6 +257,9 @@ export default function Settings() {
 
       {/* Tab content: AI & Integrations */}
       {tab === 'ai' && <AIConfigTab />}
+
+      {/* Tab content: Cache Status */}
+      {tab === 'cache' && <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading...</div>}><CacheStatusTab /></Suspense>}
 
       {/* Tab content: Issues */}
       {tab === 'issues' && <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading...</div>}><IssuesPage /></Suspense>}

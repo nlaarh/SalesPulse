@@ -19,18 +19,18 @@ log = logging.getLogger('main')
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """On startup: backup DB, flush disk cache if code changed.
+    """On startup: backup DB, flush disk cache only on CACHE_VERSION bump.
     Starts a 3 AM daily cache warm-up for heavy endpoints.
     """
-    import cache, hashlib, asyncio, shutil
-    from datetime import datetime, timedelta
+    import cache, asyncio, shutil
+    from datetime import datetime, timedelta, timezone
     from database import DB_PATH, DB_DIR
 
     # ── Auto-backup DB on every startup (protects against deploy issues) ──
     if DB_PATH.exists():
         backup_dir = DB_DIR / 'backups'
         backup_dir.mkdir(exist_ok=True)
-        ts = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        ts = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
         backup_file = backup_dir / f'salesinsight_{ts}.db'
         shutil.copy2(DB_PATH, backup_file)
         log.info(f"DB backup created: {backup_file} ({backup_file.stat().st_size // 1024}KB)")
@@ -41,32 +41,33 @@ async def lifespan(app: FastAPI):
             log.info(f"Pruned old backup: {old.name}")
 
     log.info(f"Database path: {DB_PATH} (exists={DB_PATH.exists()}, size={DB_PATH.stat().st_size // 1024 if DB_PATH.exists() else 0}KB)")
-    from datetime import datetime, timedelta
 
-    # Hash the key backend files that affect query logic / response shape
-    backend_dir = Path(__file__).resolve().parent
-    hasher = hashlib.md5()
-    for pattern in ('*.py', 'routers/*.py'):
-        for f in sorted(backend_dir.glob(pattern)):
-            hasher.update(f.read_bytes())
-    current_hash = hasher.hexdigest()
-
-    version_file = cache._CACHE_DIR / '.deploy_hash'
+    # Deploy-aware cache invalidation:
+    # Only flush on explicit CACHE_VERSION bump (cache.py CACHE_VERSION constant).
+    # Individual entry version mismatches are handled lazily in disk_get().
+    version_file = cache._CACHE_DIR / '.cache_version'
     cache._CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    stored_hash = version_file.read_text().strip() if version_file.exists() else ''
+    stored_version = version_file.read_text().strip() if version_file.exists() else ''
 
-    if current_hash != stored_hash:
-        # New deployment — flush stale cache so old query shapes don't persist
+    if stored_version != cache.CACHE_VERSION:
         flushed = sum(1 for f in cache._CACHE_DIR.glob('*.json') if (f.unlink(), True)[1])
-        version_file.write_text(current_hash)
-        log.info(f"New deployment detected: flushed {flushed} cache entries")
+        version_file.write_text(cache.CACHE_VERSION)
+        log.info(f"CACHE_VERSION changed '{stored_version}' → '{cache.CACHE_VERSION}': flushed {flushed} entries")
     else:
-        log.info("Restart detected (same code): keeping existing cache")
+        log.info(f"Restart (CACHE_VERSION={cache.CACHE_VERSION}): keeping existing cache")
 
-    # Background scheduler: warm caches at 3 AM ET daily
+    # Background scheduler: warm caches at 3 AM ET daily (worker-0 only via file lock)
     async def cache_warmer():
+        """3 AM ET daily: warm heavy endpoints sequentially.
+        Only worker 0 acquires the lock; other workers skip.
+        Writes result to cache_warm_runs table for admin dashboard.
+        """
         from zoneinfo import ZoneInfo
+        import fcntl
         et = ZoneInfo('America/New_York')
+
+        lock_path = cache._CACHE_DIR / '.warmer.lock'
+
         while True:
             now = datetime.now(et)
             next_run = now.replace(hour=3, minute=0, second=0, microsecond=0)
@@ -75,46 +76,47 @@ async def lifespan(app: FastAPI):
             wait_secs = (next_run - now).total_seconds()
             log.info(f"Cache warmer: next run at {next_run.isoformat()} ({wait_secs/3600:.1f}h)")
             await asyncio.sleep(wait_secs)
-            log.info("Cache warmer: flushing stale caches for daily refresh")
+
+            # Acquire file lock — only one worker runs the warm job
             try:
-                # Clear L1 memory cache — next request will rebuild from SF
-                cache._l1.clear()
-                # Clear expired L2 disk entries so they refresh
-                for f in cache._CACHE_DIR.glob('*.json'):
+                lock_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(lock_path, 'w') as lockf:
                     try:
-                        f.unlink()
-                    except OSError:
-                        pass
-                log.info("Cache warmer: caches cleared, next requests will fetch fresh data")
+                        fcntl.flock(lockf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except BlockingIOError:
+                        log.info("Cache warmer: another worker holds the lock — skipping")
+                        continue
+
+                    log.info("Cache warmer: acquired lock, starting sequential warm")
+                    # Run in executor so we don't block event loop
+                    from warmer import warm_heavy_endpoints
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, warm_heavy_endpoints, 'nightly')
             except Exception as e:
-                log.warning(f"Cache warmer failed: {e}")
+                log.error(f"Cache warmer error: {e}")
 
     warmer_task = asyncio.create_task(cache_warmer())
 
-    # ── Pre-warm expensive caches in background thread on startup ──
-    import threading
-    def _startup_warm():
-        """Pre-fetch territory map + market pulse so first user doesn't wait 30s+."""
-        import time
-        time.sleep(2)  # let server finish startup first
+    # Deploy-time warming: run the same warmer in a background thread, worker-0 only
+    import threading, fcntl
+    deploy_lock = cache._CACHE_DIR / '.deploy_warmer.lock'
+    def _deploy_warm():
+        import time as _time
+        _time.sleep(10)  # let app finish booting + accept traffic
         try:
-            from routers.territory_map import territory_map_data
-            from shared import resolve_dates
-            sd, ed = resolve_dates(None, None, 4)
-            log.info("Cache warm-up: fetching territory map data...")
-            territory_map_data(period=4, start_date=sd, end_date=ed)
-            log.info("Cache warm-up: territory map done")
+            cache._CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            with open(deploy_lock, 'w') as lockf:
+                try:
+                    fcntl.flock(lockf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    log.info("Deploy warmer: another worker holds the lock — skipping")
+                    return
+                from warmer import warm_heavy_endpoints
+                log.info("Deploy warmer: starting background warm")
+                warm_heavy_endpoints(trigger='deploy')
         except Exception as e:
-            log.warning(f"Cache warm-up territory failed: {e}")
-        try:
-            from routers.market_pulse import market_pulse
-            log.info("Cache warm-up: fetching market pulse data...")
-            market_pulse(period=6)
-            log.info("Cache warm-up: market pulse done")
-        except Exception as e:
-            log.warning(f"Cache warm-up market pulse failed: {e}")
-
-    threading.Thread(target=_startup_warm, daemon=True).start()
+            log.warning(f"Deploy warmer failed: {e}")
+    threading.Thread(target=_deploy_warm, daemon=True).start()
 
     yield  # app runs here
 
@@ -203,7 +205,7 @@ init_db()
 
 # ── Register routers ─────────────────────────────────────────────────────────
 
-from routers import sales_advisor, sales_pipeline, sales_travel, sales_leads, sales_performance, sales_opportunities, sales_agent_profile, sales_narrative, users, activity_logs, advisor_targets, advisor_targets_monthly, advisor_targets_achievement, email_report, issues, ai_config, customer_profile, cross_sell, market_pulse, territory_map, ai_queries, performance_metrics
+from routers import sales_advisor, sales_pipeline, sales_travel, sales_leads, sales_performance, sales_opportunities, sales_agent_profile, sales_narrative, users, activity_logs, advisor_targets, advisor_targets_monthly, advisor_targets_achievement, email_report, issues, ai_config, customer_profile, cross_sell, market_pulse, territory_map, ai_queries, performance_metrics, cache_admin
 
 app.include_router(sales_advisor.router)
 app.include_router(sales_pipeline.router)
@@ -227,6 +229,7 @@ app.include_router(market_pulse.router)
 app.include_router(territory_map.router)
 app.include_router(ai_queries.router)
 app.include_router(performance_metrics.router)
+app.include_router(cache_admin.router)
 
 
 # ── Health check ─────────────────────────────────────────────────────────────
