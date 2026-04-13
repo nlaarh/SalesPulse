@@ -63,7 +63,8 @@ def test_cached_at_timestamp_present(v2_enabled):
 
 def test_waiter_times_out_at_user_wait_but_fetcher_continues(v2_enabled):
     """User-wait timeout (25s) is less than fetcher timeout (240s).
-    Waiter gives up early but fetch keeps running in the background."""
+    Waiter gives up early with TimeoutError while fetcher continues in
+    the background and eventually populates the cache."""
     cache = v2_enabled
 
     fetch_started = threading.Event()
@@ -93,18 +94,18 @@ def test_waiter_times_out_at_user_wait_but_fetcher_continues(v2_enabled):
         # Give fetcher time to grab the lock
         time.sleep(0.05)
 
-        # Second caller (waiter) should wait only 0.1s then retry inline
-        # Since fetcher is still running, inline fetch will either:
-        # (a) block on lock → get stale None, retry fetch themselves, or
-        # (b) return stale data if available
-        # For this test, verify waiter does not return None (no silent null)
-        result = cache.cached_query('slow_key', slow_fetch, ttl=60)
+        # Waiter sees the fetcher is still in-flight and raises TimeoutError
+        # instead of stampeding with its own fetch
+        with pytest.raises(TimeoutError, match="still pending"):
+            cache.cached_query('slow_key', slow_fetch, ttl=60)
 
-        # Waiter either got the fresh result (if fetcher finished) or
-        # triggered its own fetch — both cases return real data
-        assert result == slow_result, f"Waiter got {result}, expected non-null real data"
-
+        # Fetcher is still running — wait for it to complete
         fetcher_thread.join(timeout=3)
+        fetch_done.wait(timeout=1)
+
+        # After fetcher completes, the cache should have the data
+        result = cache.get('slow_key')
+        assert result == slow_result, f"Fetcher should have populated cache, got {result}"
     finally:
         cache.USER_WAIT_TIMEOUT = original_user_wait
         cache.FETCHER_TIMEOUT = original_fetcher
@@ -218,3 +219,57 @@ def test_fetcher_timeout_raises_and_records_breaker_failure(v2_enabled):
             "Breaker should have recorded a failure for hung_key"
     finally:
         cache.FETCHER_TIMEOUT = original_timeout
+
+
+def test_waiters_do_not_stampede_while_fetcher_active(v2_enabled):
+    """When one fetcher is active and multiple waiters time out, the waiters
+    must NOT call fetch_fn themselves — the fetch call count stays at 1."""
+    cache = v2_enabled
+
+    call_count = {'n': 0}
+    fetch_started = threading.Event()
+    fetch_release = threading.Event()
+
+    def slow_fetch():
+        call_count['n'] += 1
+        fetch_started.set()
+        # Block until test releases — simulates a long-running SF query
+        fetch_release.wait(timeout=5)
+        return {'data': 'ok'}
+
+    # Very short user-wait so waiters time out quickly
+    cache.USER_WAIT_TIMEOUT = 0.1
+
+    results = []
+    errors = []
+
+    def waiter():
+        try:
+            r = cache.cached_query('stampede_key', slow_fetch, ttl=60)
+            results.append(r)
+        except Exception as e:
+            errors.append(e)
+
+    # Start fetcher thread
+    fetcher_t = threading.Thread(target=waiter)
+    fetcher_t.start()
+    fetch_started.wait(timeout=2)  # Wait for fetcher to grab the lock
+
+    # Start 5 waiter threads — all should see the key is still in-flight
+    waiter_threads = [threading.Thread(target=waiter) for _ in range(5)]
+    for t in waiter_threads:
+        t.start()
+
+    # Let waiters time out (they should NOT fire their own fetch_fn calls)
+    for t in waiter_threads:
+        t.join(timeout=3)
+
+    # Release the fetcher so it completes
+    fetch_release.set()
+    fetcher_t.join(timeout=3)
+
+    # The critical assertion: fetch_fn was called exactly ONCE (by the fetcher)
+    assert call_count['n'] == 1, (
+        f"Expected 1 fetch call (fetcher only), got {call_count['n']} — "
+        "waiters stampeded with their own fetches"
+    )

@@ -240,21 +240,31 @@ def cached_query(key: str, fetch_fn, ttl: int = 3600, disk_ttl: int = 86400):
             data = get(key)
             if data is not None:
                 return data
-            # Fetcher failed, timed out, or returned None — retry inline ONCE.
-            # No infinite retry loop: if this inline fetch also fails, raise.
-            log.warning(f"Cache waiter for '{key}' got no data after {wait_timeout}s; retrying inline")
+            # Fetcher failed, timed out, or returned None.
+            # Check if fetcher is still in flight (avoid retry storm)
+            with _inflight_lock:
+                still_fetching = key in _inflight
+            if still_fetching:
+                # Wait once more — don't stampede with a fresh fetch
+                log.warning(f"Cache waiter for '{key}' still waiting on active fetcher")
+                event.wait(timeout=wait_timeout)
+                data = get(key)
+                if data is not None:
+                    return data
+                # Still nothing — fetcher must be hung. Raise instead of firing our own.
+                raise TimeoutError(f"Cache fetch for '{key}' still pending after {2 * wait_timeout}s")
+            # Fetcher is gone — safe to retry inline (one attempt)
+            log.warning(f"Cache waiter for '{key}' got no data; retrying inline")
             try:
                 result = fetch_fn()
                 if result is not None:
                     put(key, result, ttl)
                     disk_put(key, result, disk_ttl)
-                    if ENABLE_V2:
-                        _breaker_reset(key)
+                    _breaker_reset(key)
                 return result
             except Exception as e:
                 log.error(f"Inline retry for '{key}' also failed: {e}")
-                if ENABLE_V2:
-                    _breaker_record_failure(key)
+                _breaker_record_failure(key)
                 raise
         else:
             # v1 behavior: wait then return (may be None)
