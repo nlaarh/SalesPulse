@@ -23,14 +23,14 @@ async def lifespan(app: FastAPI):
     Starts a 3 AM daily cache warm-up for heavy endpoints.
     """
     import cache, asyncio, shutil
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from database import DB_PATH, DB_DIR
 
     # ── Auto-backup DB on every startup (protects against deploy issues) ──
     if DB_PATH.exists():
         backup_dir = DB_DIR / 'backups'
         backup_dir.mkdir(exist_ok=True)
-        ts = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        ts = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
         backup_file = backup_dir / f'salesinsight_{ts}.db'
         shutil.copy2(DB_PATH, backup_file)
         log.info(f"DB backup created: {backup_file} ({backup_file.stat().st_size // 1024}KB)")
@@ -41,7 +41,6 @@ async def lifespan(app: FastAPI):
             log.info(f"Pruned old backup: {old.name}")
 
     log.info(f"Database path: {DB_PATH} (exists={DB_PATH.exists()}, size={DB_PATH.stat().st_size // 1024 if DB_PATH.exists() else 0}KB)")
-    from datetime import datetime, timedelta
 
     # Deploy-aware cache invalidation:
     # Only flush on explicit CACHE_VERSION bump (cache.py CACHE_VERSION constant).
