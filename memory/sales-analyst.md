@@ -1,7 +1,7 @@
 # SalesInsight — Sales Analyst Knowledge Base
 
 > Authoritative reference for AAA WCNY Salesforce schema, business rules, data quality, and cross-sell analysis.
-> Updated: 2026-04-10
+> Updated: 2026-04-12
 
 ---
 
@@ -105,15 +105,16 @@ Values on won opps (2025):
 ### Membership Tier (`ImportantActiveMemCoverage__c`)
 **NOT groupable** — must use individual COUNT queries or bulk extract + Python aggregation.
 
-| Tier | Active Members | Upgrade Target |
+| Tier | Active Members (A + expiry, WCNY) | Upgrade Target |
 |---|---|---|
-| B (Basic) | 217,191 | → PLUS |
-| PLUS | 446,319 | → PREMIER |
-| PREMIER | 127,937 | Top tier |
-| PLRV (Plus RV?) | 25,166 | Specialty tier |
-| **Total with coverage** | **829,744** | |
+| B (Basic) | ~194K | → PLUS |
+| PLUS | ~406K | → PREMIER |
+| PREMIER | ~117K | Top tier |
+| **Total (B/PLUS/PREMIER)** | **~717K** | |
 
-**Membership hierarchy**: B → PLUS → PREMIER (PLRV is a specialty variant)
+*Counts as of 2026-04-12, filtered by PersonAccount + Status A + expiry >= TODAY + WCNY region.*
+**Membership hierarchy**: B → PLUS → PREMIER.
+Other coverage values exist (PLRV, etc.) but are excluded from Territory Map's active member count.
 
 ### Membership Status (`Member_Status__c`)
 | Status | Count | Meaning |
@@ -298,42 +299,69 @@ These high-frequency travelers are:
 
 ---
 
-*Last updated: 2026-04-11. Update this file when new data patterns, field behaviors, or business rules are discovered.*
+*Last updated: 2026-04-12. Update this file when new data patterns, field behaviors, or business rules are discovered.*
 
 ---
 
 ## 11. Active Member Filtering
 
 **Critical**: The `Account` table contains ALL accounts including expired/cancelled memberships.
-Unfiltered count: **~1,182,000**. Active members: **~874,000**.
+Unfiltered count: **~1,182,000**.
 
-### Active member filter
+### Territory Map — Active Members (~716K)
+The Territory Map uses the strictest definition for "active member with a real membership":
 ```sql
-(Member_Status__c = 'A' OR ImportantActiveMemExpiryDate__c >= TODAY)
+IsPersonAccount = true
+AND Member_Status__c = 'A'
+AND ImportantActiveMemExpiryDate__c >= TODAY
+AND ImportantActiveMemCoverage__c IN ('B','PLUS','PREMIER')
+AND Out_of_Territory_Member__c = false
 ```
 
-This captures:
-- Members with active status (`A`) — 807K
-- Members whose membership hasn't expired yet (even if status != A) — adds ~67K
-- Total: ~874K (matches official AAA WCNY active member count)
+This filters for:
+- **PersonAccount only** — excludes business accounts
+- **Status A** — active membership status
+- **Non-expired** — membership expiry date in the future
+- **Known tier** — Basic, Plus, or Premier (excludes null/unknown coverage)
+- **In-territory** — excludes out-of-territory members
 
-**Always apply this filter when:**
-- Showing member counts on dashboards
-- Calculating penetration rates (customers / members)
-- Market share analysis (members / population)
-- Cross-sell opportunity sizing
+### Why this filter matters (tested 2026-04-12)
+| Filter Combination | Count | Notes |
+|---|---|---|
+| Status A OR future expiry | 874K | Over-counts: includes non-A with future expiry |
+| Status A only | 808K | Too broad: includes null-coverage & OOT |
+| Status A AND expiry | 753K | Better: but includes null-coverage & OOT |
+| **A + expiry + tiers + not OOT** | **~716K** | **Best: real members with known plans, in-territory** |
+| Primary household only | 442K | Under-counts: excludes associate/family members |
 
-**Member_Status__c values:**
+### Insurance Customer Filter (~25K)
+Insurance customers must also have active membership:
+```sql
+Insuance_Customer_ID__c != null AND Member_Status__c = 'A'
+```
+Without the `Member_Status__c = 'A'` filter, count inflates to ~43K (includes lapsed/cancelled members).
+
+### Key Account Fields for Filtering
+| Field | Type | Groupable | Notes |
+|---|---|---|---|
+| `Is_Primary_Account_Through_Membership_c__c` | boolean | ✅ | Household primary account (442K of 753K) |
+| `Out_of_Territory_Member__c` | boolean | ✅ | Members outside WCNY territory |
+| `ImportantActiveMemCoverage__c` | string | ❌ | Tier: B, PLUS, PREMIER (not groupable) |
+| `Important_Active_Membership__c` | reference | ✅ | FK to membership record |
+| `Primary_Account_Through_Membership__c` | reference | ✅ | FK to primary account |
+| `ImpotantActiveMemNumberId__c` | string | ✅ | Member number |
+
+### Member_Status__c values
 | Status | Count | Meaning |
 |--------|-------|---------|
-| A | 807,661 | Active |
-| X | 236,243 | Cancelled/expired |
-| L | 13,587 | Lapsed |
-| S | 12,095 | Suspended |
-| B | 9,033 | Unknown (billing?) |
-| C | 5,729 | Unknown |
-| P | 924 | Pending |
-| null | 96,931 | No status set |
+| A | ~808K | Active |
+| X | ~237K | Cancelled/expired |
+| L | ~14K | Lapsed |
+| S | ~12K | Suspended |
+| B | ~9K | Unknown (billing?) |
+| C | ~6K | Unknown |
+| P | ~1K | Pending |
+| null | ~97K | No status set |
 
 ---
 
@@ -348,12 +376,15 @@ Travel opportunities and Account records use standard 5-digit zips.
 Without normalization, ~86% of insurance revenue ($3.19M of $3.7M) is invisible because
 ZIP+4 keys don't match 5-digit Account zip lookups.
 
-### Member Query Limits
+### Member / Customer Totals — Dedicated COUNT Queries Required
 SOQL `GROUP BY` with `LIMIT 2000` + `HAVING COUNT(Id) >= N` misses the long tail.
 ZIP+4 fragmentation creates ~208K distinct postal codes in Accounts.
 
-**Solution**: Use a separate `COUNT(Id)` query (no GROUP BY) for accurate totals.
-The grouped query is only for per-zip map display. Current threshold: `MIN_MEMBERS = 10`.
+**Critical**: Totals for members, insurance customers, and travel customers MUST use
+dedicated `SELECT COUNT(Id)` queries (no GROUP BY / HAVING / LIMIT). Summing the grouped
+per-zip results will severely undercount (~209K instead of ~716K for members).
+
+The grouped queries are only for per-zip map display. Current threshold: `MIN_MEMBERS = 10`.
 
 ### Operating Regions
 Three regions: Western, Rochester, Central.

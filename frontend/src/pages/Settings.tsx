@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth, type AppUser, type UserRole } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
@@ -6,6 +6,7 @@ import {
   UserPlus, Pencil, Trash2,
   X, Shield, Eye, Plane, Umbrella, Crown,
   AlertCircle, Check, Users, ScrollText, Target, Zap, Database, MapPin, HardDrive, Download, Gauge, RefreshCw,
+  HelpCircle, Bug,
 } from 'lucide-react'
 import axios from 'axios'
 import ActivityLogsTable from '@/components/ActivityLogsTable'
@@ -13,7 +14,10 @@ import TargetsTab from '@/pages/settings/TargetsTab'
 import AIConfigTab from '@/pages/settings/AIConfigTab'
 import { flushCache, refreshGeographyData, refreshCensusData, fetchGeoStatus, fetchDbInfo, downloadDbBackup, fetchPerformanceSummary, type PerformanceSummaryResponse } from '@/lib/api'
 
-type SettingsTab = 'users' | 'logs' | 'targets' | 'ai' | 'performance'
+const HelpPage = lazy(() => import('@/pages/Help'))
+const IssuesPage = lazy(() => import('@/pages/Issues'))
+
+type SettingsTab = 'users' | 'logs' | 'targets' | 'ai' | 'performance' | 'help' | 'issues'
 
 const ROLES: { value: UserRole; label: string; icon: typeof Shield; desc: string }[] = [
   { value: 'superadmin', label: 'Super Admin', icon: Crown, desc: 'Full access + settings' },
@@ -224,6 +228,8 @@ export default function Settings() {
           { key: 'logs' as SettingsTab, label: 'Activity Logs', icon: ScrollText },
           { key: 'performance' as SettingsTab, label: 'Performance', icon: Gauge },
           { key: 'ai' as SettingsTab, label: 'AI & Integrations', icon: Zap },
+          { key: 'issues' as SettingsTab, label: 'Issues', icon: Bug },
+          { key: 'help' as SettingsTab, label: 'Help & Guide', icon: HelpCircle },
         ]).map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -249,6 +255,12 @@ export default function Settings() {
 
       {/* Tab content: AI & Integrations */}
       {tab === 'ai' && <AIConfigTab />}
+
+      {/* Tab content: Issues */}
+      {tab === 'issues' && <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading...</div>}><IssuesPage /></Suspense>}
+
+      {/* Tab content: Help & Guide */}
+      {tab === 'help' && <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading...</div>}><HelpPage /></Suspense>}
 
       {/* Tab content: Performance */}
       {tab === 'performance' && (

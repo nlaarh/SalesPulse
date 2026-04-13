@@ -18,10 +18,12 @@ import * as L from 'leaflet'
 import { type PathOptions } from 'leaflet'
 import {
   Loader2, Map as MapIcon, Shield, Plane, Users,
-  TrendingUp, Info, ZoomIn, BarChart3, Maximize2, Minimize2, RefreshCw,
+  TrendingUp, Info, ZoomIn, BarChart3, Maximize2, Minimize2, RefreshCw, Download,
 } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
+import { Tip } from '@/components/MetricTip'
 import type { TerritoryTotals } from '@/lib/api'
+import { exportTerritoryMapData } from './territoryMapExport'
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
 
@@ -456,23 +458,24 @@ function Legend({ level }: { level: ZoomLevel }) {
 /* ── Summary Card ────────────────────────────────────────────────────────── */
 
 function SummaryCard({
-  icon: Icon, label, value, sub, accent,
+  icon: Icon, label, value, sub, accent, tip,
 }: {
   icon: typeof Users
   label: string
   value: string
   sub?: string
   accent: string
+  tip?: string
 }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-4 flex items-start gap-3">
-      <div className={cn('p-2 rounded-lg', accent)}>
+    <div className="bg-card border border-border rounded-xl p-4 flex items-start gap-3 h-full">
+      <div className={cn('p-2 rounded-lg shrink-0', accent)}>
         <Icon className="w-4 h-4" />
       </div>
-      <div>
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="text-lg font-bold text-foreground">{value}</p>
-        {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+      <div className="min-w-0 flex flex-col">
+        <p className="text-xs text-muted-foreground h-8 flex items-end">{label}{tip && <Tip text={tip} />}</p>
+        <p className="text-lg font-bold text-foreground leading-tight">{value}</p>
+        <p className="text-xs text-muted-foreground mt-0.5 truncate">{sub || '\u00A0'}</p>
       </div>
     </div>
   )
@@ -732,7 +735,7 @@ export default function TerritoryMap() {
       </div>
 
       {/* Summary Cards — hidden in fullscreen */}
-      {!fullscreen && <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      {!fullscreen && <div className={cn('grid gap-3 grid-cols-2 md:grid-cols-3', filteredStats.population > 0 ? 'lg:grid-cols-5' : 'lg:grid-cols-4')}>
         {filteredStats.population > 0 && (
           <SummaryCard
             icon={BarChart3}
@@ -740,6 +743,7 @@ export default function TerritoryMap() {
             value={fmt(filteredStats.population)}
             sub={`Market share: ${fmtPct(filteredStats.market_share)}`}
             accent="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400"
+            tip="Total population from US Census Bureau ACS 5-Year estimates across AAA WCNY zip codes. Market share = AAA members ÷ census population."
           />
         )}
         <SummaryCard
@@ -748,20 +752,23 @@ export default function TerritoryMap() {
           value={fmt(filteredStats.members)}
           sub={`${filteredStats.zip_count} zip codes`}
           accent="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+          tip="Active AAA members: PersonAccounts with Status = Active, non-expired membership, known tier (Basic/Plus/Premier), and in-territory. Excludes out-of-territory and members without a recognized plan."
         />
         <SummaryCard
           icon={Shield}
           label="Insurance Customers"
           value={fmt(filteredStats.ins_customers)}
-          sub={`${((filteredStats.ins_customers / filteredStats.members) * 100).toFixed(2)}% penetration`}
+          sub={`${filteredStats.members > 0 ? ((filteredStats.ins_customers / filteredStats.members) * 100).toFixed(1) : 0}% penetration`}
           accent="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400"
+          tip="Active members with an Insurance Customer ID (Insuance_Customer_ID__c) in Salesforce. Only counts members with active status. Penetration = insurance customers ÷ total members."
         />
         <SummaryCard
           icon={Plane}
           label="Travel (3yr)"
           value={fmt(filteredStats.travel_customers_3yr)}
-          sub={`${((filteredStats.travel_customers_3yr / filteredStats.members) * 100).toFixed(1)}% penetration`}
+          sub={`${filteredStats.members > 0 ? ((filteredStats.travel_customers_3yr / filteredStats.members) * 100).toFixed(1) : 0}% penetration`}
           accent="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+          tip="Unique accounts with at least one won Travel opportunity (Closed Won or Invoice) in the last 3 years. Counts people, not trips — a customer with 10 trips counts as 1. Penetration = travel customers ÷ total members."
         />
         <SummaryCard
           icon={TrendingUp}
@@ -769,6 +776,7 @@ export default function TerritoryMap() {
           value={fmtCurrency((filteredStats.ins_rev_cy || 0) + filteredStats.travel_rev_cy)}
           sub={totals.travel_rev_py || totals.ins_rev_py ? `PY: ${fmtCurrency((totals.ins_rev_py || 0) + (totals.travel_rev_py || 0))}` : undefined}
           accent="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+          tip="Combined Insurance + Travel revenue from won opportunities (Closed Won + Invoice) in the current year. PY = same period in the prior year for comparison."
         />
       </div>}
 
@@ -803,6 +811,22 @@ export default function TerritoryMap() {
               </button>
             ))}
           </div>
+
+          {/* Excel export */}
+          <button
+            onClick={() => exportTerritoryMapData(filteredZips, year, region)}
+            disabled={!filteredZips.length}
+            className={cn(
+              'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-lg',
+              'bg-card/90 backdrop-blur-sm shadow-md border border-border transition-colors',
+              'text-foreground hover:bg-muted/80',
+              !filteredZips.length && 'opacity-60 cursor-not-allowed'
+            )}
+            title="Export zip-level data to Excel"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Excel
+          </button>
 
           {/* County boundaries toggle */}
           <button

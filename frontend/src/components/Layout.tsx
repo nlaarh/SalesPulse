@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import {
   Users, GitBranch, Megaphone, Table2, Target, DollarSign,
   Sun, Moon, Calendar, Command, Radio, Map, BarChart3,
-  ArrowRight, X, HelpCircle, Settings, LogOut, Bug, Lightbulb,
+  ArrowRight, X, Settings, LogOut, Lightbulb,
 } from 'lucide-react'
 import SalesPulseLogo from '@/components/SalesPulseLogo'
 import CommandPalette from '@/components/CommandPalette'
@@ -33,10 +33,6 @@ const NAV_ANALYTICS = [
 const NAV_EXTERNAL = [
   { to: '/census', label: 'Census Data', icon: BarChart3, desc: 'Population & demographics' },
   { to: '/market-pulse', label: 'Market Pulse', icon: Radio, desc: 'Advisories & intelligence' },
-]
-
-const NAV_RESOURCES = [
-  { to: '/help', label: 'Help & Guide', icon: HelpCircle, desc: 'Lifecycle & terminology' },
 ]
 
 const LINES = ['Travel', 'Insurance', 'All'] as const
@@ -215,77 +211,12 @@ export default function Layout() {
             </NavLink>
           ))}
 
-          {/* Resources */}
-          <span className="mb-2 mt-4 block px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
-            Resources
-          </span>
-          {NAV_RESOURCES.map(({ to, label, icon: Icon, desc }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) => cn(
-                'group relative flex items-center gap-3 rounded-lg px-2.5 py-2',
-                'text-[13px] font-medium transition-all duration-200',
-                isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-              )}
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <div className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-primary" />
-                  )}
-                  <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2 : 1.5} />
-                  <div className="flex flex-col">
-                    <span>{label}</span>
-                    <span className={cn(
-                      'text-[10px] font-normal leading-tight',
-                      isActive ? 'text-primary/60' : 'text-muted-foreground/40',
-                    )}>
-                      {desc}
-                    </span>
-                  </div>
-                </>
-              )}
-            </NavLink>
-          ))}
-
-          {/* Settings + Issues — admin only */}
+          {/* Settings — admin only (includes Help, Issues, Users, AI Config tabs) */}
           {isAdmin && (
-            <>
-            <NavLink
-              to="/issues"
-              className={({ isActive }) => cn(
-                'group relative flex items-center gap-3 rounded-lg px-2.5 py-2',
-                'text-[13px] font-medium transition-all duration-200',
-                isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-              )}
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <div className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-primary" />
-                  )}
-                  <Bug className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2 : 1.5} />
-                  <div className="flex flex-col">
-                    <span>Issues</span>
-                    <span className={cn(
-                      'text-[10px] font-normal leading-tight',
-                      isActive ? 'text-primary/60' : 'text-muted-foreground/40',
-                    )}>
-                      Bug reports & triage
-                    </span>
-                  </div>
-                </>
-              )}
-            </NavLink>
             <NavLink
               to="/settings"
               className={({ isActive }) => cn(
-                'group relative flex items-center gap-3 rounded-lg px-2.5 py-2',
+                'group relative flex items-center gap-3 rounded-lg px-2.5 py-2 mt-2',
                 'text-[13px] font-medium transition-all duration-200',
                 isActive
                   ? 'bg-primary/10 text-primary'
@@ -304,13 +235,12 @@ export default function Layout() {
                       'text-[10px] font-normal leading-tight',
                       isActive ? 'text-primary/60' : 'text-muted-foreground/40',
                     )}>
-                      User management
+                      Admin & configuration
                     </span>
                   </div>
                 </>
               )}
             </NavLink>
-            </>
           )}
         </nav>
 

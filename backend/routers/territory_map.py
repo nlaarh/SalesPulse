@@ -29,7 +29,12 @@ log = logging.getLogger(__name__)
 
 OPERATING_REGIONS = ("Western", "Rochester", "Central")
 REGION_FILTER = "Billing_Region__c IN ('Western','Rochester','Central')"
-ACTIVE_MEMBER = "(Member_Status__c = 'A' OR ImportantActiveMemExpiryDate__c >= TODAY)"
+ACTIVE_MEMBER = (
+    "IsPersonAccount = true AND Member_Status__c = 'A'"
+    " AND ImportantActiveMemExpiryDate__c >= TODAY"
+    " AND ImportantActiveMemCoverage__c IN ('B','PLUS','PREMIER')"
+    " AND Out_of_Territory_Member__c = false"
+)
 MIN_MEMBERS = 10  # skip tiny noise zips on the map
 NY_STATE = "BillingState = 'New York'"
 
@@ -119,16 +124,34 @@ def territory_map_data(
                 LIMIT 2000
             """,
 
-            # -- Insurance customers --
+            # -- Accurate total (no GROUP BY / HAVING / LIMIT truncation) --
+            members_total=f"""
+                SELECT COUNT(Id) cnt
+                FROM Account
+                WHERE BillingPostalCode != null
+                  AND {NY_STATE} AND {REGION_FILTER}
+                  AND {ACTIVE_MEMBER}
+            """,
+
+            # -- Insurance customers (active members with insurance) --
             ins_customers=f"""
                 SELECT BillingPostalCode zip, COUNT(Id) cnt
                 FROM Account
                 WHERE Insuance_Customer_ID__c != null
+                  AND Member_Status__c = 'A'
                   AND BillingPostalCode != null
                   AND {NY_STATE} AND {REGION_FILTER}
                 GROUP BY BillingPostalCode
                 ORDER BY COUNT(Id) DESC
                 LIMIT 2000
+            """,
+            ins_customers_total=f"""
+                SELECT COUNT(Id) cnt
+                FROM Account
+                WHERE Insuance_Customer_ID__c != null
+                  AND Member_Status__c = 'A'
+                  AND BillingPostalCode != null
+                  AND {NY_STATE} AND {REGION_FILTER}
             """,
 
             # -- Travel customers 3yr + CY + PY --
@@ -146,6 +169,18 @@ def territory_map_data(
                 GROUP BY BillingPostalCode
                 ORDER BY COUNT(Id) DESC
                 LIMIT 2000
+            """,
+            travel_customers_3yr_total=f"""
+                SELECT COUNT(Id) cnt
+                FROM Account
+                WHERE Id IN (
+                    SELECT AccountId FROM Opportunity
+                    WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
+                      AND {WON_STAGES}
+                      AND CloseDate >= {travel_3yr} AND CloseDate <= {cy_end}
+                )
+                  AND BillingPostalCode != null
+                  AND {NY_STATE} AND {REGION_FILTER}
             """,
 
             travel_customers_cy=f"""
@@ -286,14 +321,18 @@ def territory_map_data(
         travel_rev_cy_d = _to_dict(data.get('travel_rev_cy', []), val_key='rev')
         travel_rev_py_d = _to_dict(data.get('travel_rev_py', []), val_key='rev')
 
-        # Totals — computed in Python to reduce SOQL concurrency contention
-        total_ins = sum(v.get('cnt', 0) or 0 for v in ins_cust.values())
+        # Totals — use accurate COUNTs from dedicated total queries (no GROUP BY/LIMIT truncation)
+        ins_total_raw = data.get('ins_customers_total', [])
+        total_ins = ins_total_raw[0].get('cnt', 0) if ins_total_raw else 0
         total_ins_cy_rev = sum(v.get('rev', 0) or 0 for v in ins_rev_cy_d.values())
         total_ins_py_rev = sum(v.get('rev', 0) or 0 for v in ins_rev_py_d.values())
-        total_travel_3yr = sum(v.get('cnt', 0) or 0 for v in travel_cust_3yr.values())
+        travel_total_raw = data.get('travel_customers_3yr_total', [])
+        total_travel_3yr = travel_total_raw[0].get('cnt', 0) if travel_total_raw else 0
         total_travel_cy_rev = sum(v.get('rev', 0) or 0 for v in travel_rev_cy_d.values())
         total_travel_py_rev = sum(v.get('rev', 0) or 0 for v in travel_rev_py_d.values())
-        total_members = sum(v.get('cnt', 0) or 0 for v in members_normed.values())
+        # Use accurate COUNT from dedicated total query (not grouped/limited/having-filtered)
+        members_total_raw = data.get('members_total', [])
+        total_members = (members_total_raw[0].get('cnt', 0) if members_total_raw else 0)
         # Sum of members in mapped zips (for penetration calculations)
         mapped_members = sum(v['cnt'] for v in members_normed.values())
 
