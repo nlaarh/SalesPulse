@@ -12,6 +12,10 @@ from pathlib import Path
 
 log = logging.getLogger('cache')
 
+# ── Feature flag + schema version ───────────────────────────────────────────
+CACHE_VERSION = 'v1'  # Bump this ONLY when cached JSON shape changes.
+ENABLE_V2 = os.getenv('ENABLE_CACHE_V2', 'false').lower() == 'true'
+
 # ── L1: In-memory ────────────────────────────────────────────────────────────
 
 _store: dict = {}
@@ -61,7 +65,7 @@ def _disk_path(key: str) -> Path:
 
 
 def disk_get(key: str):
-    """Get from L2 disk cache. Returns None if missing or expired."""
+    """Get from L2 disk cache. Returns None if missing, expired, or wrong version."""
     path = _disk_path(key)
     if not path.exists():
         return None
@@ -69,23 +73,32 @@ def disk_get(key: str):
         with open(path) as f:
             entry = json.load(f)
         expires = entry.get('expires', 0)
-        if expires is None or time.time() < expires:
-            return entry['data']
-        path.unlink(missing_ok=True)
+        if expires is not None and time.time() >= expires:
+            path.unlink(missing_ok=True)
+            return None
+        if ENABLE_V2:
+            if entry.get('version') != CACHE_VERSION:
+                path.unlink(missing_ok=True)
+                return None
+        return entry['data']
     except Exception:
         pass
     return None
 
 
 def disk_put(key: str, data, ttl: int = 86400):
-    """Store in L2 disk cache with TTL. Atomic write via temp file."""
+    """Store in L2 disk cache with TTL + version stamp. Atomic write."""
     path = _disk_path(key)
     tmp = path.with_suffix('.tmp')
     try:
-        expires = None if ttl is None or ttl < 0 else time.time() + ttl
+        now = time.time()
+        expires = None if ttl is None or ttl < 0 else now + ttl
+        entry = {'data': data, 'expires': expires, 'cached_at': now}
+        if ENABLE_V2:
+            entry['version'] = CACHE_VERSION
         with open(tmp, 'w') as f:
-            json.dump({'data': data, 'expires': expires}, f, default=str)
-        tmp.replace(path)  # atomic on POSIX
+            json.dump(entry, f, default=str)
+        tmp.replace(path)
     except Exception as e:
         log.warning(f"Disk cache write failed for '{key}': {e}")
         tmp.unlink(missing_ok=True)
