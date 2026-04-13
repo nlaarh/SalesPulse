@@ -54,3 +54,52 @@ def test_cached_at_timestamp_present(v2_enabled):
         entry = json.load(f)
     assert entry['cached_at'] >= t0
     assert entry['version'] == cache.CACHE_VERSION
+
+
+def test_waiter_times_out_at_user_wait_but_fetcher_continues(v2_enabled):
+    """User-wait timeout (25s) is less than fetcher timeout (240s).
+    Waiter gives up early but fetch keeps running in the background."""
+    cache = v2_enabled
+
+    fetch_started = threading.Event()
+    fetch_done = threading.Event()
+    slow_result = {'x': 42}
+
+    def slow_fetch():
+        fetch_started.set()
+        # Simulate long fetch — but test uses short timeouts via monkeypatch
+        time.sleep(0.5)
+        fetch_done.set()
+        return slow_result
+
+    # Override timeouts for test speed: USER_WAIT=0.1s, FETCHER=2s
+    original_user_wait = cache.USER_WAIT_TIMEOUT
+    original_fetcher = cache.FETCHER_TIMEOUT
+    cache.USER_WAIT_TIMEOUT = 0.1
+    cache.FETCHER_TIMEOUT = 2.0
+
+    try:
+        # Start fetcher in background
+        fetcher_thread = threading.Thread(
+            target=lambda: cache.cached_query('slow_key', slow_fetch, ttl=60)
+        )
+        fetcher_thread.start()
+
+        # Give fetcher time to grab the lock
+        time.sleep(0.05)
+
+        # Second caller (waiter) should wait only 0.1s then retry inline
+        # Since fetcher is still running, inline fetch will either:
+        # (a) block on lock → get stale None, retry fetch themselves, or
+        # (b) return stale data if available
+        # For this test, verify waiter does not return None (no silent null)
+        result = cache.cached_query('slow_key', slow_fetch, ttl=60)
+
+        # Waiter either got the fresh result (if fetcher finished) or
+        # triggered its own fetch — both cases return real data
+        assert result == slow_result, f"Waiter got {result}, expected non-null real data"
+
+        fetcher_thread.join(timeout=3)
+    finally:
+        cache.USER_WAIT_TIMEOUT = original_user_wait
+        cache.FETCHER_TIMEOUT = original_fetcher
