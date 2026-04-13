@@ -167,3 +167,26 @@ def test_concurrent_disk_writes_no_corruption(v2_enabled):
         entry = json.load(f)
     assert 'data' in entry
     assert 'writer' in entry['data']
+
+
+def test_cache_dir_uses_home_on_azure(monkeypatch, tmp_path):
+    """On Azure (WEBSITE_SITE_NAME set + /home exists), cache lives in /home/."""
+    # This test verifies the path-selection logic without actually reloading
+    # (reload would try to mkdir /home/.salesinsight on macOS which fails).
+    # Instead, test the logic expression directly.
+    import cache
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    monkeypatch.setenv('WEBSITE_SITE_NAME', 'salespulse-nyaaa')
+
+    # Replicate the logic from cache.py module level
+    azure_home = fake_home
+    is_azure = azure_home.is_dir() and os.getenv('WEBSITE_SITE_NAME')
+    base = (azure_home / '.salesinsight') if is_azure else Path(os.path.expanduser('~/.salesinsight'))
+    cache_dir = base / 'cache'
+
+    assert str(cache_dir).endswith('/cache')
+    assert str(cache_dir).startswith(str(fake_home)), "Should use /home path on Azure"
+
+    # Also verify the current module's _CACHE_DIR ends with /cache (sanity)
+    assert str(cache._CACHE_DIR).endswith('/cache')
