@@ -40,3 +40,17 @@ def test_cache_version_bump_invalidates_old_entries(v2_enabled, tmp_path):
 
     # Current CACHE_VERSION is 'v1' — should refuse to return old-version entry
     assert cache.get('k1') is None
+
+
+def test_cached_at_timestamp_present(v2_enabled):
+    """Every cached entry stores a cached_at timestamp."""
+    cache = v2_enabled
+    t0 = time.time()
+    cache.disk_put('k_time', {'x': 1}, ttl=3600)
+    # Read raw file to verify cached_at was persisted
+    import json
+    path = cache._disk_path('k_time')
+    with open(path) as f:
+        entry = json.load(f)
+    assert entry['cached_at'] >= t0
+    assert entry['version'] == cache.CACHE_VERSION
