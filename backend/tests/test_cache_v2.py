@@ -127,3 +127,21 @@ def test_circuit_breaker_trips_after_3_failures(v2_enabled):
         cache.cached_query('breaker_key', failing_fetch, ttl=60)
 
     assert call_count['n'] == 3, "breaker did not prevent the 4th call"
+
+
+def test_l1_cap_evicts_lru_to_disk(v2_enabled, monkeypatch):
+    """When L1 exceeds size cap, oldest entries are evicted to L2."""
+    cache = v2_enabled
+
+    # Monkeypatch a tiny cap for test
+    monkeypatch.setattr(cache, 'L1_MAX_ENTRIES', 3)
+
+    cache.put('a', {'v': 1}, ttl=60)
+    cache.put('b', {'v': 2}, ttl=60)
+    cache.put('c', {'v': 3}, ttl=60)
+    cache.put('d', {'v': 4}, ttl=60)  # forces eviction of 'a'
+
+    # 'a' should have been evicted from L1 but may still be on L2 (if persisted)
+    with cache._lock:
+        assert 'a' not in cache._store
+        assert len(cache._store) == 3
