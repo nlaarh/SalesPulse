@@ -103,3 +103,27 @@ def test_waiter_times_out_at_user_wait_but_fetcher_continues(v2_enabled):
     finally:
         cache.USER_WAIT_TIMEOUT = original_user_wait
         cache.FETCHER_TIMEOUT = original_fetcher
+
+
+def test_circuit_breaker_trips_after_3_failures(v2_enabled):
+    """3 failures within 60s → subsequent calls for same key fail-fast with stale data
+    or raise BreakerOpen, no new fetch attempted."""
+    cache = v2_enabled
+
+    call_count = {'n': 0}
+    def failing_fetch():
+        call_count['n'] += 1
+        raise RuntimeError("SF down")
+
+    # First 3 attempts: actually call, all raise
+    for _ in range(3):
+        with pytest.raises(RuntimeError):
+            cache.cached_query('breaker_key', failing_fetch, ttl=60)
+
+    assert call_count['n'] == 3
+
+    # 4th attempt: breaker OPEN — should NOT call failing_fetch
+    with pytest.raises(cache.CircuitBreakerOpen):
+        cache.cached_query('breaker_key', failing_fetch, ttl=60)
+
+    assert call_count['n'] == 3, "breaker did not prevent the 4th call"
