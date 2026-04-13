@@ -19,10 +19,10 @@ log = logging.getLogger('main')
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """On startup: backup DB, flush disk cache if code changed.
+    """On startup: backup DB, flush disk cache only on CACHE_VERSION bump.
     Starts a 3 AM daily cache warm-up for heavy endpoints.
     """
-    import cache, hashlib, asyncio, shutil
+    import cache, asyncio, shutil
     from datetime import datetime, timedelta
     from database import DB_PATH, DB_DIR
 
@@ -43,25 +43,19 @@ async def lifespan(app: FastAPI):
     log.info(f"Database path: {DB_PATH} (exists={DB_PATH.exists()}, size={DB_PATH.stat().st_size // 1024 if DB_PATH.exists() else 0}KB)")
     from datetime import datetime, timedelta
 
-    # Hash the key backend files that affect query logic / response shape
-    backend_dir = Path(__file__).resolve().parent
-    hasher = hashlib.md5()
-    for pattern in ('*.py', 'routers/*.py'):
-        for f in sorted(backend_dir.glob(pattern)):
-            hasher.update(f.read_bytes())
-    current_hash = hasher.hexdigest()
-
-    version_file = cache._CACHE_DIR / '.deploy_hash'
+    # Deploy-aware cache invalidation:
+    # Only flush on explicit CACHE_VERSION bump (cache.py CACHE_VERSION constant).
+    # Individual entry version mismatches are handled lazily in disk_get().
+    version_file = cache._CACHE_DIR / '.cache_version'
     cache._CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    stored_hash = version_file.read_text().strip() if version_file.exists() else ''
+    stored_version = version_file.read_text().strip() if version_file.exists() else ''
 
-    if current_hash != stored_hash:
-        # New deployment — flush stale cache so old query shapes don't persist
+    if stored_version != cache.CACHE_VERSION:
         flushed = sum(1 for f in cache._CACHE_DIR.glob('*.json') if (f.unlink(), True)[1])
-        version_file.write_text(current_hash)
-        log.info(f"New deployment detected: flushed {flushed} cache entries")
+        version_file.write_text(cache.CACHE_VERSION)
+        log.info(f"CACHE_VERSION changed '{stored_version}' → '{cache.CACHE_VERSION}': flushed {flushed} entries")
     else:
-        log.info("Restart detected (same code): keeping existing cache")
+        log.info(f"Restart (CACHE_VERSION={cache.CACHE_VERSION}): keeping existing cache")
 
     # Background scheduler: warm caches at 3 AM ET daily
     async def cache_warmer():
