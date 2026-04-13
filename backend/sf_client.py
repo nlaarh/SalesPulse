@@ -10,6 +10,30 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'), override=Fals
 
 log = logging.getLogger('sf_client')
 
+
+def _log_sf_query(query: str, duration_ms: int, row_count: int | None, bytes_count: int | None, error: str | None, endpoint: str | None = None):
+    """Fire-and-forget logging of SOQL execution to SQLite. Never raises."""
+    try:
+        from database import SessionLocal
+        from models import SfQueryLog
+        db = SessionLocal()
+        try:
+            db.add(SfQueryLog(
+                endpoint=endpoint,
+                query_preview=query[:500] if query else None,
+                duration_ms=duration_ms,
+                row_count=row_count,
+                bytes=bytes_count,
+                error=error[:500] if error else None,
+                from_cache=False,
+            ))
+            db.commit()
+        finally:
+            db.close()
+    except Exception:
+        # Never let logging kill a real query
+        pass
+
 # ── Connection-pooled HTTP session ──────────────────────────────────────────
 
 _session = requests.Session()
@@ -151,11 +175,28 @@ def sf_query(query: str, paginate: bool = True) -> dict:
 
 def sf_query_all(query: str) -> list:
     """Execute SOQL and return just the records list."""
-    result = sf_query(query, paginate=True)
-    if 'error' in result:
-        log.error(f"SOQL error: {result['error'][:200]}")
-        return []
-    return result.get('records', [])
+    import json as _json
+    start = time.perf_counter()
+    rows: list = []
+    err: str | None = None
+    try:
+        result = sf_query(query, paginate=True)
+        if 'error' in result:
+            log.error(f"SOQL error: {result['error'][:200]}")
+            err = result.get('error', '')[:500]
+            return []
+        rows = result.get('records', [])
+        return rows
+    except Exception as e:
+        err = str(e)
+        raise
+    finally:
+        duration_ms = int((time.perf_counter() - start) * 1000)
+        try:
+            bytes_count = len(_json.dumps(rows, default=str)) if rows else 0
+        except Exception:
+            bytes_count = None
+        _log_sf_query(query, duration_ms, len(rows) if rows else 0, bytes_count, err)
 
 
 def sf_sosl(sosl_query: str) -> list:
@@ -191,15 +232,32 @@ def sf_parallel(**queries) -> dict:
     """Run multiple SOQL queries in parallel. Returns {name: records_list}.
     Raises SFQueryError if any query fails so callers (via cached_query) don't cache zeros.
     """
+    import json as _json
     results = {}
     errors = []
 
     def _run(name: str, q: str):
-        result = sf_query(q, paginate=True)
-        if 'error' in result:
-            log.error(f"Parallel query '{name}' SF error: {result['error'][:200]}")
-            return name, None  # None = SF error (distinct from empty [])
-        return name, result.get('records', [])
+        start = time.perf_counter()
+        err_str: str | None = None
+        rows: list = []
+        try:
+            result = sf_query(q, paginate=True)
+            if 'error' in result:
+                log.error(f"Parallel query '{name}' SF error: {result['error'][:200]}")
+                err_str = result.get('error', '')[:500]
+                return name, None  # None = SF error (distinct from empty [])
+            rows = result.get('records', [])
+            return name, rows
+        except Exception as e:
+            err_str = str(e)
+            raise
+        finally:
+            duration_ms = int((time.perf_counter() - start) * 1000)
+            try:
+                bytes_count = len(_json.dumps(rows, default=str)) if rows else 0
+            except Exception:
+                bytes_count = None
+            _log_sf_query(q, duration_ms, len(rows) if rows else 0, bytes_count, err_str, endpoint=name)
 
     with ThreadPoolExecutor(max_workers=min(len(queries), 5)) as pool:
         futures = {pool.submit(_run, name, q): name for name, q in queries.items()}

@@ -281,3 +281,18 @@ class CacheWarmRun(Base):
             'duration_ms': self.duration_ms,
             'log': log_data,
         }
+
+
+class SfQueryLog(Base):
+    """Per-SOQL-query timing log. Recorded by sf_client wrappers."""
+    __tablename__ = 'sf_query_log'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    endpoint = Column(String(128), nullable=True, index=True)  # FastAPI route path if known
+    query_preview = Column(String(500), nullable=True)         # first 500 chars of SOQL
+    duration_ms = Column(Integer, nullable=False)
+    row_count = Column(Integer, nullable=True)
+    bytes = Column(Integer, nullable=True)
+    error = Column(String(500), nullable=True)
+    from_cache = Column(Boolean, default=False)
