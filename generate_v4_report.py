@@ -676,17 +676,14 @@ def chart_vehicle_geo_map(county_df, county_geo):
     from matplotlib.patches import Polygon as MplPoly
     from matplotlib.collections import PatchCollection
 
-    old_pct_map  = dict(zip(county_df["county"], county_df["old_pct"]))
-    new_pct_map  = {}
-    for _, row in county_df.iterrows():
-        v = row["vehicles"]
-        new_pct_map[row["county"]] = round(row["new_vehicles"] / v * 100, 1) if v > 0 else 0
+    old_veh_map = dict(zip(county_df["county"], county_df["old_vehicles"]))
+    new_veh_map = dict(zip(county_df["county"], county_df["new_vehicles"]))
 
     configs = [
-        (old_pct_map,  "Aging Fleet — Vehicles 3+ Years Old (%)",
-         [TEAL, GOLD, ORANGE, RED],   "Old Fleet %"),
-        (new_pct_map,  "Modern Fleet — Vehicles Under 3 Years Old (%)",
-         [RED,  GOLD, TEAL,   GREEN], "New Fleet %"),
+        (old_veh_map, "Aging Fleet — Vehicles 3+ Years Old (count)",
+         [TEAL, GOLD, ORANGE, RED],  "Vehicles (old)"),
+        (new_veh_map, "Modern Fleet — Vehicles Under 3 Years Old (count)",
+         [RED,  GOLD, TEAL,  GREEN], "Vehicles (new)"),
     ]
 
     fig, axes = plt.subplots(1, 2, figsize=(18, 9), facecolor=WHITE)
@@ -700,7 +697,7 @@ def chart_vehicle_geo_map(county_df, county_geo):
         ax.set_title(title, color=NAVY, fontsize=11, fontweight="bold", pad=12)
 
         vals = [v for v in data_map.values() if v > 0]
-        vmin, vmax = (min(vals), max(vals)) if vals else (0, 100)
+        vmin, vmax = (min(vals), max(vals)) if vals else (0, 1)
         cmap = mcolors.LinearSegmentedColormap.from_list("v", colors)
         norm = plt.Normalize(vmin, vmax)
 
@@ -723,7 +720,8 @@ def chart_vehicle_geo_map(county_df, county_geo):
                 xs = [p[0] for p in rings[0]]
                 ys = [p[1] for p in rings[0]]
                 cx, cy = sum(xs)/len(xs), sum(ys)/len(ys)
-                ax.text(cx, cy, f"{name}\n{val:.0f}%",
+                label_val = f"{val/1000:.0f}K" if val >= 1000 else str(int(val))
+                ax.text(cx, cy, f"{name}\n{label_val}",
                         ha="center", va="center", fontsize=6,
                         color=WHITE if norm(val) > 0.65 else NAVY,
                         fontweight="bold", zorder=3)
@@ -739,6 +737,8 @@ def chart_vehicle_geo_map(county_df, county_geo):
         sm.set_array([])
         cbar = fig.colorbar(sm, ax=ax, shrink=0.4, pad=0.02, aspect=25)
         cbar.set_label(label, color=DGRAY, fontsize=8)
+        cbar.ax.yaxis.set_major_formatter(
+            mticker.FuncFormatter(lambda x, _: f"{x/1000:.0f}K" if x >= 1000 else f"{int(x)}"))
         cbar.ax.tick_params(colors=DGRAY, labelsize=7)
 
     fig.tight_layout()
@@ -820,28 +820,136 @@ Prepared for the Board of Directors, CEO, and Head of Membership<br>
 </div></div>
 
 <!-- TABLE OF CONTENTS -->
-<div style="page-break-before:always;min-height:70vh;">
-<div style="border-bottom:3px solid {NAVY};padding-bottom:8px;margin-bottom:28px;">
-<span style="color:{TEAL};font-size:12px;font-weight:700;letter-spacing:1px;">AAA WESTERN &amp; CENTRAL NEW YORK</span>
-<div style="color:{NAVY};font-size:20px;font-weight:700;margin-top:4px;">Table of Contents</div>
+<div style="page-break-before:always;">
+<div style="margin-bottom:32px;">
+<div style="font-size:11px;font-weight:700;letter-spacing:2px;color:{TEAL};text-transform:uppercase;margin-bottom:6px;">AAA Western &amp; Central New York</div>
+<div style="color:{NAVY};font-size:28px;font-weight:800;line-height:1.1;">Table of Contents</div>
+<div style="width:48px;height:3px;background:{TEAL};margin-top:12px;border-radius:2px;"></div>
 </div>
-<table style="width:100%;border-collapse:collapse;font-size:12px;">
-<tr style="border-bottom:1px solid #E0E0E0;"><td style="padding:10px 4px;color:{TEAL};font-weight:700;width:40px;">—</td><td style="padding:10px 4px;color:{NAVY};font-weight:700;">Executive Summary — The Big Picture</td><td style="padding:10px 4px;text-align:right;color:{DGRAY};">Hero KPIs · Key Takeaways · Path to 1 Million</td></tr>
-<tr style="border-bottom:1px solid #E0E0E0;background:{LGRAY};"><td style="padding:10px 4px;color:{TEAL};font-weight:700;">GEO</td><td style="padding:10px 4px;color:{NAVY};font-weight:700;">Geographic Overview — Penetration Map</td><td style="padding:10px 4px;text-align:right;color:{DGRAY};">County choropleth · City bubble map</td></tr>
-<tr style="border-bottom:1px solid #E0E0E0;"><td style="padding:10px 4px;color:{TEAL};font-weight:700;">01</td><td style="padding:10px 4px;color:{NAVY};font-weight:700;">Business Composition</td><td style="padding:10px 4px;text-align:right;color:{DGRAY};">Where does our membership come from?</td></tr>
-<tr style="border-bottom:1px solid #E0E0E0;background:{LGRAY};"><td style="padding:10px 4px;color:{TEAL};font-weight:700;">02</td><td style="padding:10px 4px;color:{NAVY};font-weight:700;">Penetration — Best &amp; Worst Markets</td><td style="padding:10px 4px;text-align:right;color:{DGRAY};">Top and bottom cities by penetration %</td></tr>
-<tr style="border-bottom:1px solid #E0E0E0;"><td style="padding:10px 4px;color:{TEAL};font-weight:700;">03</td><td style="padding:10px 4px;color:{NAVY};font-weight:700;">Top 20 Opportunity Cities</td><td style="padding:10px 4px;text-align:right;color:{DGRAY};">Largest untapped adult populations</td></tr>
-<tr style="border-bottom:1px solid #E0E0E0;background:{LGRAY};"><td style="padding:10px 4px;color:{TEAL};font-weight:700;">04</td><td style="padding:10px 4px;color:{NAVY};font-weight:700;">Hidden Intelligence</td><td style="padding:10px 4px;text-align:right;color:{DGRAY};">Outperformers · Underperformers · Urban donut holes</td></tr>
-<tr style="border-bottom:1px solid #E0E0E0;"><td style="padding:10px 4px;color:{TEAL};font-weight:700;">05</td><td style="padding:10px 4px;color:{NAVY};font-weight:700;">Household Eligibility Gap</td><td style="padding:10px 4px;text-align:right;color:{DGRAY};">How many households are eligible but not members?</td></tr>
-<tr style="border-bottom:1px solid #E0E0E0;background:{LGRAY};"><td style="padding:10px 4px;color:{TEAL};font-weight:700;">06</td><td style="padding:10px 4px;color:{NAVY};font-weight:700;">Vehicle &amp; Fleet Intelligence</td><td style="padding:10px 4px;text-align:right;color:{DGRAY};">Vehicle penetration · Aging fleet · Geographic fleet map</td></tr>
-<tr style="border-bottom:1px solid #E0E0E0;"><td style="padding:10px 4px;color:{TEAL};font-weight:700;">07</td><td style="padding:10px 4px;color:{NAVY};font-weight:700;">Battery &amp; Roadside Opportunity</td><td style="padding:10px 4px;text-align:right;color:{DGRAY};">409K old vehicles in low-penetration markets</td></tr>
-<tr style="border-bottom:1px solid #E0E0E0;background:{LGRAY};"><td style="padding:10px 4px;color:{TEAL};font-weight:700;">08</td><td style="padding:10px 4px;color:{NAVY};font-weight:700;">What Drives Membership?</td><td style="padding:10px 4px;text-align:right;color:{DGRAY};">Income · Education · Age — demographic correlations</td></tr>
-<tr style="border-bottom:1px solid #E0E0E0;"><td style="padding:10px 4px;color:{TEAL};font-weight:700;">09</td><td style="padding:10px 4px;color:{NAVY};font-weight:700;">County Performance Heatmap</td><td style="padding:10px 4px;text-align:right;color:{DGRAY};">All counties across all metrics at a glance</td></tr>
-<tr style="border-bottom:1px solid #E0E0E0;background:{LGRAY};"><td style="padding:10px 4px;color:{TEAL};font-weight:700;">10</td><td style="padding:10px 4px;color:{NAVY};font-weight:700;">Strategic Priority Matrix</td><td style="padding:10px 4px;text-align:right;color:{DGRAY};">ENTER · GROW · PROTECT · MONITOR — counties &amp; cities</td></tr>
-<tr style="border-bottom:1px solid #E0E0E0;"><td style="padding:10px 4px;color:{TEAL};font-weight:700;">11</td><td style="padding:10px 4px;color:{NAVY};font-weight:700;">Market Spotlight: Ithaca / Tompkins County</td><td style="padding:10px 4px;text-align:right;color:{DGRAY};">Student pipeline · Cornell · Education-driven penetration</td></tr>
-<tr style="border-bottom:1px solid #E0E0E0;background:{LGRAY};"><td style="padding:10px 4px;color:{TEAL};font-weight:700;">12</td><td style="padding:10px 4px;color:{NAVY};font-weight:700;">Strategic Recommendations</td><td style="padding:10px 4px;text-align:right;color:{DGRAY};">5 initiatives · +210K members · +$29.6M revenue</td></tr>
-<tr><td style="padding:10px 4px;color:{MGRAY};font-weight:700;">—</td><td style="padding:10px 4px;color:{DGRAY};">Data Sources &amp; Methodology</td><td style="padding:10px 4px;text-align:right;color:{MGRAY};">AAA WCNY records · U.S. Census · NY DMV</td></tr>
-</table>
+
+<div style="display:flex;flex-direction:column;gap:2px;">
+
+<div style="display:flex;align-items:center;padding:12px 16px;border-radius:6px;border:1px solid #E8EBF0;">
+<div style="width:44px;min-width:44px;font-size:11px;font-weight:800;color:{TEAL};letter-spacing:1px;">EXEC</div>
+<div style="flex:1;">
+<div style="font-size:13px;font-weight:700;color:{NAVY};">Executive Summary — The Big Picture</div>
+<div style="font-size:10.5px;color:{DGRAY};margin-top:1px;">6 key takeaways &middot; hero KPIs &middot; path to 1 million members</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:12px 16px;border-radius:6px;background:{LGRAY};border:1px solid #E8EBF0;">
+<div style="width:44px;min-width:44px;font-size:11px;font-weight:800;color:{TEAL};letter-spacing:1px;">GEO</div>
+<div style="flex:1;">
+<div style="font-size:13px;font-weight:700;color:{NAVY};">Geographic Overview — Territory Maps</div>
+<div style="font-size:10.5px;color:{DGRAY};margin-top:1px;">County penetration choropleth &middot; city member bubble map</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:12px 16px;border-radius:6px;border:1px solid #E8EBF0;">
+<div style="width:44px;min-width:44px;font-size:13px;font-weight:800;color:{TEAL};">01</div>
+<div style="flex:1;">
+<div style="font-size:13px;font-weight:700;color:{NAVY};">Business Composition</div>
+<div style="font-size:10.5px;color:{DGRAY};margin-top:1px;">Where does our membership come from? County and city breakdown.</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:12px 16px;border-radius:6px;background:{LGRAY};border:1px solid #E8EBF0;">
+<div style="width:44px;min-width:44px;font-size:13px;font-weight:800;color:{TEAL};">02</div>
+<div style="flex:1;">
+<div style="font-size:13px;font-weight:700;color:{NAVY};">Penetration — Best &amp; Worst Markets</div>
+<div style="font-size:10.5px;color:{DGRAY};margin-top:1px;">Top 12 and bottom 12 cities ranked by member penetration rate.</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:12px 16px;border-radius:6px;border:1px solid #E8EBF0;">
+<div style="width:44px;min-width:44px;font-size:13px;font-weight:800;color:{TEAL};">03</div>
+<div style="flex:1;">
+<div style="font-size:13px;font-weight:700;color:{NAVY};">Top 20 Opportunity Cities</div>
+<div style="font-size:10.5px;color:{DGRAY};margin-top:1px;">Largest untapped adult populations and revenue opportunity by city.</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:12px 16px;border-radius:6px;background:{LGRAY};border:1px solid #E8EBF0;">
+<div style="width:44px;min-width:44px;font-size:13px;font-weight:800;color:{TEAL};">04</div>
+<div style="flex:1;">
+<div style="font-size:13px;font-weight:700;color:{NAVY};">Hidden Intelligence</div>
+<div style="font-size:10.5px;color:{DGRAY};margin-top:1px;">Outperformers vs. underperformers &middot; urban donut holes in strong counties.</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:12px 16px;border-radius:6px;border:1px solid #E8EBF0;">
+<div style="width:44px;min-width:44px;font-size:13px;font-weight:800;color:{TEAL};">05</div>
+<div style="flex:1;">
+<div style="font-size:13px;font-weight:700;color:{NAVY};">Household Eligibility Gap</div>
+<div style="font-size:10.5px;color:{DGRAY};margin-top:1px;">How many households are eligible but still without AAA membership?</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:12px 16px;border-radius:6px;background:{LGRAY};border:1px solid #E8EBF0;">
+<div style="width:44px;min-width:44px;font-size:13px;font-weight:800;color:{TEAL};">06</div>
+<div style="flex:1;">
+<div style="font-size:13px;font-weight:700;color:{NAVY};">Vehicle &amp; Fleet Intelligence</div>
+<div style="font-size:10.5px;color:{DGRAY};margin-top:1px;">Vehicle penetration &middot; aging fleet by county &middot; geographic fleet maps.</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:12px 16px;border-radius:6px;border:1px solid #E8EBF0;">
+<div style="width:44px;min-width:44px;font-size:13px;font-weight:800;color:{TEAL};">07</div>
+<div style="flex:1;">
+<div style="font-size:13px;font-weight:700;color:{NAVY};">Battery &amp; Roadside Opportunity</div>
+<div style="font-size:10.5px;color:{DGRAY};margin-top:1px;">409K aging vehicles in low-penetration markets — $6.1M service opportunity.</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:12px 16px;border-radius:6px;background:{LGRAY};border:1px solid #E8EBF0;">
+<div style="width:44px;min-width:44px;font-size:13px;font-weight:800;color:{TEAL};">08</div>
+<div style="flex:1;">
+<div style="font-size:13px;font-weight:700;color:{NAVY};">What Drives Membership?</div>
+<div style="font-size:10.5px;color:{DGRAY};margin-top:1px;">Income, education, and age as predictors &middot; demographic correlations.</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:12px 16px;border-radius:6px;border:1px solid #E8EBF0;">
+<div style="width:44px;min-width:44px;font-size:13px;font-weight:800;color:{TEAL};">09</div>
+<div style="flex:1;">
+<div style="font-size:13px;font-weight:700;color:{NAVY};">County Performance Heatmap</div>
+<div style="font-size:10.5px;color:{DGRAY};margin-top:1px;">All 29 counties across penetration, vehicle coverage, and fleet age.</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:12px 16px;border-radius:6px;background:{LGRAY};border:1px solid #E8EBF0;">
+<div style="width:44px;min-width:44px;font-size:13px;font-weight:800;color:{TEAL};">10</div>
+<div style="flex:1;">
+<div style="font-size:13px;font-weight:700;color:{NAVY};">Strategic Priority Matrix</div>
+<div style="font-size:10.5px;color:{DGRAY};margin-top:1px;">ENTER · GROW · PROTECT · MONITOR — where to invest at county and city level.</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:12px 16px;border-radius:6px;border:1px solid #E8EBF0;">
+<div style="width:44px;min-width:44px;font-size:13px;font-weight:800;color:{TEAL};">11</div>
+<div style="flex:1;">
+<div style="font-size:13px;font-weight:700;color:{NAVY};">Market Spotlight: Ithaca / Tompkins County</div>
+<div style="font-size:10.5px;color:{DGRAY};margin-top:1px;">Cornell student pipeline &middot; education-driven penetration &middot; replication model.</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:12px 16px;border-radius:6px;background:{LGRAY};border:1px solid #E8EBF0;">
+<div style="width:44px;min-width:44px;font-size:13px;font-weight:800;color:{TEAL};">12</div>
+<div style="flex:1;">
+<div style="font-size:13px;font-weight:700;color:{NAVY};">Strategic Recommendations</div>
+<div style="font-size:10.5px;color:{DGRAY};margin-top:1px;">5 priority initiatives — projected +210,000 members &middot; +$29.6M annual revenue.</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:12px 16px;border-radius:6px;border:1px solid #E8EBF0;border-top:2px solid {MGRAY};margin-top:6px;">
+<div style="width:44px;min-width:44px;font-size:11px;font-weight:700;color:{MGRAY};">APP</div>
+<div style="flex:1;">
+<div style="font-size:12px;font-weight:600;color:{DGRAY};">Data Sources &amp; Methodology</div>
+<div style="font-size:10.5px;color:{MGRAY};margin-top:1px;">AAA WCNY records &middot; U.S. Census Bureau &middot; NY State DMV registrations</div>
+</div>
+</div>
+
+</div>
 </div>
 
 <!-- EXECUTIVE SUMMARY — THE BIG PICTURE -->
@@ -852,16 +960,36 @@ Prepared for the Board of Directors, CEO, and Head of Membership<br>
 </div>
 
 <!-- KEY TAKEAWAYS -->
-<div style="background:{NAVY};color:{WHITE};border-radius:6px;padding:20px 24px;margin:0 0 22px;">
-<div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px;color:{TEAL};">Key Takeaways</div>
-<ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;">
-<li style="display:flex;align-items:baseline;gap:10px;font-size:12px;line-height:1.55;"><span style="color:{TEAL};font-weight:700;min-width:16px;">1.</span><span><strong>{T:,} members</strong> across 29 counties — but at <strong>{pen:.1f}% penetration</strong>, 3 in 4 eligible adults remain unconverted. The revenue ceiling is <strong>${gap*100/1e6:.0f}M/year</strong> at $100 average membership value.</span></li>
-<li style="display:flex;align-items:baseline;gap:10px;font-size:12px;line-height:1.55;"><span style="color:{TEAL};font-weight:700;min-width:16px;">2.</span><span><strong>Five counties hold {top5:.0f}% of all members.</strong> Erie and Monroe alone are half the book. The remaining 24 counties are materially underpenetrated — including six "dark" counties below 5%.</span></li>
-<li style="display:flex;align-items:baseline;gap:10px;font-size:12px;line-height:1.55;"><span style="color:{TEAL};font-weight:700;min-width:16px;">3.</span><span><strong>Dark counties are not low-demand.</strong> Marcy (Oneida Co.) has $99K median income and 1.4% penetration. Binghamton has 0.2%. This is a distribution and awareness failure, not a product problem.</span></li>
-<li style="display:flex;align-items:baseline;gap:10px;font-size:12px;line-height:1.55;"><span style="color:{TEAL};font-weight:700;min-width:16px;">4.</span><span><strong>{veh:,} vehicles</strong> registered in territory — {veh//T:.0f} per member. <strong>{ov/veh*100:.0f}% are 3+ years old</strong> (prime roadside/battery candidates). In dark counties, aging fleet rates hit 85–90%.</span></li>
-<li style="display:flex;align-items:baseline;gap:10px;font-size:12px;line-height:1.55;"><span style="color:{TEAL};font-weight:700;min-width:16px;">5.</span><span><strong>Income is the #1 predictor</strong> (r = 0.55): markets above $95K median income penetrate at 32.7% vs 11.3% below $50K. But Churchville, Lewiston, and Springville beat their income prediction by 17–21 pts — local execution matters.</span></li>
-<li style="display:flex;align-items:baseline;gap:10px;font-size:12px;line-height:1.55;"><span style="color:{TEAL};font-weight:700;min-width:16px;">6.</span><span><strong>Five initiatives</strong> target dark counties, aging fleets, urban donut holes, students, and price-sensitive households — projected to add <strong>+210,000 members</strong> and <strong>+$29.6M annual revenue</strong>.</span></li>
-</ul>
+<div style="border:1px solid #E8EBF0;border-radius:8px;overflow:hidden;margin:0 0 22px;">
+<div style="background:{LGRAY};padding:12px 20px;border-bottom:1px solid #E8EBF0;">
+<span style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:{TEAL};">Key Takeaways</span>
+</div>
+<div style="display:flex;flex-direction:column;">
+<div style="display:flex;align-items:baseline;gap:16px;padding:13px 20px;border-bottom:1px solid #F0F2F5;">
+<span style="font-size:18px;font-weight:800;color:{TEAL};min-width:24px;line-height:1;">1</span>
+<p style="margin:0;font-size:12px;line-height:1.6;color:{DARK};"><strong style="color:{NAVY};">{T:,} members, {pen:.1f}% penetration.</strong> Three in four eligible adults are not members. At $100/year, the unconverted {gap:,} adults represent <strong style="color:{RED};">${gap*100/1e6:.0f}M in unrealized annual revenue.</strong></p>
+</div>
+<div style="display:flex;align-items:baseline;gap:16px;padding:13px 20px;border-bottom:1px solid #F0F2F5;background:{LGRAY};">
+<span style="font-size:18px;font-weight:800;color:{TEAL};min-width:24px;line-height:1;">2</span>
+<p style="margin:0;font-size:12px;line-height:1.6;color:{DARK};"><strong style="color:{NAVY};">Five counties hold {top5:.0f}% of all members.</strong> Erie and Monroe alone are half the book. The remaining 24 counties — including six below 5% penetration — are nearly untouched.</p>
+</div>
+<div style="display:flex;align-items:baseline;gap:16px;padding:13px 20px;border-bottom:1px solid #F0F2F5;">
+<span style="font-size:18px;font-weight:800;color:{RED};min-width:24px;line-height:1;">3</span>
+<p style="margin:0;font-size:12px;line-height:1.6;color:{DARK};"><strong style="color:{NAVY};">Dark counties are not low-demand.</strong> Marcy (Oneida Co.) has $99K median income — 1.4% penetration. Binghamton: 0.2%. This is a <strong>distribution and awareness failure</strong>, not a product-market fit problem.</p>
+</div>
+<div style="display:flex;align-items:baseline;gap:16px;padding:13px 20px;border-bottom:1px solid #F0F2F5;background:{LGRAY};">
+<span style="font-size:18px;font-weight:800;color:{ORANGE};min-width:24px;line-height:1;">4</span>
+<p style="margin:0;font-size:12px;line-height:1.6;color:{DARK};"><strong style="color:{NAVY};">{veh:,} registered vehicles — {veh//T:.0f} per member.</strong> <strong>{ov/veh*100:.0f}% are 3+ years old</strong> — prime roadside and battery candidates. In dark counties, aging fleet rates reach 85–90%.</p>
+</div>
+<div style="display:flex;align-items:baseline;gap:16px;padding:13px 20px;border-bottom:1px solid #F0F2F5;">
+<span style="font-size:18px;font-weight:800;color:{TEAL};min-width:24px;line-height:1;">5</span>
+<p style="margin:0;font-size:12px;line-height:1.6;color:{DARK};"><strong style="color:{NAVY};">Income is the #1 predictor</strong> (r = 0.55): markets above $95K penetrate at 32.7% vs 11.3% below $50K. But Churchville, Lewiston, and Springville beat their income expectation by 17–21 pts — local execution matters.</p>
+</div>
+<div style="display:flex;align-items:baseline;gap:16px;padding:13px 20px;background:#F0FFF4;">
+<span style="font-size:18px;font-weight:800;color:{GREEN};min-width:24px;line-height:1;">6</span>
+<p style="margin:0;font-size:12px;line-height:1.6;color:{DARK};">Five targeted initiatives — dark counties, aging fleets, urban donut holes, students, essentials tier — are projected to add <strong style="color:{GREEN};">+210,000 members</strong> and <strong style="color:{GREEN};">+$29.6M annual revenue.</strong></p>
+</div>
+</div>
 </div>
 
 <p>AAA WCNY serves <strong>843,000 members</strong> across a 29-county territory with <strong>{ad:,} eligible adults</strong>, a penetration rate of <strong>{pen:.1f}%</strong>. While this represents a significant footprint, it also means that <strong>more than three out of four eligible adults in our territory are not members</strong>. At an average membership value of $100 per year, the untapped {gap:,} adults represent approximately <strong>${gap*100/1e6:.0f} million in unrealized annual revenue</strong>.</p>
