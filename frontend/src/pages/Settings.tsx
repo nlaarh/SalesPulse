@@ -218,8 +218,13 @@ export default function Settings() {
       {/* Tab content: AI & Integrations */}
       {tab === 'ai' && <AIConfigTab />}
 
-      {/* Tab content: Cache Status */}
-      {tab === 'cache' && <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading...</div>}><CacheStatusTab /></Suspense>}
+      {/* Tab content: Cache — warm status + data system admin */}
+      {tab === 'cache' && (
+        <div className="space-y-4">
+          <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading...</div>}><CacheStatusTab /></Suspense>
+          <DataSystemSection setSuccess={setSuccess} setError={setError} />
+        </div>
+      )}
 
       {/* Tab content: Issues */}
       {tab === 'issues' && <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading...</div>}><IssuesPage /></Suspense>}
@@ -230,8 +235,7 @@ export default function Settings() {
       {/* Tab content: Performance */}
       {tab === 'performance' && <PerformanceTab />}
 
-      {/* Tab content: Users */}
-      {tab === 'users' && <>
+      {/* Global toasts — visible on any tab */}
       {success && (
         <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 px-4 py-2.5 text-[13px] font-medium text-emerald-500">
           <Check className="h-4 w-4" />
@@ -244,6 +248,9 @@ export default function Settings() {
           {error}
         </div>
       )}
+
+      {/* Tab content: Users */}
+      {tab === 'users' && <>
 
       {/* User Table */}
       <div className="card-premium overflow-hidden">
@@ -441,8 +448,6 @@ export default function Settings() {
         </div>
       )}
       </>}
-
-      <DataSystemSection setSuccess={setSuccess} setError={setError} />
     </div>
   )
 }
