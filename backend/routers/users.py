@@ -433,8 +433,8 @@ def dmv_refresh(admin: User = Depends(require_admin)):
     finally:
         db.close()
 
-    # Invalidate vehicle-data cache entries so next request fetches fresh data
-    cache.invalidate('territory_vehicle_data')
+    # Invalidate vehicle-data cache so next request fetches fresh data
+    cache.invalidate('territory_vehicle_data_v1')
 
     return {
         'ok': True,
