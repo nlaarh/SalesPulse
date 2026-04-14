@@ -421,7 +421,9 @@ def dmv_refresh(admin: User = Depends(require_admin)):
     from models import GeoVehicleRegistration, GeoMeta
     from sqlalchemy import func
 
-    refresh_dmv_data()
+    result = refresh_dmv_data()
+    if not result.get('ok'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'DMV refresh failed'))
 
     db = SessionLocal()
     try:

@@ -14,8 +14,10 @@ def refresh_dmv_data():
     db = SessionLocal()
     try:
         counties_upper = [c.upper() for c in WCNY_COUNTY_FIPS.values()]
+        # Socrata stores "ST LAWRENCE" without a period — strip it to match
+        counties_upper = [c.replace('ST. LAWRENCE', 'ST LAWRENCE') for c in counties_upper]
         county_list_str = ",".join(f"'{c}'" for c in counties_upper)
-        
+
         # Socrata SoQL query
         params = {
             "$select": "zip, county, model_year, make, fuel_type, sum(1) as vehicle_count",
@@ -23,26 +25,26 @@ def refresh_dmv_data():
             "$group": "zip, county, model_year, make, fuel_type",
             "$limit": 50000
         }
-        
+
         log.info("Fetching NY DMV vehicle data for WCNY counties (by zip)...")
-        response = requests.get(DMV_API_URL, params=params, timeout=30)
+        response = requests.get(DMV_API_URL, params=params, timeout=60)
         response.raise_for_status()
         data = response.json()
-        
+
         if not data:
             log.warning("No DMV data returned.")
             return {"ok": False, "error": "No data returned"}
-            
-        # Clear existing data
-        db.query(GeoVehicleRegistration).delete()
-        
-        records_added = 0
+
+        log.info(f"DMV API returned {len(data)} rows — building records before clearing DB")
+
+        # Build all records in memory BEFORE touching existing data.
+        # This prevents a wipe-without-replace if the API call partially fails.
+        new_records = []
         for row in data:
             county_name = row.get("county", "").title()
-            if county_name == "St Lawrence":
+            if county_name in ("St Lawrence", "St. Lawrence"):
                 county_name = "St. Lawrence"
-                
-            db.add(GeoVehicleRegistration(
+            new_records.append(GeoVehicleRegistration(
                 zip_code=row.get("zip"),
                 county_name=county_name,
                 model_year=row.get("model_year"),
@@ -50,8 +52,13 @@ def refresh_dmv_data():
                 fuel_type=row.get("fuel_type"),
                 vehicle_count=int(row.get("vehicle_count", 0))
             ))
-            records_added += 1
-            
+
+        # Only clear existing data once we have a successful replacement
+        db.query(GeoVehicleRegistration).delete()
+        for rec in new_records:
+            db.add(rec)
+        records_added = len(new_records)
+
         now = datetime.now(timezone.utc).isoformat()
         db.merge(GeoMeta(key='last_refreshed_dmv', value=now))
         db.merge(GeoMeta(key='dmv_record_count', value=str(records_added)))
