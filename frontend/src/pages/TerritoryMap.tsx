@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { MapContainer, TileLayer, GeoJSON, useMap, useMapEvents } from 'react-leaflet'
-import { fetchTerritoryMapData, fetchTerritoryBoundaries, flushCache, reportClientRenderMetric, type TerritoryZip, type TerritoryMapData, type CountyBoundaryData } from '@/lib/api'
+import { fetchTerritoryMapData, fetchTerritoryBoundaries, fetchTerritoryVehicleData, flushCache, reportClientRenderMetric, type TerritoryZip, type TerritoryMapData, type CountyBoundaryData, type VehicleDataResponse } from '@/lib/api'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useSales } from '@/contexts/SalesContext'
 import { useAuth } from '@/contexts/AuthContext'
@@ -18,7 +18,7 @@ import * as L from 'leaflet'
 import { type PathOptions } from 'leaflet'
 import {
   Loader2, Map as MapIcon, Shield, Plane, Users,
-  TrendingUp, Info, ZoomIn, BarChart3, Maximize2, Minimize2, RefreshCw, Download,
+  TrendingUp, Info, ZoomIn, BarChart3, Maximize2, Minimize2, RefreshCw, Download, Car, Zap,
 } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
 import { Tip } from '@/components/MetricTip'
@@ -29,6 +29,12 @@ import { exportTerritoryMapData } from './territoryMapExport'
 
 type RegionFilter = 'All' | 'Western' | 'Rochester' | 'Central'
 type ZoomLevel = 'region' | 'city' | 'zip'
+
+interface CountyVehicleStats {
+  total: number
+  electric: number
+  ev_pct: number
+}
 
 /** Aggregated bubble — represents a region, city, or single zip */
 interface MapBubble {
@@ -102,6 +108,15 @@ function bubbleRadius(members: number, level: ZoomLevel): number {
   if (members >= 500) return 9
   if (members >= 200) return 7
   return 5
+}
+
+function vehicleColor(evPct: number): string {
+  // NY average is around 2-4% for newer models, lower overall
+  if (evPct < 1) return '#94a3b8'
+  if (evPct < 2) return '#fcd34d'
+  if (evPct < 3) return '#fbbf24'
+  if (evPct < 5) return '#f59e0b'
+  return '#10b981' // 5%+ is very strong EV adoption
 }
 
 /* ── Aggregation helpers ─────────────────────────────────────────────────── */
@@ -427,29 +442,47 @@ function ImperativeCircleLayer({
 
 /* ── Legend ───────────────────────────────────────────────────────────────── */
 
-function Legend({ level }: { level: ZoomLevel }) {
+function Legend({ level, activeLayer }: { level: ZoomLevel; activeLayer: 'penetration' | 'vehicles' }) {
   const levelLabel = level === 'region' ? 'Region view' : level === 'city' ? 'City view' : 'Zip code view'
+  const isVehicles = activeLayer === 'vehicles'
+
   return (
     <div className="absolute bottom-6 left-6 z-[1000] bg-card/95 backdrop-blur border border-border rounded-lg p-3 shadow-lg">
       <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-semibold text-foreground">Customer Penetration</p>
-        <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium ml-2">
-          {levelLabel}
-        </span>
+        <p className="text-xs font-semibold text-foreground">
+          {isVehicles ? 'County EV Penetration' : 'Customer Penetration'}
+        </p>
+        {!isVehicles && (
+          <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium ml-2">
+            {levelLabel}
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-1">
-        <span className="text-[10px] text-muted-foreground">0%</span>
+        <span className="text-[10px] text-muted-foreground">{isVehicles ? '0%' : '0%'}</span>
         <div className="flex h-3 rounded overflow-hidden">
-          <div className="w-6 bg-red-500" />
-          <div className="w-6 bg-orange-500" />
-          <div className="w-6 bg-yellow-500" />
-          <div className="w-6 bg-green-500" />
+          {isVehicles ? (
+            <>
+              <div className="w-6 bg-slate-400" />
+              <div className="w-6 bg-amber-300" />
+              <div className="w-6 bg-amber-400" />
+              <div className="w-6 bg-amber-500" />
+              <div className="w-6 bg-emerald-500" />
+            </>
+          ) : (
+            <>
+              <div className="w-6 bg-red-500" />
+              <div className="w-6 bg-orange-500" />
+              <div className="w-6 bg-yellow-500" />
+              <div className="w-6 bg-green-500" />
+            </>
+          )}
         </div>
-        <span className="text-[10px] text-muted-foreground">5%+</span>
+        <span className="text-[10px] text-muted-foreground">{isVehicles ? '5%+' : '5%+'}</span>
       </div>
       <p className="text-[10px] text-muted-foreground mt-1.5">
         <ZoomIn className="w-3 h-3 inline mr-0.5" />
-        Zoom in for more detail
+        {isVehicles ? 'Color shows % of EVs in county' : 'Zoom in for more detail'}
       </p>
     </div>
   )
@@ -494,6 +527,7 @@ export default function TerritoryMap() {
   // viewBounds removed — canvas renderer handles clipping natively
   const [fullscreen, setFullscreen] = useState(false)
   const [showBoundaries, setShowBoundaries] = useState(true)
+  const [activeLayer, setActiveLayer] = useState<'penetration' | 'vehicles'>('penetration')
   const [refreshing, setRefreshing] = useState(false)
   const [refreshMsg, setRefreshMsg] = useState('')
 
@@ -516,6 +550,35 @@ export default function TerritoryMap() {
     gcTime: 24 * 60 * 60_000,
     refetchOnWindowFocus: false,
   })
+
+  const { data: vehicleData } = useQuery<VehicleDataResponse>({
+    queryKey: ['territory-vehicles'],
+    queryFn: () => fetchTerritoryVehicleData(),
+    staleTime: Infinity,
+    gcTime: 24 * 60 * 60_000,
+  })
+
+  const countyVehicles = useMemo(() => {
+    if (!vehicleData) return {} as Record<string, CountyVehicleStats>
+    const out: Record<string, { total: number; electric: number }> = {}
+    for (const row of vehicleData.rows) {
+      const c = row.county
+      if (!out[c]) out[c] = { total: 0, electric: 0 }
+      out[c].total += row.vehicle_count
+      if (row.fuel_type === 'ELECTRIC') {
+        out[c].electric += row.vehicle_count
+      }
+    }
+    const result: Record<string, CountyVehicleStats> = {}
+    for (const [c, stats] of Object.entries(out)) {
+      result[c] = {
+        total: stats.total,
+        electric: stats.electric,
+        ev_pct: stats.total ? Math.round(stats.electric / stats.total * 1000) / 10 : 0
+      }
+    }
+    return result
+  }, [vehicleData])
 
   const handleZoomChange = useCallback((nextZoom: number) => {
     setZoom((z) => (z === nextZoom ? z : nextZoom))
@@ -630,29 +693,51 @@ export default function TerritoryMap() {
     })
   }, [filteredZips, level, canvasRenderer])
 
-  // Tile layer URL based on theme
   const tileUrl = theme === 'dark'
     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
     : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
-  const countyBoundaryStyle = useMemo<PathOptions>(() => ({
-    color: theme === 'dark' ? 'rgba(148,163,184,0.5)' : 'rgba(71,85,105,0.45)',
-    weight: 1.5,
-    fillColor: 'transparent',
-    fillOpacity: 0,
-    dashArray: '4 3',
-  }), [theme])
-  const countyBoundaryStyleFn = useCallback(() => countyBoundaryStyle, [countyBoundaryStyle])
+
+  const countyBoundaryStyleFn = useCallback((feature?: { properties?: { [key: string]: unknown } | null }) => {
+    const isVehicles = activeLayer === 'vehicles'
+    const base: PathOptions = {
+      color: theme === 'dark' ? 'rgba(148,163,184,0.5)' : 'rgba(71,85,105,0.45)',
+      weight: isVehicles ? 2 : 1.5,
+      dashArray: isVehicles ? undefined : '4 3',
+    }
+
+    if (isVehicles && feature?.properties?.name) {
+      const v = countyVehicles[String(feature.properties.name)]
+      if (v) {
+        return {
+          ...base,
+          fillColor: vehicleColor(v.ev_pct),
+          fillOpacity: 0.45,
+        }
+      }
+    }
+
+    return { ...base, fillColor: 'transparent', fillOpacity: 0 }
+  }, [theme, activeLayer, countyVehicles])
+
   const onCountyFeature = useCallback((feature: { properties?: { [key: string]: unknown } | null }, leafletLayer: L.Layer) => {
     const p = feature.properties
     if (p?.name && 'bindTooltip' in leafletLayer) {
       const countyName = String(p.name)
       const pop = Number(p.population || 0)
+      const v = countyVehicles[countyName] || { total: 0, electric: 0, ev_pct: 0 }
       ;(leafletLayer as L.Path).bindTooltip(
-        `<strong>${countyName} County</strong><br/>Pop: ${pop.toLocaleString()}`,
+        `<div style="font-size:12px;padding:2px">
+          <b style="font-size:14px">${countyName} County</b><br/>
+          <div style="margin-top:4px;border-top:1px solid rgba(0,0,0,0.1);padding-top:4px">
+            Pop: <b>${pop.toLocaleString()}</b><br/>
+            Vehicles: <b>${v.total.toLocaleString()}</b><br/>
+            EVs: <b>${v.electric.toLocaleString()} (${v.ev_pct}%)</b>
+          </div>
+        </div>`,
         { sticky: true, direction: 'auto', className: 'county-tooltip' }
       )
     }
-  }, [])
+  }, [countyVehicles])
 
   if (isLoading) {
     return (
@@ -793,24 +878,51 @@ export default function TerritoryMap() {
       {/* Map */}
       <div className="relative rounded-xl border border-border overflow-hidden" style={{ height: fullscreen ? 'calc(100vh - 120px)' : 'calc(100vh - 340px)', minHeight: '500px' }}>
         {/* Overlay controls — top-right corner of map */}
-        <div className="absolute top-3 right-3 z-[1000] flex items-center gap-2">
-          {/* Region filter */}
+        <div className="absolute top-3 right-3 z-[1000] flex flex-col items-end gap-2">
+          {/* Layer selection */}
           <div className="flex items-center bg-card/90 backdrop-blur-sm rounded-lg p-0.5 shadow-md border border-border">
-            {(['All', 'Western', 'Rochester', 'Central'] as RegionFilter[]).map((r) => (
-              <button
-                key={r}
-                onClick={() => setRegion(r)}
-                className={cn(
-                  'px-2.5 py-1.5 text-[11px] font-medium rounded-md transition-colors',
-                  region === r
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {r}
-              </button>
-            ))}
+            <button
+              onClick={() => setActiveLayer('penetration')}
+              className={cn(
+                'px-3 py-1.5 text-[11px] font-semibold rounded-md transition-all flex items-center gap-1.5',
+                activeLayer === 'penetration'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <Users className="w-3 h-3" /> Penetration
+            </button>
+            <button
+              onClick={() => setActiveLayer('vehicles')}
+              className={cn(
+                'px-3 py-1.5 text-[11px] font-semibold rounded-md transition-all flex items-center gap-1.5',
+                activeLayer === 'vehicles'
+                  ? 'bg-amber-500 text-white shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <Car className="w-3 h-3" /> DMV Vehicles
+            </button>
           </div>
+
+          <div className="flex items-center gap-2">
+            {/* Region filter */}
+            <div className="flex items-center bg-card/90 backdrop-blur-sm rounded-lg p-0.5 shadow-md border border-border">
+              {(['All', 'Western', 'Rochester', 'Central'] as RegionFilter[]).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setRegion(r)}
+                  className={cn(
+                    'px-2.5 py-1.5 text-[11px] font-medium rounded-md transition-colors',
+                    region === r
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
 
           {/* Excel export */}
           <button
@@ -851,6 +963,7 @@ export default function TerritoryMap() {
           >
             {fullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
+          </div>
         </div>
         <MapContainer
           center={[43.1, -77.75]}
@@ -880,15 +993,15 @@ export default function TerritoryMap() {
           {/* Region / City bubbles */}
           {/* Single imperative layer — bypasses React reconciliation for 400+ markers */}
           <ImperativeCircleLayer
-            bubbleItems={level !== 'zip' ? bubbleRenderItems : []}
-            zipItems={level === 'zip' ? zipRenderItems : []}
+            bubbleItems={activeLayer === 'penetration' && level !== 'zip' ? bubbleRenderItems : []}
+            zipItems={activeLayer === 'penetration' && level === 'zip' ? zipRenderItems : []}
             year={year}
             totals={totals}
             canvasRenderer={canvasRenderer}
           />
         </MapContainer>
 
-        <Legend level={level} />
+        <Legend level={level} activeLayer={activeLayer} />
       </div>
 
       {/* Top penetration / lowest penetration tables */}
@@ -910,6 +1023,62 @@ export default function TerritoryMap() {
           accent="text-red-600 dark:text-red-400"
         />
       </div>
+
+      {vehicleData && (
+        <div className="bg-card border border-border rounded-xl overflow-hidden mt-4">
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-sm text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                <Car className="w-4 h-4" /> DMV Vehicle Registrations (NY DMV)
+              </h3>
+              <p className="text-xs text-muted-foreground">County-level vehicle counts and fuel types for WCNY territory</p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs font-medium">{fmt(vehicleData.totals.vehicle_count)} Total Vehicles</p>
+              <p className="text-[10px] text-muted-foreground flex items-center justify-end gap-1">
+                <Zap className="w-3 h-3 text-amber-500" />
+                {fmt(Object.values(countyVehicles).reduce((s, v) => s + v.electric, 0))} EVs across territory
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border bg-muted/30">
+                  <th className="text-left px-4 py-2 font-medium text-muted-foreground">County</th>
+                  <th className="text-right px-4 py-2 font-medium text-muted-foreground">Total Vehicles</th>
+                  <th className="text-right px-4 py-2 font-medium text-muted-foreground">Electric (EV)</th>
+                  <th className="text-right px-4 py-2 font-medium text-muted-foreground">EV %</th>
+                  <th className="text-right px-4 py-2 font-medium text-muted-foreground">Fuel Types</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(countyVehicles)
+                  .sort((a, b) => b[1].total - a[1].total)
+                  .map(([county, stats]) => (
+                    <tr key={county} className="border-b border-border/50 hover:bg-muted/20">
+                      <td className="px-4 py-2 font-medium">{county}</td>
+                      <td className="px-4 py-2 text-right">{fmt(stats.total)}</td>
+                      <td className="px-4 py-2 text-right font-medium text-amber-600 dark:text-amber-400">
+                        {fmt(stats.electric)}
+                      </td>
+                      <td className="px-4 py-2 text-right font-bold text-amber-600 dark:text-amber-400">
+                        {stats.ev_pct}%
+                      </td>
+                      <td className="px-4 py-2 text-right text-muted-foreground italic">
+                        {Array.from(new Set(vehicleData.rows.filter(r => r.county === county).map(r => r.fuel_type)))
+                          .filter(f => f !== 'GAS' && f !== 'ELECTRIC')
+                          .slice(0, 3)
+                          .join(', ')}
+                        ...
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

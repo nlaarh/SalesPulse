@@ -56,6 +56,9 @@ WCNY_COUNTY_FIPS = {
     '36097': 'Schuyler',
     '36101': 'Steuben',
     '36015': 'Chemung',
+    '36045': 'Jefferson',
+    '36049': 'Lewis',
+    '36089': 'St. Lawrence',
 }
 
 CENSUS_BASE = "https://api.census.gov/data/2022/acs/acs5"
@@ -279,10 +282,10 @@ def seed_geodata(force: bool = False):
         with open(CENTROID_FILE) as f:
             centroids = json.load(f)
 
-        # Filter to WCNY area (lat 42-44.5, lng -79.5 to -74.5)
+        # Filter to WCNY area — extended north to 45.1 to capture St. Lawrence County
         wcny_zips = {}
         for z, (lat, lng, city) in centroids.items():
-            if 41.5 <= lat <= 44.5 and -80.0 <= lng <= -74.0:
+            if 41.5 <= lat <= 45.1 and -80.0 <= lng <= -74.0:
                 wcny_zips[z] = {'lat': lat, 'lng': lng, 'city': city}
 
         log.info(f"Found {len(wcny_zips)} zips in WCNY area")
@@ -325,6 +328,18 @@ def seed_geodata(force: bool = False):
         db.commit()
 
         log.info(f"Geo seed complete: {final_county_count} counties, {final_zip_count} zips")
+
+        # ── 3. Seed DMV Vehicle data ──
+        try:
+            from seed_dmv import refresh_dmv_data
+            log.info("Seeding DMV vehicle data...")
+            dmv_res = refresh_dmv_data()
+            if dmv_res.get('ok'):
+                log.info(f"DMV seed complete: {dmv_res.get('records_added')} records added")
+            else:
+                log.warning(f"DMV seed non-ok response: {dmv_res.get('error')}")
+        except Exception as e:
+            log.warning(f"DMV vehicle data seed failed (skipping): {e}")
 
     except Exception as e:
         db.rollback()

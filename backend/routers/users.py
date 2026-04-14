@@ -174,18 +174,13 @@ def reset_admin(body: ResetAdminRequest, db: Session = Depends(get_db)):
 
 @router.post('/api/admin/cache-reset')
 def cache_reset(admin: User = Depends(require_admin)):
-    """Force-reload the owner map/agent lists AND flush the full L1+L2 data cache."""
+    """Force-reload the owner map/agent lists AND flush the L1+L2 data cache.
+
+    Protected keys (census, boundaries, DMV vehicle data) are preserved — use
+    their dedicated refresh endpoints to invalidate those.
+    """
     import shared, cache
-    # Flush L1 in-memory data cache
-    with cache._lock:
-        l1_count = len(cache._store)
-        cache._store.clear()
-    # Flush L2 disk cache
-    l2_count = 0
-    if cache._CACHE_DIR.exists():
-        for f in cache._CACHE_DIR.glob('*.json'):
-            f.unlink(missing_ok=True)
-            l2_count += 1
+    l1_count, l2_count = cache.clear_all(skip_protected=True)
     # Reload owner map
     shared._OWNER_MAP = None
     shared._TRAVEL_AGENTS = None
@@ -390,6 +385,61 @@ def geo_status(admin: User = Depends(require_admin)):
         }
     finally:
         db.close()
+
+
+@router.get('/api/admin/dmv/status')
+def dmv_status(admin: User = Depends(require_admin)):
+    """Return DMV vehicle data seed status — record count, last refreshed."""
+    from database import SessionLocal
+    from models import GeoVehicleRegistration, GeoMeta
+    from sqlalchemy import func
+
+    db = SessionLocal()
+    try:
+        record_count = db.query(GeoVehicleRegistration).count()
+        total_vehicles = db.query(func.sum(GeoVehicleRegistration.vehicle_count)).scalar() or 0
+        meta = {m.key: m.value for m in db.query(GeoMeta).filter(
+            GeoMeta.key.in_(['last_refreshed_dmv', 'dmv_record_count', 'dmv_source'])
+        ).all()}
+        return {
+            'seeded': record_count > 0,
+            'record_count': record_count,
+            'total_vehicles': int(total_vehicles),
+            'last_refreshed': meta.get('last_refreshed_dmv'),
+            'source': meta.get('dmv_source', 'NY DMV Open Data (Socrata)'),
+        }
+    finally:
+        db.close()
+
+
+@router.post('/api/admin/dmv/refresh')
+def dmv_refresh(admin: User = Depends(require_admin)):
+    """Force re-fetch DMV vehicle registration data from NY Open Data API."""
+    import cache
+    from seed_dmv import refresh_dmv_data
+    from database import SessionLocal
+    from models import GeoVehicleRegistration, GeoMeta
+    from sqlalchemy import func
+
+    refresh_dmv_data()
+
+    db = SessionLocal()
+    try:
+        record_count = db.query(GeoVehicleRegistration).count()
+        total_vehicles = db.query(func.sum(GeoVehicleRegistration.vehicle_count)).scalar() or 0
+        last_refreshed = db.query(GeoMeta).filter(GeoMeta.key == 'last_refreshed_dmv').first()
+    finally:
+        db.close()
+
+    # Invalidate vehicle-data cache entries so next request fetches fresh data
+    cache.invalidate('territory_vehicle_data')
+
+    return {
+        'ok': True,
+        'record_count': record_count,
+        'total_vehicles': int(total_vehicles),
+        'last_refreshed': last_refreshed.value if last_refreshed else None,
+    }
 
 
 @router.get('/api/admin/db/backup')

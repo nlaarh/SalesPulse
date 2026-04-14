@@ -124,4 +124,18 @@ def init_db():
             seed_geodata(force=False)
         except Exception as e:
             log.warning(f'Geo data seed failed: {e}')
+        # Seed DMV vehicle data if table is empty
+        try:
+            from models import GeoVehicleRegistration
+            sess = SessionLocal()
+            count = sess.query(GeoVehicleRegistration).count()
+            sess.close()
+            if count == 0:
+                log.info('DMV vehicle table empty — seeding from NY Open Data...')
+                from seed_dmv import refresh_dmv_data
+                refresh_dmv_data()
+            else:
+                log.info(f'DMV vehicle data already seeded ({count} rows) — skipping')
+        except Exception as e:
+            log.warning(f'DMV data seed failed: {e}')
     threading.Thread(target=_bg_geo_seed, daemon=True).start()

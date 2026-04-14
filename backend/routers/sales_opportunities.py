@@ -166,10 +166,14 @@ def top_opportunities(
     scored.sort(key=lambda x: (-x['score'], -x['amount']))
     top = scored[:limit]
 
-    # Try AI write-ups if enabled
+    # Try AI write-ups if enabled (cached to avoid 60s OpenAI calls on every request)
     ai_used = False
     if ai and top:
-        ai_writeups = _ai_writeups_batch(top)
+        ai_key = f"ai_writeups_{line}_{limit}_{sd}_{ed}"
+        ai_writeups = cache.cached_query(
+            ai_key, lambda: _ai_writeups_batch(top),
+            ttl=CACHE_TTL_MEDIUM, disk_ttl=CACHE_TTL_HOUR,
+        )
         if ai_writeups:
             ai_used = True
             for opp in top:

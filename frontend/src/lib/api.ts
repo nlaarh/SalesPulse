@@ -598,6 +598,16 @@ export async function fetchGeoStatus() {
   return data as { seeded: boolean; counties: number; zips: number; last_refreshed: string | null; source: string }
 }
 
+export async function fetchDmvStatus() {
+  const { data } = await api.get('/api/admin/dmv/status')
+  return data as { seeded: boolean; record_count: number; total_vehicles: number; last_refreshed: string | null; source: string }
+}
+
+export async function refreshDmvData() {
+  const { data } = await api.post('/api/admin/dmv/refresh')
+  return data as { ok: boolean; record_count: number; total_vehicles: number; last_refreshed: string | null }
+}
+
 export async function fetchDbInfo() {
   const { data } = await api.get('/api/admin/db/info')
   return data as { path: string; exists: boolean; size_kb: number; backups: { name: string; size_kb: number; created: number }[] }
@@ -991,6 +1001,29 @@ export interface CensusDataResponse {
 export async function fetchCensusData(level: 'zip' | 'county' = 'zip'): Promise<CensusDataResponse> {
   const { data } = await api.get('/api/territory/census-data', { params: { level } })
   return data as CensusDataResponse
+}
+
+// ── DMV Vehicle Demographics ──────────────────────────────────────────────────
+
+export interface VehicleRegistrationRow {
+  county: string
+  model_year: string
+  fuel_type: string
+  vehicle_count: number
+}
+
+export interface VehicleDataResponse {
+  level: 'county'
+  rows: VehicleRegistrationRow[]
+  totals: {
+    vehicle_count: number
+  }
+  count: number
+}
+
+export async function fetchTerritoryVehicleData(): Promise<VehicleDataResponse> {
+  const { data } = await api.get('/api/territory/vehicle-data')
+  return data as VehicleDataResponse
 }
 
 export { api }

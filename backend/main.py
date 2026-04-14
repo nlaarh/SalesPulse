@@ -50,7 +50,7 @@ async def lifespan(app: FastAPI):
     stored_version = version_file.read_text().strip() if version_file.exists() else ''
 
     if stored_version != cache.CACHE_VERSION:
-        flushed = sum(1 for f in cache._CACHE_DIR.glob('*.json') if (f.unlink(), True)[1])
+        _, flushed = cache.clear_all(skip_protected=False)
         version_file.write_text(cache.CACHE_VERSION)
         log.info(f"CACHE_VERSION changed '{stored_version}' → '{cache.CACHE_VERSION}': flushed {flushed} entries")
     else:
@@ -205,7 +205,7 @@ init_db()
 
 # ── Register routers ─────────────────────────────────────────────────────────
 
-from routers import sales_advisor, sales_pipeline, sales_travel, sales_leads, sales_performance, sales_opportunities, sales_agent_profile, sales_narrative, users, activity_logs, advisor_targets, advisor_targets_monthly, advisor_targets_achievement, email_report, issues, ai_config, customer_profile, cross_sell, market_pulse, territory_map, ai_queries, performance_metrics, cache_admin, query_profile
+from routers import sales_advisor, sales_pipeline, sales_travel, sales_leads, sales_performance, sales_opportunities, sales_agent_profile, sales_narrative, users, activity_logs, advisor_targets, advisor_targets_monthly, advisor_targets_achievement, email_report, issues, ai_config, customer_profile, cross_sell, market_pulse, territory_map, census_data, ai_queries, performance_metrics, cache_admin, query_profile
 
 app.include_router(sales_advisor.router)
 app.include_router(sales_pipeline.router)
@@ -227,6 +227,7 @@ app.include_router(customer_profile.router)
 app.include_router(cross_sell.router)
 app.include_router(market_pulse.router)
 app.include_router(territory_map.router)
+app.include_router(census_data.router)
 app.include_router(ai_queries.router)
 app.include_router(performance_metrics.router)
 app.include_router(cache_admin.router)

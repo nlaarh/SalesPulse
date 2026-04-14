@@ -154,6 +154,24 @@ class GeoZip(Base):
     college_educated = Column(Integer, nullable=True)  # bachelor's+ (25+)
 
 
+class GeoVehicleRegistration(Base):
+    """Vehicle demographics from NY DMV (aggregated by zip/year/make/fuel)."""
+    __tablename__ = 'geo_vehicles'
+    __table_args__ = (
+        Index('ix_geo_vehicles_zip', 'zip_code'),
+        Index('ix_geo_vehicles_county', 'county_name'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    zip_code = Column(String, nullable=True, index=True)
+    county_name = Column(String, nullable=False, index=True)
+    model_year = Column(String, nullable=True)
+    make = Column(String, nullable=True)
+    fuel_type = Column(String, nullable=True)
+    vehicle_count = Column(Integer, default=0)
+
+
+
 class AIAuditLog(Base):
     """Audit trail for AI chat queries."""
     __tablename__ = 'ai_audit_log'

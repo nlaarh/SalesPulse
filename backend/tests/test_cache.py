@@ -74,6 +74,22 @@ def test_disk_get_returns_none_after_expiry(tmp_path):
         assert cache.disk_get('dk2') is None
 
 
+def test_never_ttl_l1_does_not_expire():
+    import cache
+    cache._store.clear()
+    cache.put('never-l1', {'ok': True}, ttl=-1)
+    time.sleep(0.01)
+    assert cache.get('never-l1') == {'ok': True}
+
+
+def test_never_ttl_disk_does_not_expire(tmp_path):
+    import cache
+    with patch.object(cache, '_CACHE_DIR', tmp_path):
+        cache.disk_put('never-disk', {'ok': True}, ttl=-1)
+        time.sleep(0.01)
+        assert cache.disk_get('never-disk') == {'ok': True}
+
+
 def test_disk_write_is_atomic(tmp_path):
     """disk_put writes via .tmp then renames — no partial reads."""
     import cache
@@ -155,3 +171,17 @@ def test_cached_query_returns_cached_on_second_call():
         cache.cached_query('dup-key', fetch, ttl=60)
 
     assert len(calls) == 1, "fetch_fn called more than once for same cached key"
+
+
+def test_clear_all_clears_l1_and_l2(tmp_path):
+    import cache
+    cache._store.clear()
+    with patch.object(cache, '_CACHE_DIR', tmp_path):
+        cache.put('c1', {'x': 1}, ttl=60)
+        cache.disk_put('c1', {'x': 1}, ttl=60)
+        l1, l2 = cache.clear_all()
+        assert l1 >= 1
+        assert l2 >= 0
+        assert list(tmp_path.glob('*.json')) == []
+        with patch('cache.disk_get', return_value=None):
+            assert cache.get('c1') is None

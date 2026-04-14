@@ -18,6 +18,15 @@ log = logging.getLogger('cache')
 CACHE_VERSION = 'v1'  # Bump this ONLY when cached JSON shape changes.
 ENABLE_V2 = os.getenv('ENABLE_CACHE_V2', 'false').lower() == 'true'
 
+# ── Protected cache prefixes ──────────────────────────────────────────────────
+# Keys whose prefix matches any entry here are NEVER deleted by clear_all().
+# They can only be invalidated explicitly via invalidate() or a dedicated refresh.
+PROTECTED_PREFIXES: tuple[str, ...] = (
+    'census_data_',          # census zip/county data (seed from Census API)
+    'territory_boundaries_', # geo boundary polygons (seed from Census TIGER)
+    'territory_vehicle_data',# DMV vehicle registration aggregates
+)
+
 # ── L1: In-memory ────────────────────────────────────────────────────────────
 
 L1_MAX_ENTRIES = 2000  # entries (not bytes) — tuned for 500MB worst-case
@@ -105,7 +114,7 @@ def disk_put(key: str, data, ttl: int = 86400):
     try:
         now = time.time()
         expires = None if ttl is None or ttl < 0 else now + ttl
-        entry = {'data': data, 'expires': expires, 'cached_at': now}
+        entry = {'key': key, 'data': data, 'expires': expires, 'cached_at': now}
         if ENABLE_V2:
             entry['version'] = CACHE_VERSION
         with open(tmp, 'w') as f:
@@ -121,14 +130,41 @@ def disk_invalidate(key: str):
     _disk_path(key).unlink(missing_ok=True)
 
 
-def clear_all() -> tuple[int, int]:
-    """Clear full L1 + L2 cache. Returns (l1_count, l2_count)."""
+def _is_protected(key: str) -> bool:
+    """Return True if key starts with any protected prefix."""
+    return any(key.startswith(p) for p in PROTECTED_PREFIXES)
+
+
+def clear_all(skip_protected: bool = True) -> tuple[int, int]:
+    """Clear L1 + L2 cache.
+
+    When skip_protected=True (default), keys whose prefix matches
+    PROTECTED_PREFIXES are left intact (census, boundaries, vehicle data).
+    Pass skip_protected=False only for a deliberate full wipe (e.g. CACHE_VERSION bump).
+
+    Returns (l1_evicted, l2_evicted).
+    """
     with _lock:
-        l1_count = len(_store)
-        _store.clear()
+        if skip_protected:
+            keys_to_remove = [k for k in _store if not _is_protected(k)]
+            for k in keys_to_remove:
+                del _store[k]
+            l1_count = len(keys_to_remove)
+        else:
+            l1_count = len(_store)
+            _store.clear()
+
     l2_count = 0
     if _CACHE_DIR.exists():
         for f in _CACHE_DIR.glob('*.json'):
+            if skip_protected:
+                try:
+                    with open(f) as fh:
+                        stored_key = json.load(fh).get('key', '')
+                    if _is_protected(stored_key):
+                        continue  # leave this file alone
+                except Exception:
+                    pass  # unreadable file — delete it
             f.unlink(missing_ok=True)
             l2_count += 1
     return l1_count, l2_count

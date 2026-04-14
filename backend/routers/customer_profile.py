@@ -58,28 +58,11 @@ def get_top_customers(
         # Step 2: fetch names for top AccountIds
         ids_csv = ','.join(f"'{r['AccountId']}'" for r in agg_rows if r.get('AccountId'))
         name_map: dict = {}
-        advisor_map: dict = {}
         if ids_csv:
             name_rows = sf_query_all(f"""
                 SELECT Id, Name FROM Account WHERE Id IN ({ids_csv})
             """)
             name_map = {r['Id']: r.get('Name', '') for r in name_rows}
-
-            # Step 3: fetch primary advisor (most deals) per account
-            adv_rows = sf_query_all(f"""
-                SELECT AccountId, Owner.Name, COUNT(Id) cnt
-                FROM Opportunity
-                WHERE AccountId IN ({ids_csv})
-                  AND StageName IN ('Closed Won','Invoice')
-                  AND CloseDate >= {sd} AND CloseDate <= {ed}
-                  AND Amount != null AND {lf}
-                GROUP BY AccountId, Owner.Name
-                ORDER BY AccountId, COUNT(Id) DESC
-            """)
-            for ar in adv_rows:
-                aid = ar.get('AccountId', '')
-                if aid not in advisor_map:
-                    advisor_map[aid] = ar.get('Name', '')
 
         result = []
         for r in agg_rows:
@@ -90,7 +73,6 @@ def get_top_customers(
                 'total_rev': float(r.get('total_rev') or 0),
                 'deal_count': int(r.get('deal_count') or 0),
                 'avg_deal': float(r.get('avg_deal') or 0),
-                'advisor': advisor_map.get(aid, ''),
             })
         return result
 
@@ -215,16 +197,15 @@ def get_customer_profile(
         base_url = ''
 
     opp_types = {(o.get('RecordType') or {}).get('Name', 'Other') for o in opps}
-    active_mship = any(m.get('Status') == 'A' for m in mships)
-    member_status = acct.get('Member_Status__c')
-    ers_calls = acct.get('ERS_Calls_Made_CP__c') or 0
     product_360 = {
-        'membership': active_mship or member_status == 'A',
+        'membership': bool(mships or acct.get('Account_Member_ID__c')),
         'travel':     'Travel' in opp_types,
         'insurance':  'Insurance' in opp_types or bool(acct.get('Insuance_Customer_ID__c')),
         'medicare':   'Medicare' in opp_types,
+        'membership_services': 'Membership Services' in opp_types,
+        'financial':  'Financial Services' in opp_types,
         'driver':     'Driver Programs' in opp_types,
-        'ers':        ers_calls > 0,
+        'ers':        bool(acct.get('ERS_Calls_Made_CP__c')),
     }
 
     # Transactions — last 30 opportunities as history
@@ -236,35 +217,14 @@ def get_customer_profile(
         rt = (o.get('RecordType') or {}).get('Name', 'Other')
         opp_groups.setdefault(rt, []).append(_fmt_opp(o, base_url))
 
-    # Top advisors — derived from opportunity owners, most recent interaction first
-    advisor_map: dict = {}
-    for o in opps:
-        owner = (o.get('Owner') or {}).get('Name')
-        if not owner:
-            continue
-        if owner not in advisor_map:
-            advisor_map[owner] = {
-                'name': owner,
-                'deal_count': 0,
-                'total_revenue': 0,
-                'last_interaction': o.get('CreatedDate', ''),
-            }
-        advisor_map[owner]['deal_count'] += 1
-        advisor_map[owner]['total_revenue'] += o.get('Amount') or 0
-        opp_date = o.get('CreatedDate', '')
-        if opp_date > advisor_map[owner]['last_interaction']:
-            advisor_map[owner]['last_interaction'] = opp_date
-    top_advisors = sorted(advisor_map.values(), key=lambda a: a['last_interaction'], reverse=True)[:3]
-
     return {
         'account':      _fmt_account(acct, base_url),
-        'memberships':  [_fmt_membership(m, base_url) for m in mships],
+        'memberships':  [_fmt_membership(m) for m in mships],
         'vehicles':     [_fmt_vehicle(v) for v in vehs],
         'product_360':  product_360,
         'transactions': transactions,
         'opportunities': opp_groups,
         'leads':        [_fmt_lead(l, base_url) for l in raw_leads],
-        'top_advisors': top_advisors,
     }
 
 
@@ -295,59 +255,14 @@ def get_upsell_analysis(
     member_since = acct.get('member_since', 'Unknown')
     mpi = acct.get('mpi') or 0
 
-    # Calculate age from birthdate for age-appropriate recommendations
-    from datetime import date
-    birthdate_str = acct.get('birthdate')
-    member_age = None
-    if birthdate_str:
-        try:
-            bd = date.fromisoformat(birthdate_str[:10])
-            today = date.today()
-            member_age = today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
-        except (ValueError, TypeError):
-            pass
-
     cfg = get_ai_config()
     if not cfg.get('api_key'):
         return {'analysis': None, 'error': 'AI not configured'}
-
-    age_line = f"- Age: {member_age}" if member_age else "- Age: Unknown"
-    # Build age-appropriateness rules
-    age_rules = []
-    if member_age is not None:
-        if member_age < 25:
-            age_rules.append("- Young member: emphasize driver training, roadside assistance (ERS), and basic auto insurance.")
-            age_rules.append("- Do NOT recommend Medicare, financial services, or home insurance — not relevant at this age.")
-        elif member_age < 40:
-            age_rules.append("- Young professional: auto insurance, home insurance, travel, financial services, and membership upgrades are appropriate.")
-            age_rules.append("- Do NOT recommend Medicare — member is far from eligibility.")
-        elif member_age < 60:
-            age_rules.append("- Mid-career member: all products EXCEPT Medicare are appropriate.")
-            age_rules.append("- Do NOT recommend Medicare — member is under 60 and not yet eligible.")
-        else:  # 60+
-            age_rules.append("- Senior member: Medicare IS age-appropriate — recommend if not already held.")
-            age_rules.append("- Travel insurance, financial services, and ERS are especially relevant.")
-    age_instructions = '\n'.join(age_rules) if age_rules else "- No age data available; omit age-specific products like Medicare unless the member already holds them."
-
-    # Build explicit product ownership rules
-    already_held_rules = []
-    if active_products:
-        already_held_rules.append(f"- Member ALREADY owns: {', '.join(active_products)}. Do NOT suggest these as new cross-sell — instead suggest upgrades/enhancements within these lines if applicable.")
-    if missing:
-        already_held_rules.append(f"- Member does NOT yet have: {', '.join(missing)}. These are your cross-sell targets (subject to age rules).")
-    if current_membership == 'Premier':
-        already_held_rules.append("- Member is already Premier level — do NOT suggest membership upgrade. Instead focus on product cross-sell.")
-    elif current_membership == 'Plus':
-        already_held_rules.append("- Member is on Plus — suggest Premier upgrade for enhanced benefits.")
-    elif current_membership in ('Basic', 'Classic'):
-        already_held_rules.append("- Member is on Basic/Classic — suggest Plus or Premier upgrade.")
-    product_rules = '\n'.join(already_held_rules) if already_held_rules else ''
 
     prompt = f"""You are a AAA sales advisor analyzing a member profile to identify upsell and cross-sell opportunities.
 
 ## Member Profile
 - Name: {acct['name']}
-{age_line}
 - Member Since: {member_since}
 - Membership Level: {current_membership}
 - Member Product Index (MPI): {mpi} (higher = more engaged, max ~5)
@@ -360,25 +275,13 @@ def get_upsell_analysis(
 ## Recent Transactions (last 10)
 {recent_txns if recent_txns else 'No transactions found'}
 
-## STRICT RULES — You MUST follow these
-
-### Age-Appropriateness (MANDATORY)
-{age_instructions}
-
-### Product Ownership (MANDATORY)
-{product_rules}
-- NEVER recommend a product the member already has as a new cross-sell.
-- Only recommend products from the "NOT yet held" list above (subject to age appropriateness).
-- For products the member already owns, you may suggest upgrades or enhanced coverage — but clearly label these as "enhancements" not new products.
-
 ## Your Task
 Provide concise upsell/cross-sell recommendations. Use ## headers and bullet points.
-Structure as:
-1. **Membership Upgrade** — only if not already on Premier
-2. **Cross-Sell Opportunities** — products they DON'T have yet, filtered by age appropriateness
-3. **Enhancement Opportunities** — upgrades to products they already own
-4. **Specific Next Actions** — what the advisor should do based on transaction history
-5. **Risk Signals** — any signs of churn or disengagement
+Focus on:
+1. **Membership upgrade** if on Basic/Plus (upgrade to Plus/Premier)
+2. **Missing products** the member doesn't have yet
+3. **Specific next actions** for the advisor based on transaction history
+4. **Risk signals** — any signs of churn or disengagement
 
 Be specific, actionable, and brief. Max 300 words."""
 
@@ -591,11 +494,10 @@ def _fmt_account(r: dict, base_url: str = '') -> dict:
     }
 
 
-def _fmt_membership(r: dict, base_url: str = '') -> dict:
+def _fmt_membership(r: dict) -> dict:
     parts = [p.strip() for p in (r.get('Name') or '').split(' - ')]
-    sf_id = r.get('Id', '')
     return {
-        'id':           sf_id,
+        'id':           r.get('Id'),
         'name':         r.get('Name'),
         'level':        parts[1] if len(parts) > 1 else None,
         'member_number': parts[0] if parts else None,
@@ -603,7 +505,6 @@ def _fmt_membership(r: dict, base_url: str = '') -> dict:
         'purchase_date': r.get('PurchaseDate'),
         'expiry_date':  r.get('UsageEndDate'),
         'price':        r.get('Price'),
-        'sf_url':       f"{base_url}/{sf_id}" if base_url and sf_id else None,
     }
 
 
