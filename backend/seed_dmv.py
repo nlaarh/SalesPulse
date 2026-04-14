@@ -18,15 +18,18 @@ def refresh_dmv_data():
         counties_upper = [c.replace('ST. LAWRENCE', 'ST LAWRENCE') for c in counties_upper]
         county_list_str = ",".join(f"'{c}'" for c in counties_upper)
 
-        # Socrata SoQL query
+        # Aggregate at county level only (not by zip/make).
+        # zip and make are never consumed downstream — grouping by them inflates the
+        # result set to ~50k rows which times out from Azure.  County×year×fuel_type
+        # gives ~2,700 rows and completes in seconds.
         params = {
-            "$select": "zip, county, model_year, make, fuel_type, sum(1) as vehicle_count",
+            "$select": "county, model_year, fuel_type, count(*) as vehicle_count",
             "$where": f"county in ({county_list_str}) and record_type='VEH'",
-            "$group": "zip, county, model_year, make, fuel_type",
-            "$limit": 50000
+            "$group": "county, model_year, fuel_type",
+            "$limit": 10000
         }
 
-        log.info("Fetching NY DMV vehicle data for WCNY counties (by zip)...")
+        log.info("Fetching NY DMV vehicle data for WCNY counties (county-level aggregation)...")
         response = requests.get(DMV_API_URL, params=params, timeout=60)
         response.raise_for_status()
         data = response.json()
@@ -45,10 +48,10 @@ def refresh_dmv_data():
             if county_name in ("St Lawrence", "St. Lawrence"):
                 county_name = "St. Lawrence"
             new_records.append(GeoVehicleRegistration(
-                zip_code=row.get("zip"),
+                zip_code=None,
                 county_name=county_name,
                 model_year=row.get("model_year"),
-                make=row.get("make"),
+                make=None,
                 fuel_type=row.get("fuel_type"),
                 vehicle_count=int(row.get("vehicle_count", 0))
             ))
