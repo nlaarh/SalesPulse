@@ -7,17 +7,21 @@ import { cn } from '@/lib/utils'
 import {
   Users, GitBranch, Megaphone, Table2, Target, DollarSign,
   Sun, Moon, Calendar, Command, Radio, Map, BarChart3,
-  ArrowRight, X, Settings, LogOut, Lightbulb,
+  ArrowRight, X, Settings, LogOut, Lightbulb, RefreshCw,
+  TrendingUp,
 } from 'lucide-react'
 import SalesPulseLogo from '@/components/SalesPulseLogo'
 import CommandPalette from '@/components/CommandPalette'
 import ReportIssue from '@/components/ReportIssue'
 import Dropdown from '@/components/Dropdown'
-import AIAssistantChat from '@/components/AIAssistantChat'
+// AI chatbot hidden until ready for production
+// import AIAssistantChat from '@/components/AIAssistantChat'
 
 const APP_VERSION = __APP_VERSION__
 import DateRangeSummary from '@/components/DateRangeSummary'
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { api } from '@/lib/api'
 
 const NAV_ANALYTICS = [
   { to: '/dashboard', label: 'Sales Performance', icon: Users, desc: 'Bookings, pipeline & team' },
@@ -31,6 +35,7 @@ const NAV_ANALYTICS = [
 ]
 
 const NAV_EXTERNAL = [
+  { to: '/growth', label: 'Growth Intelligence', icon: TrendingUp, desc: 'Path to $120M' },
   { to: '/census', label: 'Census Data', icon: BarChart3, desc: 'Population & demographics' },
   { to: '/market-pulse', label: 'Market Pulse', icon: Radio, desc: 'Advisories & intelligence' },
 ]
@@ -52,10 +57,26 @@ export default function Layout() {
   const { line, setLine, viewMode, setViewMode, startDate, endDate, setDateRange } = useSales()
   const { isDark, toggle } = useTheme()
   const { user, logout, isAdmin } = useAuth()
+  const navigate = useNavigate()
 
   // ── Command Palette ──
   const [cmdOpen, setCmdOpen] = useState(false)
   const openPalette = useCallback(() => setCmdOpen(true), [])
+
+  // ── Refresh (flush live cache + reload current route) ──
+  const [refreshing, setRefreshing] = useState(false)
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      await api.post('/api/cache/flush-live')
+    } catch {
+      // proceed even if flush fails — still reload
+    } finally {
+      setRefreshing(false)
+      navigate(0)  // soft-reload current route, triggers re-fetch
+    }
+  }, [refreshing, navigate])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -407,6 +428,23 @@ export default function Layout() {
       <main className="ambient-glow relative flex-1 overflow-y-auto bg-background">
         {/* Top-right controls */}
         <div className="sticky top-0 z-20 flex items-center justify-end gap-2 px-8 pt-4 pb-0">
+          {/* Refresh button — flushes backend cache and reloads page */}
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Refresh live data from Salesforce"
+            className={cn(
+              'flex items-center gap-1.5 rounded-full border border-border bg-card/80 px-3 py-1.5',
+              'text-[11px] font-medium backdrop-blur-sm transition-all shadow-sm',
+              refreshing
+                ? 'cursor-not-allowed text-muted-foreground/30'
+                : 'text-muted-foreground/50 hover:bg-secondary hover:text-foreground',
+            )}
+          >
+            <RefreshCw className={cn('h-3 w-3', refreshing && 'animate-spin')} />
+            <span className="hidden sm:inline">{refreshing ? 'Refreshing…' : 'Refresh'}</span>
+          </button>
+
           {/* ⌘K hint badge */}
           <button
             onClick={openPalette}
@@ -433,6 +471,20 @@ export default function Layout() {
               <><Moon className="h-3.5 w-3.5 text-primary" /> Dark</>
             )}
           </button>
+          <button
+            onClick={logout}
+            title="Sign out"
+            className={cn(
+              'flex items-center gap-1.5 rounded-full px-3 py-1.5',
+              'border border-destructive/30 bg-card/80 backdrop-blur-sm',
+              'text-[11px] font-medium text-destructive/70',
+              'transition-all duration-200 hover:bg-destructive/10 hover:text-destructive',
+              'shadow-sm',
+            )}
+          >
+            <LogOut className="h-3 w-3" />
+            <span className="hidden sm:inline">Logout</span>
+          </button>
         </div>
         <div className="relative z-10 mx-auto max-w-[1360px] px-8 pb-8">
           <ErrorBoundary>
@@ -441,8 +493,8 @@ export default function Layout() {
         </div>
       </main>
 
-      {/* ── AI Assistant Chat ── */}
-      <AIAssistantChat />
+      {/* AI Assistant Chat — hidden until ready for production */}
+      {/* <AIAssistantChat /> */}
     </div>
   )
 }
