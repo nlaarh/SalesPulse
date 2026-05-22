@@ -186,10 +186,10 @@ def build_profile_queries(*, safe, lf, lf_lead, ow, sd, ed, p_sd, p_ed,
         # Open tasks for this agent
         open_tasks=f"""
             SELECT Id, Subject, Status, Priority, ActivityDate,
-                   What.Name, WhatId, CreatedDate
+                   What.Name, WhatId, CreatedDate, Description
             FROM Task
             WHERE {ow} AND IsClosed = false
-            ORDER BY ActivityDate ASC NULLS LAST
+            ORDER BY CreatedDate DESC NULLS LAST
             LIMIT 25
         """,
         # Tasks completed within selected period
@@ -425,6 +425,7 @@ def build_tasks_section(data, sf_query_all, today):
             'overdue': overdue,
             'days_overdue': days_overdue,
             'created': t.get('CreatedDate', ''),
+            'description': t.get('Description', '') or '',
         })
 
     tasks_done = _val(data.get('tasks_done_period', []), 'cnt')

@@ -55,6 +55,10 @@ export function withDates(params: Record<string, unknown>, startDate?: string | 
 
 // ── Advisor Performance ─────────────────────────────────────────────────────
 
+export interface BranchMonth { label: string; year: number; month: number; commission: number; sales: number }
+export interface BranchEntry { branch: string; months: BranchMonth[]; total_commission: number; total_sales: number }
+export interface BranchMonthlyData { branches: BranchEntry[]; period_months: string[]; line: string }
+
 export async function fetchAdvisorSummary(
   line = 'Travel', period = 12, startDate?: string | null, endDate?: string | null,
 ) {
@@ -87,6 +91,15 @@ export async function fetchAdvisorYoY(line = 'Travel', year?: number) {
   if (year) params.year = year
   const { data } = await api.get('/api/sales/advisors/yoy', { params })
   return data
+}
+
+export async function fetchBranchMonthly(
+  line = 'Travel', period = 12, startDate?: string | null, endDate?: string | null,
+) {
+  const { data } = await api.get('/api/sales/advisors/branch-monthly', {
+    params: withDates({ line, period }, startDate, endDate),
+  })
+  return data as BranchMonthlyData
 }
 
 // ── Sales Performance ──────────────────────────────────────────────────────
@@ -555,6 +568,72 @@ export async function searchCustomers(q: string): Promise<CustomerSummary[]> {
   if (q.length < 2) return []
   const { data } = await api.get('/api/customers/search', { params: { q } })
   return (data?.results ?? []) as CustomerSummary[]
+}
+
+// ── Agent Top Customers ───────────────────────────────────────────────────
+
+export async function fetchAgentTopCustomers(
+  name: string, line = 'Travel', period = 12,
+  startDate?: string | null, endDate?: string | null,
+) {
+  const { data } = await api.get('/api/sales/agent/top-customers', {
+    params: {
+      name, line, period,
+      ...(startDate ? { start_date: startDate } : {}),
+      ...(endDate ? { end_date: endDate } : {}),
+    },
+  })
+  return data as {
+    customers: Array<{
+      account_id: string
+      name: string
+      total_spend: number
+      deal_count: number
+      last_close: string
+      membership: string
+      member_status: string
+      has_insurance: boolean
+      has_travel: boolean
+      sf_link: string
+    }>
+  }
+}
+
+// ── Agent Cross-Sell ──────────────────────────────────────────────────────
+
+export async function fetchAgentCrossSell(name: string) {
+  const { data } = await api.get('/api/sales/agent/cross-sell', { params: { name } })
+  return data as {
+    members_no_insurance: Array<{
+      account_id: string
+      name: string
+      email: string
+      phone: string
+      city: string
+      membership: string
+      tenure_years: number | null
+      has_insurance: boolean
+      has_travel: boolean
+      sf_link: string
+    }>
+    members_no_travel: Array<{
+      account_id: string
+      name: string
+      email: string
+      phone: string
+      city: string
+      membership: string
+      tenure_years: number | null
+      has_insurance: boolean
+      has_travel: boolean
+      sf_link: string
+    }>
+    summary: {
+      total_active_members: number
+      with_insurance: number
+      with_travel: number
+    }
+  }
 }
 
 // ── Re-exports from domain modules ────────────────────────────────────────

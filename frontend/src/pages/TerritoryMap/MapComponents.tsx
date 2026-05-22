@@ -268,47 +268,30 @@ export function ImperativeCircleLayer({
 
 // ── Legend ────────────────────────────────────────────────────────────────────
 
-export function Legend({ level, activeLayer }: { level: ZoomLevel; activeLayer: 'penetration' | 'vehicles' }) {
+export function Legend({ level }: { level: ZoomLevel }) {
   const levelLabel = level === 'region' ? 'Region view' : level === 'city' ? 'City view' : 'Zip code view'
-  const isVehicles = activeLayer === 'vehicles'
 
   return (
     <div className="absolute bottom-6 left-6 z-[1000] bg-card/95 backdrop-blur border border-border rounded-lg p-3 shadow-lg">
       <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-semibold text-foreground">
-          {isVehicles ? 'County EV Penetration' : 'Customer Penetration'}
-        </p>
-        {!isVehicles && (
-          <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium ml-2">
-            {levelLabel}
-          </span>
-        )}
+        <p className="text-xs font-semibold text-foreground">Customer Penetration</p>
+        <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium ml-2">
+          {levelLabel}
+        </span>
       </div>
       <div className="flex items-center gap-1">
-        <span className="text-[10px] text-muted-foreground">{isVehicles ? '0%' : '0%'}</span>
+        <span className="text-[10px] text-muted-foreground">0%</span>
         <div className="flex h-3 rounded overflow-hidden">
-          {isVehicles ? (
-            <>
-              <div className="w-6 bg-slate-400" />
-              <div className="w-6 bg-amber-300" />
-              <div className="w-6 bg-amber-400" />
-              <div className="w-6 bg-amber-500" />
-              <div className="w-6 bg-emerald-500" />
-            </>
-          ) : (
-            <>
-              <div className="w-6 bg-red-500" />
-              <div className="w-6 bg-orange-500" />
-              <div className="w-6 bg-yellow-500" />
-              <div className="w-6 bg-green-500" />
-            </>
-          )}
+          <div className="w-6 bg-red-500" />
+          <div className="w-6 bg-orange-500" />
+          <div className="w-6 bg-yellow-500" />
+          <div className="w-6 bg-green-500" />
         </div>
-        <span className="text-[10px] text-muted-foreground">{isVehicles ? '5%+' : '5%+'}</span>
+        <span className="text-[10px] text-muted-foreground">5%+</span>
       </div>
       <p className="text-[10px] text-muted-foreground mt-1.5">
         <ZoomIn className="w-3 h-3 inline mr-0.5" />
-        {isVehicles ? 'Color shows % of EVs in county' : 'Zoom in for more detail'}
+        Zoom in for more detail
       </p>
     </div>
   )

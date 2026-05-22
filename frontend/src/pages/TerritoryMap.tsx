@@ -10,9 +10,9 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  fetchTerritoryMapData, fetchTerritoryBoundaries, fetchTerritoryVehicleData,
+  fetchTerritoryMapData, fetchTerritoryBoundaries,
   flushCache, reportClientRenderMetric,
-  type TerritoryMapData, type CountyBoundaryData, type VehicleDataResponse,
+  type TerritoryMapData, type CountyBoundaryData,
 } from '@/lib/api'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useSales } from '@/contexts/SalesContext'
@@ -28,11 +28,10 @@ import {
   aggregateZips, zoomToLevel, penetrationColor, penetrationOpacity,
   getBubblePenetration, getPenetration, bubbleRadius,
   fmt, fmtPct, fmtCurrency,
-  type RegionFilter, type CountyVehicleStats,
+  type RegionFilter,
   type BubbleRenderData, type ZipRenderData,
 } from './TerritoryMap/utils'
 import { SummaryCard, PenetrationTable } from './TerritoryMap/index'
-import { VehiclesTable } from './VehiclesTable'
 import { MapSection } from './MapSection'
 
 /* ── Main Page ───────────────────────────────────────────────────────────── */
@@ -47,7 +46,6 @@ export default function TerritoryMap() {
   const [zoom, setZoom] = useState(9)
   const [fullscreen, setFullscreen] = useState(false)
   const [showBoundaries, setShowBoundaries] = useState(true)
-  const [activeLayer, setActiveLayer] = useState<'penetration' | 'vehicles'>('penetration')
   const [refreshing, setRefreshing] = useState(false)
   const [refreshMsg, setRefreshMsg] = useState('')
   const [selectedZip, setSelectedZip] = useState<import('@/lib/api').TerritoryZip | null>(null)
@@ -74,35 +72,6 @@ export default function TerritoryMap() {
     gcTime: 24 * 60 * 60_000,
     refetchOnWindowFocus: false,
   })
-
-  const { data: vehicleData } = useQuery<VehicleDataResponse>({
-    queryKey: ['territory-vehicles'],
-    queryFn: () => fetchTerritoryVehicleData(),
-    staleTime: Infinity,
-    gcTime: 24 * 60 * 60_000,
-  })
-
-  const countyVehicles = useMemo(() => {
-    if (!vehicleData) return {} as Record<string, CountyVehicleStats>
-    const out: Record<string, { total: number; electric: number }> = {}
-    for (const row of vehicleData.rows) {
-      const c = row.county
-      if (!out[c]) out[c] = { total: 0, electric: 0 }
-      out[c].total += row.vehicle_count
-      if (row.fuel_type === 'ELECTRIC') {
-        out[c].electric += row.vehicle_count
-      }
-    }
-    const result: Record<string, CountyVehicleStats> = {}
-    for (const [c, stats] of Object.entries(out)) {
-      result[c] = {
-        total: stats.total,
-        electric: stats.electric,
-        ev_pct: stats.total ? Math.round(stats.electric / stats.total * 1000) / 10 : 0
-      }
-    }
-    return result
-  }, [vehicleData])
 
   const handleZoomChange = useCallback((nextZoom: number) => {
     setZoom((z) => (z === nextZoom ? z : nextZoom))
@@ -486,17 +455,10 @@ export default function TerritoryMap() {
         />
       </div>
 
-      {/* DMV Vehicle table */}
-      {vehicleData && (
-        <VehiclesTable vehicleData={vehicleData} countyVehicles={countyVehicles} />
-      )}
-
       {/* Map — at the end of the page */}
       <MapSection
         fullscreen={fullscreen}
         setFullscreen={setFullscreen}
-        activeLayer={activeLayer}
-        setActiveLayer={setActiveLayer}
         region={region}
         setRegion={setRegion}
         showBoundaries={showBoundaries}
@@ -505,7 +467,6 @@ export default function TerritoryMap() {
         handleZoomChange={handleZoomChange}
         selectedZip={selectedZip}
         boundaries={boundaries}
-        countyVehicles={countyVehicles}
         level={level}
         bubbleRenderItems={bubbleRenderItems}
         zipRenderItems={zipRenderItems}

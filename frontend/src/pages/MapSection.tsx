@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet'
 import * as L from 'leaflet'
 import { type PathOptions } from 'leaflet'
 import {
-  Map as MapIcon, Users, Car, Download, Maximize2, Minimize2,
+  Map as MapIcon, Users, Download, Maximize2, Minimize2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { TerritoryZip, TerritoryTotals, CountyBoundaryData } from '@/lib/api'
@@ -14,14 +14,12 @@ import {
 } from './TerritoryMap/MapComponents'
 import {
   type RegionFilter, type BubbleRenderData, type ZipRenderData,
-  type ZoomLevel, type CountyVehicleStats, vehicleColor,
+  type ZoomLevel,
 } from './TerritoryMap/utils'
 
 interface MapSectionProps {
   fullscreen: boolean
   setFullscreen: (fn: (f: boolean) => boolean) => void
-  activeLayer: 'penetration' | 'vehicles'
-  setActiveLayer: (layer: 'penetration' | 'vehicles') => void
   region: RegionFilter
   setRegion: (r: RegionFilter) => void
   showBoundaries: boolean
@@ -30,7 +28,6 @@ interface MapSectionProps {
   handleZoomChange: (zoom: number) => void
   selectedZip: TerritoryZip | null
   boundaries: CountyBoundaryData | undefined
-  countyVehicles: Record<string, CountyVehicleStats>
   level: ZoomLevel
   bubbleRenderItems: BubbleRenderData[]
   zipRenderItems: ZipRenderData[]
@@ -45,8 +42,6 @@ interface MapSectionProps {
 export function MapSection({
   fullscreen,
   setFullscreen,
-  activeLayer,
-  setActiveLayer,
   region,
   setRegion,
   showBoundaries,
@@ -55,7 +50,6 @@ export function MapSection({
   handleZoomChange,
   selectedZip,
   boundaries,
-  countyVehicles,
   level,
   bubbleRenderItems,
   zipRenderItems,
@@ -67,76 +61,40 @@ export function MapSection({
   theme,
 }: MapSectionProps) {
 
-  const countyBoundaryStyleFn = useCallback((feature?: { properties?: { [key: string]: unknown } | null }) => {
-    const isVehicles = activeLayer === 'vehicles'
+  const countyBoundaryStyleFn = useCallback((_feature?: { properties?: { [key: string]: unknown } | null }) => {
     const base: PathOptions = {
       color: theme === 'dark' ? 'rgba(148,163,184,0.5)' : 'rgba(71,85,105,0.45)',
-      weight: isVehicles ? 2 : 1.5,
-      dashArray: isVehicles ? undefined : '4 3',
+      weight: 1.5,
+      dashArray: '4 3',
     }
-
-    if (isVehicles && feature?.properties?.name) {
-      const v = countyVehicles[String(feature.properties.name)]
-      if (v) {
-        return {
-          ...base,
-          fillColor: vehicleColor(v.ev_pct),
-          fillOpacity: 0.45,
-        }
-      }
-    }
-
     return { ...base, fillColor: 'transparent', fillOpacity: 0 }
-  }, [theme, activeLayer, countyVehicles])
+  }, [theme])
 
   const onCountyFeature = useCallback((feature: { properties?: { [key: string]: unknown } | null }, leafletLayer: L.Layer) => {
     const p = feature.properties
     if (p?.name && 'bindTooltip' in leafletLayer) {
       const countyName = String(p.name)
       const pop = Number(p.population || 0)
-      const v = countyVehicles[countyName] || { total: 0, electric: 0, ev_pct: 0 }
       ;(leafletLayer as L.Path).bindTooltip(
         `<div style="font-size:12px;padding:2px">
           <b style="font-size:14px">${countyName} County</b><br/>
           <div style="margin-top:4px;border-top:1px solid rgba(0,0,0,0.1);padding-top:4px">
-            Pop: <b>${pop.toLocaleString()}</b><br/>
-            Vehicles: <b>${v.total.toLocaleString()}</b><br/>
-            EVs: <b>${v.electric.toLocaleString()} (${v.ev_pct}%)</b>
+            Pop: <b>${pop.toLocaleString()}</b>
           </div>
         </div>`,
         { sticky: true, direction: 'auto', className: 'county-tooltip' }
       )
     }
-  }, [countyVehicles])
+  }, [])
 
   return (
     <div className="relative rounded-xl border border-border overflow-hidden" style={{ height: fullscreen ? 'calc(100vh - 120px)' : 'calc(100vh - 340px)', minHeight: '500px' }}>
       {/* Overlay controls — top-right corner of map */}
       <div className="absolute top-3 right-3 z-[1000] flex flex-col items-end gap-2">
-        {/* Layer selection */}
-        <div className="flex items-center bg-card/90 backdrop-blur-sm rounded-lg p-0.5 shadow-md border border-border">
-          <button
-            onClick={() => setActiveLayer('penetration')}
-            className={cn(
-              'px-3 py-1.5 text-[11px] font-semibold rounded-md transition-all flex items-center gap-1.5',
-              activeLayer === 'penetration'
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            <Users className="w-3 h-3" /> Penetration
-          </button>
-          <button
-            onClick={() => setActiveLayer('vehicles')}
-            className={cn(
-              'px-3 py-1.5 text-[11px] font-semibold rounded-md transition-all flex items-center gap-1.5',
-              activeLayer === 'vehicles'
-                ? 'bg-amber-500 text-white shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            <Car className="w-3 h-3" /> DMV Vehicles
-          </button>
+        {/* Layer label */}
+        <div className="flex items-center bg-card/90 backdrop-blur-sm rounded-lg px-3 py-1.5 shadow-md border border-border">
+          <Users className="w-3 h-3 mr-1.5 text-primary" />
+          <span className="text-[11px] font-semibold text-foreground">Penetration</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -227,8 +185,8 @@ export function MapSection({
         )}
 
         <ImperativeCircleLayer
-          bubbleItems={activeLayer === 'penetration' && level !== 'zip' ? bubbleRenderItems : []}
-          zipItems={activeLayer === 'penetration' && level === 'zip' ? zipRenderItems : []}
+          bubbleItems={level !== 'zip' ? bubbleRenderItems : []}
+          zipItems={level === 'zip' ? zipRenderItems : []}
           year={year}
           totals={totals}
           canvasRenderer={canvasRenderer}
@@ -236,7 +194,7 @@ export function MapSection({
         />
       </MapContainer>
 
-      <Legend level={level} activeLayer={activeLayer} />
+      <Legend level={level} />
     </div>
   )
 }

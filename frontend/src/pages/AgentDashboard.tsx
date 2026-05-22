@@ -8,7 +8,8 @@ import { DeltaPill } from '@/components/DeltaPill'
 import type { AgentMonthData, Opp } from '@/lib/types'
 import {
   Loader2, ArrowLeft, Sparkles,
-  Target, BarChart3, ListTodo, FileText, BookOpen, DollarSign, ShieldAlert,
+  Target, BarChart3, ListTodo, FileText, BookOpen, DollarSign,
+  Crown, GitMerge,
 } from 'lucide-react'
 import ManagerBriefing from '@/components/ManagerBriefing'
 import TargetProgressBar from '@/components/TargetProgressBar'
@@ -18,6 +19,7 @@ import PerformanceTab from './agent/PerformanceTab'
 import OpportunitiesTab from './agent/OpportunitiesTab'
 import SummaryTab from './agent/SummaryTab'
 import CrossSellTab from './agent/CrossSellTab'
+import TopCustomersTab from './agent/TopCustomersTab'
 import Markdown from '@/components/Markdown'
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
@@ -26,7 +28,8 @@ interface TaskItem {
   id: string; subject: string; status: string; priority: string
   due_date: string | null; related_to: string; what_id: string
   opp_amount: number | null; overdue: boolean
-  days_overdue: number | null; created: string
+  days_overdue: number | null; created?: string
+  description?: string
 }
 
 interface TaskStats {
@@ -58,7 +61,7 @@ export interface AgentProfile {
   tasks: { open_tasks: TaskItem[]; stats: TaskStats }
 }
 
-type AgentTab = 'charts' | 'opportunities' | 'tasks' | 'cross-sell'
+type AgentTab = 'overview' | 'charts' | 'opportunities' | 'tasks' | 'top-customers' | 'cross-sell'
 
 /* ── Tab Button ───────────────────────────────────────────────────────────── */
 
@@ -70,7 +73,7 @@ function TabButton({ icon, label, active, onClick, count, overdueCount }: {
     <button
       onClick={onClick}
       className={cn(
-        'relative flex items-center gap-2 px-4 py-3 text-[12px] font-medium transition-colors',
+        'relative flex shrink-0 items-center gap-2 px-4 py-3 text-[12px] font-medium transition-colors',
         active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
       )}
     >
@@ -115,6 +118,27 @@ function KPICard({ label, value, delta, sub, tip }: {
   )
 }
 
+/* ── Overview Tab ─────────────────────────────────────────────────────────── */
+
+function OverviewTab({ profile }: { profile: AgentProfile }) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-primary/10">
+          <Sparkles className="h-3.5 w-3.5 text-primary" />
+        </div>
+        <h2 className="text-sm font-semibold">Manager's Brief<Tip text={TIPS.managerBrief} /></h2>
+        {profile.ai_powered && (
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+            AI-Powered
+          </span>
+        )}
+      </div>
+      <Markdown compact>{profile.writeup}</Markdown>
+    </div>
+  )
+}
+
 /* ── Main Component ──────────────────────────────────────────────────────── */
 
 export default function AgentDashboard() {
@@ -123,7 +147,7 @@ export default function AgentDashboard() {
   const [profile, setProfile] = useState<AgentProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [showBriefing, setShowBriefing] = useState(false)
-  const [activeTab, setActiveTab] = useState<AgentTab>('charts')
+  const [activeTab, setActiveTab] = useState<AgentTab>('overview')
   const [targetData, setTargetData] = useState<{
     monthlyTarget: number | null
     totalActual: number
@@ -417,30 +441,16 @@ export default function AgentDashboard() {
         </div>
       )}
 
-      {/* ── AI Manager's Brief ────────────────────────────────────────── */}
-      <div className="animate-enter stagger-2 card-premium">
-        <div className="border-b border-border px-6 py-3">
-          <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-primary/10">
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-            </div>
-            <h2 className="text-sm font-semibold">Manager's Brief<Tip text={TIPS.managerBrief} /></h2>
-            {profile.ai_powered && (
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-                AI-Powered
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="px-6 py-4">
-          <Markdown compact>{profile.writeup}</Markdown>
-        </div>
-      </div>
-
       {/* ── Tabbed Section ────────────────────────────────────────────── */}
       <div className="animate-enter stagger-3 card-premium overflow-hidden">
-        {/* Tab bar */}
-        <div className="flex items-center gap-1 border-b border-border px-4">
+        {/* Tab bar — scrollable for many tabs */}
+        <div className="flex items-center gap-1 overflow-x-auto border-b border-border px-4">
+          <TabButton
+            icon={<Sparkles className="h-3.5 w-3.5" />}
+            label="Overview"
+            active={activeTab === 'overview'}
+            onClick={() => setActiveTab('overview')}
+          />
           <TabButton
             icon={<BarChart3 className="h-3.5 w-3.5" />}
             label="Charts"
@@ -463,7 +473,13 @@ export default function AgentDashboard() {
             overdueCount={profile.tasks.stats.overdue}
           />
           <TabButton
-            icon={<ShieldAlert className="h-3.5 w-3.5" />}
+            icon={<Crown className="h-3.5 w-3.5" />}
+            label="Top Customers"
+            active={activeTab === 'top-customers'}
+            onClick={() => setActiveTab('top-customers')}
+          />
+          <TabButton
+            icon={<GitMerge className="h-3.5 w-3.5" />}
             label="Cross-Sell"
             active={activeTab === 'cross-sell'}
             onClick={() => setActiveTab('cross-sell')}
@@ -472,6 +488,9 @@ export default function AgentDashboard() {
 
         {/* Tab content */}
         <div className="p-6">
+          {activeTab === 'overview' && (
+            <OverviewTab profile={profile} />
+          )}
           {activeTab === 'charts' && (
             <PerformanceTab profile={profile} c={c} monthlyTarget={monthlyTarget} targetData={targetData} />
           )}
@@ -480,6 +499,15 @@ export default function AgentDashboard() {
           )}
           {activeTab === 'tasks' && (
             <SummaryTab profile={profile} />
+          )}
+          {activeTab === 'top-customers' && (
+            <TopCustomersTab
+              agentName={profile.name}
+              line={line}
+              period={period}
+              startDate={startDate}
+              endDate={endDate}
+            />
           )}
           {activeTab === 'cross-sell' && (
             <CrossSellTab agentName={profile.name} />

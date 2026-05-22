@@ -205,3 +205,202 @@ def agent_profile(
     profile['writeup'] = writeup
     profile['ai_powered'] = ai_powered
     return profile
+
+
+@router.get("/api/sales/agent/top-customers")
+def agent_top_customers(
+    name: str,
+    line: str = "Travel",
+    period: int = 12,
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+):
+    """Top 10 customers by spend for this advisor, with membership/insurance/travel flags."""
+    from shared import (
+        resolve_dates as _resolve_dates,
+        line_filter_opp as _line_filter_opp,
+        get_owner_map,
+        escape_soql as _escape,
+    )
+    from sf_client import sf_query_all, sf_instance_url
+
+    safe = _escape(name)
+    sd, ed = _resolve_dates(start_date, end_date, period)
+    owner_map = get_owner_map()
+    name_to_id = {v.strip().lower(): k for k, v in owner_map.items()}
+    owner_id = name_to_id.get(name.strip().lower())
+    ow = f"OwnerId = '{owner_id}'" if owner_id else f"Owner.Name = '{safe}'"
+    lf = _line_filter_opp(line)
+
+    rows = sf_query_all(f"""
+        SELECT AccountId, COUNT(Id) cnt, SUM(Amount) total, MAX(CloseDate) last_close
+        FROM Opportunity
+        WHERE {ow} AND StageName IN ('Closed Won','Invoice') AND {lf}
+          AND CloseDate >= {sd} AND CloseDate <= {ed}
+          AND Amount != null AND AccountId != null
+        GROUP BY AccountId
+        ORDER BY SUM(Amount) DESC
+        LIMIT 10
+    """)
+    if not rows:
+        return {"customers": []}
+
+    account_ids = [r.get('AccountId') for r in rows if r.get('AccountId')]
+    ids_csv = ",".join(f"'{aid}'" for aid in account_ids)
+
+    acct_rows = sf_query_all(f"""
+        SELECT Id, Name, Account_Member_ID__c, ImportantActiveMemCoverage__c,
+               Insuance_Customer_ID__c, Member_Status__c
+        FROM Account
+        WHERE Id IN ({ids_csv})
+    """)
+    tp_rows = sf_query_all(f"""
+        SELECT Account__c
+        FROM Travel_Portfolio__c
+        WHERE Account__c IN ({ids_csv})
+    """)
+
+    acct_map = {r.get('Id', ''): r for r in acct_rows if r.get('Id')}
+    has_travel = {r.get('Account__c') for r in tp_rows if r.get('Account__c')}
+    sf_base = sf_instance_url()
+
+    def _mem_label(raw):
+        value = (raw or '').strip()
+        labels = {
+            'PLUS': 'Plus',
+            'PREMIER': 'Premier',
+            'B': 'Basic',
+            'BASIC': 'Basic',
+        }
+        return labels.get(value, value.title()) if value else ''
+
+    customers = []
+    for row in rows:
+        aid = row.get('AccountId')
+        if not aid:
+            continue
+        acct = acct_map.get(aid, {})
+        customers.append({
+            'account_id': aid,
+            'name': acct.get('Name', ''),
+            'total_spend': round(row.get('total', 0) or 0, 2),
+            'deal_count': row.get('cnt', 0) or 0,
+            'last_close': row.get('last_close', ''),
+            'membership': _mem_label(acct.get('ImportantActiveMemCoverage__c')),
+            'member_status': acct.get('Member_Status__c', '') or '',
+            'has_insurance': bool(acct.get('Insuance_Customer_ID__c')),
+            'has_travel': aid in has_travel,
+            'sf_link': f"{sf_base}/{aid}",
+        })
+
+    return {"customers": customers}
+
+
+@router.get("/api/sales/agent/cross-sell")
+def agent_cross_sell(
+    name: str,
+    line: str = "Travel",
+):
+    """Members owned by this agent: who needs insurance, who needs travel."""
+    from shared import (
+        get_owner_map,
+        escape_soql as _escape,
+    )
+    from sf_client import sf_query_all, sf_instance_url
+
+    safe = _escape(name)
+    owner_map = get_owner_map()
+    name_to_id = {v.strip().lower(): k for k, v in owner_map.items()}
+    owner_id = name_to_id.get(name.strip().lower())
+    ow = f"OwnerId = '{owner_id}'" if owner_id else f"Owner.Name = '{safe}'"
+
+    members = sf_query_all(f"""
+        SELECT Id, Name, PersonEmail, Phone, BillingCity, Account_Member_ID__c,
+               ImportantActiveMemCoverage__c, Insuance_Customer_ID__c,
+               Account_Member_Since__c, Member_Status__c
+        FROM Account
+        WHERE {ow} AND Member_Status__c = 'A' AND RecordType.Name = 'Person Account'
+        ORDER BY CreatedDate DESC
+        LIMIT 500
+    """)
+    if not members:
+        return {
+            'members_no_insurance': [],
+            'members_no_travel': [],
+            'summary': {
+                'total_active_members': 0,
+                'with_insurance': 0,
+                'with_travel': 0,
+            },
+        }
+
+    member_ids = [m.get('Id') for m in members if m.get('Id')]
+    ids_csv = ",".join(f"'{aid}'" for aid in member_ids)
+    tp_rows = sf_query_all(f"""
+        SELECT Account__c
+        FROM Travel_Portfolio__c
+        WHERE Account__c IN ({ids_csv})
+    """)
+    has_travel_set = {r.get('Account__c') for r in tp_rows if r.get('Account__c')}
+    sf_base = sf_instance_url()
+
+    def _mem_label(raw):
+        value = (raw or '').strip()
+        labels = {
+            'PLUS': 'Plus',
+            'PREMIER': 'Premier',
+            'B': 'Basic',
+            'BASIC': 'Basic',
+            'PLRV': 'Plus RV',
+            'PMRV': 'Premier RV',
+        }
+        return labels.get(value, value.title()) if value else ''
+
+    def _tenure(ms):
+        try:
+            since = date.fromisoformat(ms)
+            return today.year - since.year
+        except Exception:
+            return None
+
+    today = date.today()
+    members_no_insurance = []
+    members_no_travel = []
+    with_insurance = 0
+    with_travel = 0
+
+    for member in members:
+        aid = member.get('Id', '')
+        has_ins = bool(member.get('Insuance_Customer_ID__c'))
+        has_trv = aid in has_travel_set
+        if has_ins:
+            with_insurance += 1
+        if has_trv:
+            with_travel += 1
+
+        row = {
+            'account_id': aid,
+            'name': member.get('Name', '') or '',
+            'email': member.get('PersonEmail', '') or '',
+            'phone': member.get('Phone', '') or '',
+            'city': member.get('BillingCity', '') or '',
+            'membership': _mem_label(member.get('ImportantActiveMemCoverage__c')),
+            'tenure_years': _tenure(member.get('Account_Member_Since__c', '') or ''),
+            'has_insurance': has_ins,
+            'has_travel': has_trv,
+            'sf_link': f"{sf_base}/{aid}",
+        }
+        if not has_ins:
+            members_no_insurance.append(row)
+        if not has_trv:
+            members_no_travel.append(row)
+
+    return {
+        'members_no_insurance': members_no_insurance[:100],
+        'members_no_travel': members_no_travel[:100],
+        'summary': {
+            'total_active_members': len(members),
+            'with_insurance': with_insurance,
+            'with_travel': with_travel,
+        },
+    }

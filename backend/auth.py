@@ -12,7 +12,7 @@ log = logging.getLogger('salesinsight.auth')
 
 JWT_SECRET = os.getenv('JWT_SECRET', 'salesinsight-dev-secret-change-in-prod')
 JWT_ALGORITHM = 'HS256'
-JWT_EXPIRY_HOURS = 24
+JWT_EXPIRY_HOURS = 24 * 7  # 7 days — avoid daily re-login
 
 # Throttle for last_seen UPDATEs — only write if older than this.
 LAST_SEEN_THROTTLE_SECONDS = 30

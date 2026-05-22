@@ -113,52 +113,65 @@ def ai_brief(profile: dict) -> str | None:
     pr = profile['prior']
     yoy = profile['yoy']
     team = profile['team']
+    line = profile.get('line', 'Travel')
+    is_ins = line.lower() == 'insurance'
 
-    context = f"""Sales Advisor: {profile['name']}
-Division: {profile['line']} | Period: Last 12 months
+    # Recent monthly trend from PBI (last 3 months with data)
+    months = profile.get('months', [])
+    recent = [m for m in months if m.get('commission', 0) > 0 or m.get('revenue', 0) > 0][-3:]
+    trend_str = ' → '.join(
+        f"{m['label']} ${m['commission']:,.0f} comm" if is_ins
+        else f"{m['label']} ${m['commission']:,.0f} comm / ${m['revenue']:,.0f} bkgs"
+        for m in recent
+    ) if recent else 'no recent data'
 
-CURRENT: Revenue ${s['revenue']:,.0f} ({yoy['revenue_pct']:+.1f}% YoY) | \
-Deals {s['deals']} ({yoy['deals_pct']:+.1f}% YoY) | Win Rate {s['win_rate']}% | \
-Avg Deal ${s['avg_deal']:,.0f} | Pipeline ${s['pipeline_value']:,.0f} ({s['pipeline_count']} deals) | \
-Coverage {s.get('coverage',0)}x | Leads {s['leads']} | Opps {s['opps_created']}
+    # Overdue tasks (all of them, named)
+    overdue_tasks = [
+        f"\"{t['subject']}\"" + (f" (re: {t['related_to']})" if t.get('related_to') else '')
+        for t in profile.get('tasks', {}).get('open_tasks', [])
+        if t.get('overdue')
+    ]
 
-PRIOR YEAR: Revenue ${pr['revenue']:,.0f} | Win Rate {pr['win_rate']}% | Avg Deal ${pr['avg_deal']:,.0f}
+    context = f"""Sales Advisor: {profile['name']} | Division: {line} | Period: Last 12 months
 
-TEAM: Avg Revenue ${team['avg_revenue']:,.0f} | Win Rate {team['win_rate']}% | \
-Avg Deal ${team['avg_deal']:,.0f} | {team['total_agents']} agents
+── PBI DATA (live, authoritative) ──
+Commission (PBI): ${s['commission']:,.0f} ({yoy['commission_pct']:+.1f}% YoY) vs prior ${pr['commission']:,.0f}"""
 
-RISKS: {profile.get('pushed_count',0)} deals pushed 2+ times (${profile.get('pushed_value',0):,.0f}) | \
-{profile.get('stale_count',0)} stale deals (30+ days no activity)
+    if not is_ins:
+        context += f"\nBookings (PBI):   ${s['revenue']:,.0f} ({yoy['revenue_pct']:+.1f}% YoY) vs prior ${pr['revenue']:,.0f}"
 
-TASKS: {profile.get('tasks',{}).get('stats',{}).get('total_open',0)} open | \
-{profile.get('tasks',{}).get('stats',{}).get('overdue',0)} overdue | \
-Completion rate {profile.get('tasks',{}).get('stats',{}).get('completion_rate',0)}%
-Overdue tasks: {'; '.join(t['subject'] + ' — ' + t.get('related_to','') for t in profile.get('tasks',{}).get('open_tasks',[]) if t.get('overdue'))[:5]}
+    context += f"""
+Recent trend (PBI): {trend_str}
+Team avg commission (PBI): ${team['avg_commission']:,.0f} across {team['total_agents']} advisors
 
-STRENGTHS: {'; '.join(profile.get('strengths',[])[:3])}
-IMPROVEMENTS: {'; '.join(profile.get('improvements',[])[:3])}
+── SF DATA (pipeline, activity) ──
+Deals Won: {s['deals']} ({yoy['deals_pct']:+.1f}% YoY) | Win Rate: {s['win_rate']}% (team {team['win_rate']}%) | Avg Deal: ${s['avg_deal']:,.0f}
+Pipeline: ${s['pipeline_value']:,.0f} ({s['pipeline_count']} deals) | Coverage: {s.get('coverage', 0)}x | Leads: {s['leads']} | Opps: {s['opps_created']}
+Pushed 2+×: {profile.get('pushed_count', 0)} deals (${profile.get('pushed_value', 0):,.0f}) | Stale 30d+: {profile.get('stale_count', 0)} deals
 
-TOP OPPS: """ + ' | '.join(
-        f"{o['name']}: ${o['amount']:,.0f}, {o['stage']}, Score {o['score']}"
+── TASKS (SF) ──
+Open: {profile.get('tasks', {}).get('stats', {}).get('total_open', 0)} | Overdue: {profile.get('tasks', {}).get('stats', {}).get('overdue', 0)} | Completion: {profile.get('tasks', {}).get('stats', {}).get('completion_rate', 0)}%
+Overdue tasks: {'; '.join(overdue_tasks) if overdue_tasks else 'none'}
+
+── OPEN OPPORTUNITIES (SF scored) ──
+""" + '\n'.join(
+        f"  • {o['name']}: ${o['amount']:,.0f} | {o['stage']} | Score {o['score']} | Close {o.get('close_date', '?')}"
         for o in profile.get('top_opportunities', [])[:5]
-    )
+    ) + f"""
+
+STRENGTHS: {'; '.join(profile.get('strengths', [])[:3])}
+IMPROVEMENTS: {'; '.join(profile.get('improvements', [])[:3])}"""
 
     prompt = f"""{context}
 
-Write a manager's briefing for this advisor using **Markdown formatting**:
-- Use **bold** for key metrics (dollar amounts, percentages, names)
-- Use ## headers for sections: Performance, Trends, Risks, Action Items
-- Use bullet lists for multiple points
-
-Cover:
-1. Overall performance assessment vs team
-2. Key YoY trend and what's driving it
-3. One strength to recognize
-4. Task management — flag overdue tasks by name and which ones need immediate attention
-5. One specific action item (with numbers)
-6. Any deal-level or task-level risk needing attention
-
-No fluff, no generic advice. Use dollar amounts and percentages."""
+Write a sharp manager's brief using **Markdown**. Rules:
+- One-sentence verdict first: top-tier / on-track / at-risk (use PBI commission vs team avg to decide)
+- Sections: ## Performance, ## Pipeline & Risks, ## Tasks, ## Action This Week
+- Use **bold** for dollar amounts, percentages, and advisor/deal names
+- In "Action This Week": ONE specific action — name the deal or customer, state the dollar amount, give a deadline
+- List EVERY overdue task by exact name under ## Tasks
+- Cite the data source when you use it: (PBI) for revenue/commission, (SF) for pipeline/tasks
+- Max 400 words. Zero filler. Specific numbers only."""
 
     try:
         resp = client.chat.completions.create(
