@@ -49,9 +49,8 @@ export function AdvisorsTab() {
       .finally(() => setLoading(false))
   }, [line, period, startDate, endDate])
 
-  const isInsurance = line.toLowerCase() === 'insurance'
-  const metricLabel = isInsurance ? 'Commission' : 'Bookings'
-  const getVal = (a: any) => isInsurance ? (a.commission || 0) : (a.bookings || 0)
+  const getVal = (a: any) => a.commission || 0
+  const metricLabel = 'Commission'
 
   const sorted = useMemo(() =>
     [...advisors].sort((a, b) => {
@@ -59,10 +58,10 @@ export function AdvisorsTab() {
       const bv = sortField === 'deals' ? (b.deals || 0) : sortField === 'win_rate' ? (b.win_rate || 0) : getVal(b)
       return sortAsc ? av - bv : bv - av
     }),
-    [advisors, sortField, sortAsc, isInsurance],
+    [advisors, sortField, sortAsc],
   )
 
-  const totalPrimary = useMemo(() => advisors.reduce((s, a) => s + getVal(a), 0), [advisors, isInsurance])
+  const totalPrimary = useMemo(() => advisors.reduce((s, a) => s + getVal(a), 0), [advisors])
   const totalDeals   = useMemo(() => advisors.reduce((s, a) => s + (a.deals || 0), 0), [advisors])
   const avgPrimary   = advisors.length > 0 ? totalPrimary / advisors.length : 0
 
@@ -72,7 +71,7 @@ export function AdvisorsTab() {
       fullName: a.name,
       value: getVal(a),
     })),
-    [sorted, isInsurance],
+    [sorted],
   )
 
   const pieData = useMemo(() =>
@@ -82,7 +81,7 @@ export function AdvisorsTab() {
       color: ADV_COLORS[i % ADV_COLORS.length],
       pct: totalPrimary > 0 ? (getVal(a) / totalPrimary * 100) : 0,
     })),
-    [sorted, totalPrimary, isInsurance],
+    [sorted, totalPrimary],
   )
 
   function toggleSort(field: AdvSort) {

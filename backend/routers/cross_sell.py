@@ -205,6 +205,7 @@ def cross_sell_insights(
                   AND CloseDate >= {sd} AND CloseDate <= {ed}
                   AND Amount != null AND AccountId != null
                 GROUP BY AccountId
+                LIMIT 2000
             """,
             # Current period insurance — pre-aggregated by account
             insurance_raw=f"""
@@ -215,6 +216,7 @@ def cross_sell_insights(
                   AND CloseDate >= {sd} AND CloseDate <= {ed}
                   AND Amount != null AND AccountId != null
                 GROUP BY AccountId
+                LIMIT 2000
             """,
             # Insurance customers (by Insurance Customer ID on Account)
             ins_customers_alltime=f"""
