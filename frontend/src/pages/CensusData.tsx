@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { fetchCensusData, type CensusZipRow, type CensusCountyRow } from '@/lib/api'
+import { fetchCensusData, type CensusZipRow, type CensusCountyRow } from '@/lib/api_territory'
 import { exportToExcel } from '@/lib/exportExcel'
 import { cn } from '@/lib/utils'
 import {
@@ -190,7 +190,11 @@ export default function CensusData() {
       {isLoading ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground">Loading census data…</div>
       ) : error ? (
-        <div className="flex items-center justify-center py-20 text-destructive">Failed to load census data</div>
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <BarChart3 className="w-10 h-10 text-muted-foreground/50" />
+          <p className="text-muted-foreground font-medium">Census data not loaded yet</p>
+          <p className="text-sm text-muted-foreground/70">An admin must upload census data via Settings → Data Sources.</p>
+        </div>
       ) : (
         <div className="card-premium overflow-hidden">
           <div className="overflow-x-auto max-h-[65vh] overflow-y-auto">

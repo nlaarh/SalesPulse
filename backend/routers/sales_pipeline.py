@@ -129,11 +129,17 @@ def pipeline_slipping(line: str = "Travel"):
     key = f"pipeline_slipping_v2_{line}_{today}"
 
     def fetch():
+        from shared import get_owner_map, OPP_RT_TRAVEL_ID, OPP_RT_INSURANCE_ID
         sma = six_months_ago()
         lf = _line_filter(line)
+        owner_map = get_owner_map()
+        rt_name_map = {
+            OPP_RT_TRAVEL_ID: 'Travel',
+            OPP_RT_INSURANCE_ID: 'Insurance',
+        }
         records = sf_query_all(f"""
             SELECT Id, Name, StageName, Amount, CloseDate,
-                   Owner.Name, RecordType.Name, LastStageChangeDate,
+                   OwnerId, RecordTypeId, LastStageChangeDate,
                    LastActivityDate
             FROM Opportunity
             WHERE IsClosed = false AND {lf}
@@ -158,9 +164,7 @@ def pipeline_slipping(line: str = "Travel"):
             days_overdue = None
             if r.get('CloseDate'):
                 try:
-                    from datetime import date as dt_date
-                    parts = r['CloseDate'].split('-')
-                    cd = dt_date(int(parts[0]), int(parts[1]), int(parts[2]))
+                    cd = date.fromisoformat(r['CloseDate'])
                     days_overdue = (today - cd).days
                 except Exception:
                     pass
@@ -168,13 +172,12 @@ def pipeline_slipping(line: str = "Travel"):
             days_since_activity = None
             if r.get('LastActivityDate'):
                 try:
-                    from datetime import date as dt_date
-                    parts = r['LastActivityDate'].split('-')
-                    la = dt_date(int(parts[0]), int(parts[1]), int(parts[2]))
+                    la = date.fromisoformat(r['LastActivityDate'])
                     days_since_activity = (today - la).days
                 except Exception:
                     pass
 
+            rt_id = r.get('RecordTypeId', '')
             deals.append({
                 "id": r.get('Id'),
                 "name": r.get('Name'),
@@ -183,8 +186,8 @@ def pipeline_slipping(line: str = "Travel"):
                 "close_date": r.get('CloseDate'),
                 "days_overdue": days_overdue,
                 "days_since_activity": days_since_activity,
-                "owner": (r.get('Owner') or {}).get('Name', ''),
-                "record_type": (r.get('RecordType') or {}).get('Name', ''),
+                "owner": owner_map.get(r.get('OwnerId', ''), ''),
+                "record_type": rt_name_map.get(rt_id, rt_id),
                 "days_in_stage": days_in_stage,
             })
         # Filter to whitelisted sales agents

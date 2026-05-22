@@ -228,7 +228,7 @@ export default function AIAssistantChat() {
   const { user } = useAuth()
 
   // AI chat restricted to superadmin and officer roles only
-  const AI_ALLOWED_ROLES = ['superadmin', 'officer']
+  const AI_ALLOWED_ROLES = ['superadmin', 'executive']
   if (!user || !AI_ALLOWED_ROLES.includes(user.role)) {
     return null
   }

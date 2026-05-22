@@ -46,3 +46,37 @@ frontend/test-results/
 deploy.zip
 backend/static/
 backend/.python_packages/
+
+# Screenshots & generated artifacts (keep local only)
+/*.png
+/*.log
+/*.pdf
+/*.html
+.agent_memory.json
+GEMINI.md
+
+# Large data files (regenerate from source)
+DMV_*.csv
+/AAA_*.csv
+/AAA_*.pptx
+/Census_Data_*.csv
+
+# Local analysis / research / build artifacts (not deployed)
+/Analysis_Apr/
+/data/
+/research/
+/tmp/
+/market_analysis/
+/report_templates/
+/build_market_analysis.py
+/generate_market_ppt.py
+/generate_v2_report.py
+/generate_insurance_report.py
+/report_v2_charts.py
+
+# Local test scripts (not deployed)
+/backend/login_load_test.py
+
+# Python virtual envs (alt naming)
+.venv/
+

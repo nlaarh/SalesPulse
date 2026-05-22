@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends
 import logging
+import cache
 from auth import get_current_user
 from models import User
 from sf_client import sf_parallel, sf_query_all, sf_instance_url
 from shared import six_months_ago
+from constants import CACHE_TTL_HOUR
 from .utils import _fmt_account, _fmt_membership, _fmt_vehicle, _fmt_opp, _fmt_lead
 
 router = APIRouter()
@@ -16,6 +18,15 @@ def get_customer_profile(
     account_id: str,
     _user: User = Depends(get_current_user),
 ):
+    key = f"customer_360_{account_id}"
+
+    def _fetch():
+        return _fetch_customer_profile(account_id)
+
+    return cache.cached_query(key, _fetch, ttl=CACHE_TTL_HOUR, disk_ttl=21600)
+
+
+def _fetch_customer_profile(account_id: str):
     try:
         data = sf_parallel(
             account=f"""

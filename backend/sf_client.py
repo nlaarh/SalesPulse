@@ -259,7 +259,7 @@ def sf_parallel(**queries) -> dict:
                 bytes_count = None
             _log_sf_query(q, duration_ms, len(rows) if rows else 0, bytes_count, err_str, endpoint=name)
 
-    with ThreadPoolExecutor(max_workers=min(len(queries), 5)) as pool:
+    with ThreadPoolExecutor(max_workers=min(len(queries), 8)) as pool:
         futures = {pool.submit(_run, name, q): name for name, q in queries.items()}
         for future in futures:
             name = futures[future]

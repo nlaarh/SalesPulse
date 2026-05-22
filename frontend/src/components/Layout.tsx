@@ -14,6 +14,7 @@ import SalesPulseLogo from '@/components/SalesPulseLogo'
 import CommandPalette from '@/components/CommandPalette'
 import ReportIssue from '@/components/ReportIssue'
 import Dropdown from '@/components/Dropdown'
+import ImpersonationBanner from '@/components/ImpersonationBanner'
 // AI chatbot hidden until ready for production
 // import AIAssistantChat from '@/components/AIAssistantChat'
 
@@ -34,11 +35,12 @@ const NAV_ANALYTICS = [
   { to: '/territory', label: 'Territory Map', icon: Map, desc: 'Penetration heatmap' },
 ]
 
+// Note: `Strategic Insights` is admin/superadmin-only — filtered at render time.
 const NAV_EXTERNAL = [
-  { to: '/growth', label: 'Growth Intelligence', icon: TrendingUp, desc: 'Path to $120M' },
+  { to: '/growth-plan', label: 'Strategic Insights', icon: TrendingUp, desc: 'Board-grade growth plan with maps & analysis', adminOnly: true },
   { to: '/census', label: 'Census Data', icon: BarChart3, desc: 'Population & demographics' },
   { to: '/market-pulse', label: 'Market Pulse', icon: Radio, desc: 'Advisories & intelligence' },
-]
+] as const
 
 const LINES = ['Travel', 'Insurance', 'All'] as const
 
@@ -56,7 +58,12 @@ const PRESETS = [
 export default function Layout() {
   const { line, setLine, viewMode, setViewMode, startDate, endDate, setDateRange } = useSales()
   const { isDark, toggle } = useTheme()
-  const { user, logout, isAdmin } = useAuth()
+  const { user, logout, isAdminOrSuperadmin } = useAuth()
+  // Filter nav entries that are tagged adminOnly (e.g. Strategic Insights)
+  // so managers don't see them. Backend remains authoritative.
+  const externalNav = NAV_EXTERNAL.filter(
+    (n) => !('adminOnly' in n && n.adminOnly) || isAdminOrSuperadmin,
+  )
   const navigate = useNavigate()
 
   // ── Command Palette ──
@@ -200,7 +207,7 @@ export default function Layout() {
           <span className="mb-2 mt-4 block px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
             External Data
           </span>
-          {NAV_EXTERNAL.map(({ to, label, icon: Icon, desc }) => (
+          {externalNav.map(({ to, label, icon: Icon, desc }) => (
             <NavLink
               key={to}
               to={to}
@@ -232,8 +239,10 @@ export default function Layout() {
             </NavLink>
           ))}
 
-          {/* Settings — admin only (includes Help, Issues, Users, AI Config tabs) */}
-          {isAdmin && (
+          {/* User Management lives inside Settings → "Users" tab, gated to admin+superadmin */}
+
+          {/* Settings — admin or superadmin (Users tab lives here) */}
+          {isAdminOrSuperadmin && (
             <NavLink
               to="/settings"
               className={({ isActive }) => cn(
@@ -426,6 +435,8 @@ export default function Layout() {
 
       {/* ── Main ── */}
       <main className="ambient-glow relative flex-1 overflow-y-auto bg-background">
+        {/* Impersonation banner — sticky at top of scroll container */}
+        <ImpersonationBanner />
         {/* Top-right controls */}
         <div className="sticky top-0 z-20 flex items-center justify-end gap-2 px-8 pt-4 pb-0">
           {/* Refresh button — flushes backend cache and reloads page */}

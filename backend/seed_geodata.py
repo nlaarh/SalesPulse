@@ -349,7 +349,97 @@ def seed_geodata(force: bool = False):
         db.close()
 
 
+def seed_geodata_local(force: bool = False):
+    """Seed GeoZip table from local census_segments.json + ny_zip_centroids.json.
+
+    This is a robust fallback that doesn't require the Census Bureau API.
+    Works reliably on Azure and in any environment.
+    """
+    from database import SessionLocal, Base, engine
+    from models import GeoZip, GeoMeta
+    from datetime import datetime, timezone
+
+    Base.metadata.create_all(bind=engine, checkfirst=True)
+
+    db = SessionLocal()
+    try:
+        zip_count = db.query(GeoZip).count()
+        if zip_count > 0 and not force:
+            log.info(f"GeoZip already has {zip_count} records — skipping local seed")
+            return
+
+        if force:
+            log.info("Force local seed: clearing GeoZip data")
+            db.query(GeoZip).delete()
+            db.commit()
+
+        # Load local data files
+        census_file = os.path.join(os.path.dirname(__file__), 'seed_data', 'census_segments.json')
+        with open(census_file) as f:
+            census_data = json.load(f)
+
+        with open(CENTROID_FILE) as f:
+            centroids = json.load(f)
+
+        count = 0
+        for zip_code, info in census_data.items():
+            z = str(zip_code).zfill(5)
+            centroid = centroids.get(z)
+            lat = centroid[0] if centroid else None
+            lng = centroid[1] if centroid else None
+
+            pop = info.get('population', 0) or 0
+            adults = info.get('adults_18plus', 0) or 0
+            income = info.get('median_income', 0) or 0
+            home_val = info.get('median_home_value', 0) or 0
+            owner = info.get('owner_occupied', 0) or 0
+            renter = info.get('renter_occupied', 0) or 0
+            housing = (owner or 0) + (renter or 0)
+
+            db.merge(GeoZip(
+                zip_code=z,
+                city=info.get('city', ''),
+                county_fips=None,
+                county_name=info.get('county', ''),
+                lat=lat,
+                lng=lng,
+                population=pop,
+                pop_18plus=adults,
+                median_income=income,
+                median_age=None,
+                housing_units=housing,
+                median_home_value=home_val,
+                college_educated=None,
+            ))
+            count += 1
+
+        db.commit()
+
+        now = datetime.now(timezone.utc).isoformat()
+        db.merge(GeoMeta(key='last_refreshed', value=now))
+        db.merge(GeoMeta(key='zip_count', value=str(count)))
+        db.merge(GeoMeta(key='source', value='Local census_segments.json'))
+        db.commit()
+
+        log.info(f"Local geo seed complete: {count} zips from census_segments.json")
+
+    except Exception as e:
+        db.rollback()
+        log.error(f"Local geo seed failed: {e}", exc_info=True)
+        raise
+    finally:
+        db.close()
+
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     force = '--force' in sys.argv
-    seed_geodata(force=force)
+    local = '--local' in sys.argv
+    if local:
+        seed_geodata_local(force=force)
+    else:
+        try:
+            seed_geodata(force=force)
+        except Exception as e:
+            log.warning(f"Census API seed failed ({e}), falling back to local data...")
+            seed_geodata_local(force=force)

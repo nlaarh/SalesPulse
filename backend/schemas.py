@@ -25,6 +25,12 @@ class ResetAdminRequest(BaseModel):
     pin: str
     new_password: str
 
+class ChangePasswordRequest(BaseModel):
+    new_password: str
+
+class ImpersonateReturnRequest(BaseModel):
+    origin_token: str
+
 # ── AI Config ────────────────────────────────────────────────────────────────
 
 class AIConfigUpdate(BaseModel):

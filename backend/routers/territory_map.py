@@ -541,5 +541,3 @@ def territory_boundaries(
 
     # Static geography/census source data: keep indefinitely until explicit admin refresh.
     return cache.cached_query(key, fetch, ttl=CACHE_TTL_NEVER, disk_ttl=CACHE_TTL_NEVER)
-
-

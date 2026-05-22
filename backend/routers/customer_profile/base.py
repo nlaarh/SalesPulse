@@ -4,7 +4,7 @@ import logging
 import cache
 from auth import get_current_user
 from models import User
-from sf_client import sf_query_all, sf_sosl
+from sf_client import sf_query_all, sf_sosl, sf_parallel
 from shared import VALID_LINES, line_filter_opp as _line_filter, resolve_dates as _resolve_dates
 from constants import CACHE_TTL_HOUR
 from .utils import _fmt_summary
@@ -48,27 +48,30 @@ def get_top_customers(
         if not agg_rows:
             return []
 
-        # Step 2: fetch names for top AccountIds
+        # Step 2+3: fetch names and primary advisors in parallel
         ids_csv = ','.join(f"'{r['AccountId']}'" for r in agg_rows if r.get('AccountId'))
         name_map: dict = {}
         advisor_map: dict = {}
         if ids_csv:
-            name_rows = sf_query_all(f"""
-                SELECT Id, Name FROM Account WHERE Id IN ({ids_csv})
-            """)
+            parallel = sf_parallel(
+                names=f"""
+                    SELECT Id, Name FROM Account WHERE Id IN ({ids_csv})
+                """,
+                advisors=f"""
+                    SELECT AccountId, Owner.Name, COUNT(Id) cnt
+                    FROM Opportunity
+                    WHERE AccountId IN ({ids_csv})
+                      AND StageName IN ('Closed Won','Invoice')
+                      AND CloseDate >= {sd} AND CloseDate <= {ed}
+                      AND Amount != null AND {lf}
+                    GROUP BY AccountId, Owner.Name
+                    ORDER BY AccountId, COUNT(Id) DESC
+                """,
+            )
+            name_rows = parallel.get('names') or []
             name_map = {r['Id']: r.get('Name', '') for r in name_rows}
 
-            # Step 3: fetch primary advisor (most deals) per account
-            adv_rows = sf_query_all(f"""
-                SELECT AccountId, Owner.Name, COUNT(Id) cnt
-                FROM Opportunity
-                WHERE AccountId IN ({ids_csv})
-                  AND StageName IN ('Closed Won','Invoice')
-                  AND CloseDate >= {sd} AND CloseDate <= {ed}
-                  AND Amount != null AND {lf}
-                GROUP BY AccountId, Owner.Name
-                ORDER BY AccountId, COUNT(Id) DESC
-            """)
+            adv_rows = parallel.get('advisors') or []
             for ar in adv_rows:
                 aid = ar.get('AccountId', '')
                 if aid not in advisor_map:
@@ -100,21 +103,25 @@ def search_customers(
 ):
     """Search customers by name, member ID, or email using SOSL full-text search."""
     safe = q.replace('"', '').replace("'", '').replace('\\', '').strip()
-    try:
-        # Use SOSL for name search (works on encrypted Name fields)
-        sosl = (
-            f"FIND {{{safe}}} IN ALL FIELDS "
-            f"RETURNING Account("
-            f"Id, Name, PersonEmail, Account_Member_ID__c, Member_Status__c, "
-            f"Account_Member_Since__c, ImportantActiveMemCoverage__c, "
-            f"Region__c, MPI__c, BillingCity, BillingState "
-            f"WHERE RecordType.Name = 'Person Account') "
-            f"LIMIT 20"
-        )
-        records = sf_sosl(sosl)
-        return {'results': [_fmt_summary(r) for r in records]}
-    except Exception as e:
-        log.error(f'Customer search error: {e}')
-        return {'results': []}
+    key = f"customer_search_{safe.lower()}"
+
+    def fetch():
+        try:
+            sosl = (
+                f"FIND {{{safe}}} IN ALL FIELDS "
+                f"RETURNING Account("
+                f"Id, Name, PersonEmail, Account_Member_ID__c, Member_Status__c, "
+                f"Account_Member_Since__c, ImportantActiveMemCoverage__c, "
+                f"Region__c, MPI__c, BillingCity, BillingState "
+                f"WHERE RecordType.Name = 'Person Account') "
+                f"LIMIT 20"
+            )
+            records = sf_sosl(sosl)
+            return {'results': [_fmt_summary(r) for r in records]}
+        except Exception as e:
+            log.error(f'Customer search error: {e}')
+            return {'results': []}
+
+    return cache.cached_query(key, fetch, ttl=900, disk_ttl=3600)
 
 

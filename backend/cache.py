@@ -69,6 +69,27 @@ def invalidate(key: str):
     disk_invalidate(key)
 
 
+def flush_prefix(prefix: str) -> int:
+    """Remove all cache entries whose key starts with prefix (L1 + L2)."""
+    count = 0
+    with _lock:
+        keys = [k for k in _store if k.startswith(prefix)]
+        for k in keys:
+            del _store[k]
+            count += 1
+    if _CACHE_DIR.exists():
+        for f in _CACHE_DIR.glob('*.json'):
+            try:
+                with open(f) as fh:
+                    stored_key = json.load(fh).get('key', '')
+                if stored_key.startswith(prefix):
+                    f.unlink(missing_ok=True)
+                    count += 1
+            except Exception:
+                pass
+    return count
+
+
 # ── L2: Disk (JSON) — shared across all gunicorn workers ─────────────────────
 
 # Azure App Service Linux: /home/ is persistent, /root/ is ephemeral.

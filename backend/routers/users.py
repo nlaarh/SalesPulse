@@ -1,13 +1,14 @@
 """Auth + User management endpoints."""
 
 import logging
-from datetime import datetime, timezone
+import secrets
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import EmailStr
 from sqlalchemy.orm import Session
 from database import get_db
-from models import User, VALID_ROLES
-from auth import hash_password, verify_password, create_token, get_current_user, require_admin
+from models import User, UserSession, SESSION_TTL_HOURS, VALID_ROLES
+from auth import hash_password, verify_password, create_token, decode_token, get_current_user, require_admin, require_admin_or_superadmin
 from activity_logger import log_activity
 
 router = APIRouter()
@@ -25,6 +26,32 @@ def _clear_geo_related_cache():
 from schemas import LoginRequest, CreateUserRequest, UpdateUserRequest, ResetAdminRequest
 
 
+def _create_session_for_user(
+    db: Session,
+    user: User,
+    *,
+    ip: str | None,
+    impersonator_user_id: int | None = None,
+) -> UserSession:
+    """Create + persist a UserSession row. Returns the row (with token populated)."""
+    now = datetime.utcnow()
+    sess = UserSession(
+        token=secrets.token_urlsafe(32),
+        user_id=user.id,
+        name=user.name or '',
+        role=user.role or '',
+        login_time=now,
+        last_seen=now,
+        expires_at=now + timedelta(hours=SESSION_TTL_HOURS),
+        ip_address=ip,
+        impersonator_user_id=impersonator_user_id,
+    )
+    db.add(sess)
+    db.commit()
+    db.refresh(sess)
+    return sess
+
+
 # ── Auth endpoints ───────────────────────────────────────────────────────────
 
 @router.post('/api/auth/login')
@@ -38,27 +65,80 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
         log_activity(db, action='login_failed', category='auth', user=user, detail='Account is deactivated', ip=ip)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Account is deactivated')
 
-    token = create_token(user.id, user.email, user.role)
+    # Persist a session row (used by Admin → Sessions UI + last_seen tracking).
+    # Best-effort: if it fails for any reason (e.g., table not yet migrated), we
+    # still return a usable JWT so login is never broken by session-tracking.
+    sid: str | None = None
+    try:
+        sess = _create_session_for_user(db, user, ip=ip)
+        sid = sess.token
+    except Exception:
+        log.exception('Failed to create UserSession row on login (degrading gracefully)')
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    token = create_token(user.id, user.email, user.role, sid=sid)
     log_activity(db, action='login', category='auth', user=user, detail=f'Login success ({user.role})', ip=ip)
     log.info(f'Login success: {user.email} ({user.role})')
-    return {'token': token, 'user': user.to_dict()}
+
+    # Include permissions so frontend knows what to show
+    from data.repos.permissions import get_user_permissions
+    permissions = get_user_permissions(db, user)
+
+    return {'token': token, 'user': user.to_dict(), 'permissions': permissions}
+
+
+@router.post('/api/auth/logout')
+def logout(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Mark the current session as logged out (best-effort).
+
+    Client-side JWTs cannot be revoked, but flipping logout_time on the session
+    row removes the user from the active-sessions list immediately.
+    """
+    auth_header = request.headers.get('authorization', '')
+    if auth_header.lower().startswith('bearer '):
+        raw = auth_header.split(' ', 1)[1].strip()
+        try:
+            payload = decode_token(raw)
+            sid = payload.get('sid')
+            if sid:
+                sess = db.query(UserSession).filter(
+                    UserSession.token == sid,
+                    UserSession.logout_time.is_(None),
+                ).first()
+                if sess:
+                    sess.logout_time = datetime.utcnow()
+                    db.commit()
+        except Exception:
+            log.debug('logout: could not flip session row (non-fatal)', exc_info=True)
+            try:
+                db.rollback()
+            except Exception:
+                pass
+    ip = request.client.host if request.client else None
+    log_activity(db, action='logout', category='auth', user=user, detail='Logout', ip=ip)
+    return {'ok': True}
 
 
 @router.get('/api/auth/me')
-def me(user: User = Depends(get_current_user)):
-    return user.to_dict()
+def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from data.repos.permissions import get_user_permissions
+    permissions = get_user_permissions(db, user)
+    return {**user.to_dict(), 'permissions': permissions}
 
 
 # ── User CRUD (admin/superadmin only) ────────────────────────────────────────
 
 @router.get('/api/users')
-def list_users(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+def list_users(admin: User = Depends(require_admin_or_superadmin), db: Session = Depends(get_db)):
     users = db.query(User).order_by(User.created_at.desc()).all()
     return [u.to_dict() for u in users]
 
 
 @router.post('/api/users', status_code=201)
-def create_user(body: CreateUserRequest, request: Request, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+def create_user(body: CreateUserRequest, request: Request, admin: User = Depends(require_admin_or_superadmin), db: Session = Depends(get_db)):
     if body.role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f'Invalid role. Must be one of: {", ".join(VALID_ROLES)}')
 
@@ -83,7 +163,7 @@ def create_user(body: CreateUserRequest, request: Request, admin: User = Depends
 
 
 @router.put('/api/users/{user_id}')
-def update_user(user_id: int, body: UpdateUserRequest, request: Request, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+def update_user(user_id: int, body: UpdateUserRequest, request: Request, admin: User = Depends(require_admin_or_superadmin), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail='User not found')
@@ -102,8 +182,20 @@ def update_user(user_id: int, body: UpdateUserRequest, request: Request, admin: 
         user.role = body.role
     if body.is_active is not None:
         user.is_active = body.is_active
+        # Deactivating via PUT also invalidates any open sessions.
+        if body.is_active is False:
+            db.query(UserSession).filter(
+                UserSession.user_id == user.id,
+                UserSession.logout_time.is_(None),
+            ).update({'logout_time': datetime.utcnow()})
     if body.password is not None:
         user.password_hash = hash_password(body.password)
+        # Password change here invalidates open sessions, matching
+        # /api/admin/users/{id}/password behaviour. Same primitive, same effect.
+        db.query(UserSession).filter(
+            UserSession.user_id == user.id,
+            UserSession.logout_time.is_(None),
+        ).update({'logout_time': datetime.utcnow()})
 
     db.commit()
     db.refresh(user)
@@ -114,27 +206,37 @@ def update_user(user_id: int, body: UpdateUserRequest, request: Request, admin: 
 
 
 @router.delete('/api/users/{user_id}')
-def delete_user(user_id: int, request: Request, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+def delete_user(user_id: int, request: Request, admin: User = Depends(require_admin_or_superadmin), db: Session = Depends(get_db)):
+    """SOFT-delete a user (sets is_active=false). Never hard-deletes — see CLAUDE.md.
+
+    The row remains in the database with all referential history intact. Use
+    POST /api/admin/users/{user_id}/activate to restore.
+    """
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail='User not found')
 
-    # Prevent deleting self
+    # Prevent deactivating self
     if user.id == admin.id:
         raise HTTPException(status_code=400, detail='Cannot delete your own account')
 
-    # Prevent deleting last superadmin
+    # Prevent deactivating the last active superadmin
     if user.role == 'superadmin':
         superadmin_count = db.query(User).filter(User.role == 'superadmin', User.is_active == True).count()
         if superadmin_count <= 1:
             raise HTTPException(status_code=400, detail='Cannot delete the last superadmin')
 
     email = user.email
-    db.delete(user)
+    user.is_active = False
+    # Also invalidate any open sessions so the soft-deleted user can't keep using a stale JWT
+    db.query(UserSession).filter(
+        UserSession.user_id == user.id,
+        UserSession.logout_time.is_(None),
+    ).update({'logout_time': datetime.utcnow()})
     db.commit()
     ip = request.client.host if request.client else None
-    log_activity(db, action='user_deleted', category='user_mgmt', user=admin, detail=f'Deleted {email}', ip=ip)
-    log.info(f'User deleted: {email} by {admin.email}')
+    log_activity(db, action='user_deleted', category='user_mgmt', user=admin, detail=f'Soft-deleted {email} (is_active=false)', ip=ip)
+    log.info(f'User soft-deleted: {email} by {admin.email}')
     return {'ok': True}
 
 
@@ -441,49 +543,4 @@ def dmv_refresh(admin: User = Depends(require_admin)):
         'record_count': record_count,
         'total_vehicles': int(total_vehicles),
         'last_refreshed': last_refreshed.value if last_refreshed else None,
-    }
-
-
-@router.get('/api/admin/db/backup')
-def db_backup_download(admin: User = Depends(require_admin)):
-    """Download the current SQLite database file (admin-only)."""
-    from database import DB_PATH
-    from fastapi.responses import FileResponse
-    import shutil, tempfile
-
-    if not DB_PATH.exists():
-        raise HTTPException(status_code=404, detail="Database file not found")
-
-    # Copy to temp file to avoid locking issues during download
-    tmp = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
-    shutil.copy2(DB_PATH, tmp.name)
-    tmp.close()
-
-    return FileResponse(
-        tmp.name,
-        media_type='application/x-sqlite3',
-        filename=f'salesinsight_backup_{DB_PATH.stat().st_mtime:.0f}.db',
-    )
-
-
-@router.get('/api/admin/db/info')
-def db_info(admin: User = Depends(require_admin)):
-    """Return DB location, size, backup info."""
-    from database import DB_PATH, DB_DIR
-
-    backup_dir = DB_DIR / 'backups'
-    backups = []
-    if backup_dir.exists():
-        for f in sorted(backup_dir.glob('salesinsight_*.db'), reverse=True):
-            backups.append({
-                'name': f.name,
-                'size_kb': f.stat().st_size // 1024,
-                'created': f.stat().st_mtime,
-            })
-
-    return {
-        'path': str(DB_PATH),
-        'exists': DB_PATH.exists(),
-        'size_kb': DB_PATH.stat().st_size // 1024 if DB_PATH.exists() else 0,
-        'backups': backups,
     }

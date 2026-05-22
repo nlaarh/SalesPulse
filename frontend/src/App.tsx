@@ -1,11 +1,12 @@
 import { lazy, Suspense } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from '@/contexts/ThemeContext'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { SalesProvider } from '@/contexts/SalesContext'
 import Layout from '@/components/Layout'
 import ProtectedRoute from '@/components/ProtectedRoute'
+import RequireRole from '@/components/RequireRole'
 import Login from '@/pages/Login'
 const Landing = lazy(() => import('@/pages/Landing'))
 
@@ -28,7 +29,10 @@ const TopCustomers = lazy(() => import('@/pages/TopCustomers'))
 const CrossSellInsights = lazy(() => import('@/pages/CrossSellInsights'))
 const MarketPulse = lazy(() => import('@/pages/MarketPulse'))
 const TerritoryMap = lazy(() => import('@/pages/TerritoryMap'))
+const ZipDetail = lazy(() => import('@/pages/ZipDetail'))
 const CensusData = lazy(() => import('@/pages/CensusData'))
+
+const GrowthPlan = lazy(() => import('@/pages/GrowthPlan'))
 
 /* ── React Query client ──────────────────────────────────────────────────── */
 
@@ -82,7 +86,19 @@ export default function App() {
                   <Route path="insights" element={<Suspense fallback={LazyFallback}><CrossSellInsights /></Suspense>} />
                   <Route path="market-pulse" element={<Suspense fallback={LazyFallback}><MarketPulse /></Suspense>} />
                   <Route path="territory" element={<Suspense fallback={LazyFallback}><TerritoryMap /></Suspense>} />
+                  <Route path="territory/:zip" element={<Suspense fallback={LazyFallback}><ZipDetail /></Suspense>} />
                   <Route path="census" element={<Suspense fallback={LazyFallback}><CensusData /></Suspense>} />
+                  <Route path="growth-plan" element={
+                    <RequireRole roles={['admin', 'superadmin']}>
+                      <Suspense fallback={LazyFallback}><GrowthPlan /></Suspense>
+                    </RequireRole>
+                  } />
+                  {/* Old per-product report URL — redirect to the consolidated Strategic Insights page */}
+                  <Route path="strategic-insights" element={<Navigate to="/growth-plan" replace />} />
+                  <Route path="growth" element={<Navigate to="/growth-plan" replace />} />
+                  <Route path="growth/matrix" element={<Navigate to="/growth-plan" replace />} />
+                  {/* User management has moved to Settings → Users tab. */}
+                  <Route path="admin/users" element={<Navigate to="/settings?tab=users" replace />} />
                 </Route>
               </Route>
             </Routes>

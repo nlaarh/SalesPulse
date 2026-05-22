@@ -190,29 +190,33 @@ def cross_sell_insights(
 
     def fetch():
         from datetime import date
-        three_yr_ago = f"{date.today().year - 3}-01-01"
+        today = date.today()
+        three_yr_ago = f"{today.year - 3}-01-01"
+        five_yr_ago  = f"{today.year - 5}-01-01"
 
-        # ── Fetch activity data (current period) + ownership data (all-time) ──
+        # ── Fetch activity data (current period) + ownership data (recent history) ──
         data = sf_parallel(
-            # Current period travel activity (for spend/engagement scoring)
+            # Current period travel — pre-aggregated by account; one row per account vs raw rows
             travel_raw=f"""
-                SELECT AccountId, Amount
+                SELECT AccountId, COUNT(Id) cnt, SUM(Amount) total
                 FROM Opportunity
                 WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
                   AND {WON_STAGES}
                   AND CloseDate >= {sd} AND CloseDate <= {ed}
                   AND Amount != null AND AccountId != null
+                GROUP BY AccountId
             """,
-            # Current period insurance activity
+            # Current period insurance — pre-aggregated by account
             insurance_raw=f"""
-                SELECT AccountId, Amount
+                SELECT AccountId, COUNT(Id) cnt, SUM(Amount) total
                 FROM Opportunity
                 WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
                   AND {WON_STAGES}
                   AND CloseDate >= {sd} AND CloseDate <= {ed}
                   AND Amount != null AND AccountId != null
+                GROUP BY AccountId
             """,
-            # ALL-TIME insurance customers (by Insurance Customer ID on Account)
+            # Insurance customers (by Insurance Customer ID on Account)
             ins_customers_alltime=f"""
                 SELECT Id
                 FROM Account
@@ -225,7 +229,7 @@ def cross_sell_insights(
                       AND Amount != null
                   )
             """,
-            # ALL-TIME travel customers (opp in last 3 years = still active)
+            # Travel customers in last 3 years — bounded LIMIT prevents full-history scan
             travel_customers_3yr=f"""
                 SELECT AccountId
                 FROM Opportunity
@@ -233,44 +237,29 @@ def cross_sell_insights(
                   AND {WON_STAGES}
                   AND CloseDate >= {three_yr_ago}
                   AND AccountId != null
+                LIMIT 10000
             """,
-            # ALL-TIME Medicare holders
-            medicare_holders=f"""
-                SELECT AccountId
-                FROM Opportunity
-                WHERE RecordType.Name = 'Medicare'
-                  AND AccountId != null
-            """,
-            # ALL-TIME insurance opp holders (broader than current period)
+            # Insurance opp holders — 5-year window + LIMIT prevents full-history scan
             ins_opp_alltime=f"""
                 SELECT AccountId
                 FROM Opportunity
                 WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
                   AND {WON_STAGES}
+                  AND CloseDate >= {five_yr_ago}
                   AND AccountId != null
+                LIMIT 15000
             """,
         )
 
-        # ── Aggregate current-period activity by account ──
-        travel_by_acct: dict[str, dict] = {}
-        for r in data.get('travel_raw', []):
-            aid = r.get('AccountId')
-            amt = r.get('Amount') or 0
-            if aid:
-                if aid not in travel_by_acct:
-                    travel_by_acct[aid] = {'total': 0, 'cnt': 0}
-                travel_by_acct[aid]['total'] += amt
-                travel_by_acct[aid]['cnt'] += 1
-
-        ins_by_acct: dict[str, dict] = {}
-        for r in data.get('insurance_raw', []):
-            aid = r.get('AccountId')
-            amt = r.get('Amount') or 0
-            if aid:
-                if aid not in ins_by_acct:
-                    ins_by_acct[aid] = {'total': 0, 'cnt': 0}
-                ins_by_acct[aid]['total'] += amt
-                ins_by_acct[aid]['cnt'] += 1
+        # SF returns one pre-aggregated row per account — no Python summing needed
+        travel_by_acct: dict[str, dict] = {
+            r['AccountId']: {'total': r.get('total') or 0, 'cnt': r.get('cnt') or 0}
+            for r in data.get('travel_raw', []) if r.get('AccountId')
+        }
+        ins_by_acct: dict[str, dict] = {
+            r['AccountId']: {'total': r.get('total') or 0, 'cnt': r.get('cnt') or 0}
+            for r in data.get('insurance_raw', []) if r.get('AccountId')
+        }
 
         # ── Build TRUE product ownership sets (all-time, not just current period) ──
         # Someone IS an insurance customer if they have Insurance_Customer_ID OR any insurance opp ever
@@ -282,8 +271,8 @@ def cross_sell_insights(
         true_travel_customers = {r.get('AccountId') for r in data.get('travel_customers_3yr', []) if r.get('AccountId')}
         true_travel_customers |= set(travel_by_acct.keys())
 
-        # Medicare holders
-        medicare_ids = {r.get('AccountId') for r in data.get('medicare_holders', []) if r.get('AccountId')}
+        # Medicare detection uses ImportantActiveMemCoverage__c from _enrich_accounts
+        medicare_ids: set = set()
 
         travel_account_ids = set(travel_by_acct.keys())
         ins_account_ids = set(ins_by_acct.keys())

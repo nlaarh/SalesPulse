@@ -19,28 +19,11 @@ log = logging.getLogger('main')
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """On startup: backup DB, flush disk cache only on CACHE_VERSION bump.
+    """On startup: flush disk cache only on CACHE_VERSION bump.
     Starts a 3 AM daily cache warm-up for heavy endpoints.
     """
-    import cache, asyncio, shutil
+    import cache, asyncio
     from datetime import datetime, timedelta, timezone
-    from database import DB_PATH, DB_DIR
-
-    # ── Auto-backup DB on every startup (protects against deploy issues) ──
-    if DB_PATH.exists():
-        backup_dir = DB_DIR / 'backups'
-        backup_dir.mkdir(exist_ok=True)
-        ts = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
-        backup_file = backup_dir / f'salesinsight_{ts}.db'
-        shutil.copy2(DB_PATH, backup_file)
-        log.info(f"DB backup created: {backup_file} ({backup_file.stat().st_size // 1024}KB)")
-        # Keep only last 5 backups
-        backups = sorted(backup_dir.glob('salesinsight_*.db'), reverse=True)
-        for old in backups[5:]:
-            old.unlink(missing_ok=True)
-            log.info(f"Pruned old backup: {old.name}")
-
-    log.info(f"Database path: {DB_PATH} (exists={DB_PATH.exists()}, size={DB_PATH.stat().st_size // 1024 if DB_PATH.exists() else 0}KB)")
 
     # Deploy-aware cache invalidation:
     # Only flush on explicit CACHE_VERSION bump (cache.py CACHE_VERSION constant).
@@ -99,6 +82,20 @@ async def lifespan(app: FastAPI):
 
     # Deploy-time warming: run the same warmer in a background thread, worker-0 only
     import threading, fcntl
+
+    # Preload user data (owner map + agent sets) in a background thread.
+    # One SF query replaces the previous 3 lazy loads — eliminates cold-start
+    # serial blocking on any agent-dependent endpoint.
+    def _warm_user_data():
+        import time as _time
+        _time.sleep(5)
+        try:
+            from shared import get_owner_map
+            m = get_owner_map()
+            log.info(f"Startup: user data preloaded ({len(m)} users)")
+        except Exception as e:
+            log.warning(f"Startup user-data warm failed: {e}")
+    threading.Thread(target=_warm_user_data, daemon=True).start()
     deploy_lock = cache._CACHE_DIR / '.deploy_warmer.lock'
     def _deploy_warm():
         import time as _time
@@ -205,7 +202,7 @@ init_db()
 
 # ── Register routers ─────────────────────────────────────────────────────────
 
-from routers import sales_advisor, sales_pipeline, sales_travel, sales_leads, sales_performance, sales_opportunities, sales_agent_profile, sales_narrative, users, activity_logs, advisor_targets, advisor_targets_monthly, advisor_targets_achievement, email_report, issues, ai_config, customer_profile, cross_sell, market_pulse, territory_map, census_data, ai_queries, performance_metrics, cache_admin, query_profile
+from routers import sales_advisor, sales_pipeline, sales_travel, sales_leads, sales_performance, sales_opportunities, sales_agent_profile, sales_narrative, users, admin_users, activity_logs, advisor_targets, advisor_targets_monthly, advisor_targets_achievement, email_report, issues, ai_config, customer_profile, cross_sell, market_pulse, territory_map, territory_customers, territory_census, territory_insights, census_data, ai_queries, performance_metrics, cache_admin, query_profile, permissions, growth, growth_admin, product_report
 
 app.include_router(sales_advisor.router)
 app.include_router(sales_pipeline.router)
@@ -216,6 +213,7 @@ app.include_router(sales_opportunities.router)
 app.include_router(sales_agent_profile.router)
 app.include_router(sales_narrative.router)
 app.include_router(users.router)
+app.include_router(admin_users.router)
 app.include_router(activity_logs.router)
 app.include_router(advisor_targets.router)
 app.include_router(advisor_targets_monthly.router)
@@ -227,11 +225,22 @@ app.include_router(customer_profile.router)
 app.include_router(cross_sell.router)
 app.include_router(market_pulse.router)
 app.include_router(territory_map.router)
+app.include_router(territory_customers.router)
+app.include_router(territory_census.router)
+app.include_router(territory_insights.router)
 app.include_router(census_data.router)
 app.include_router(ai_queries.router)
 app.include_router(performance_metrics.router)
 app.include_router(cache_admin.router)
 app.include_router(query_profile.router)
+app.include_router(permissions.router)
+app.include_router(growth.router)
+app.include_router(growth_admin.router)
+app.include_router(product_report.router)
+from routers import growth_narrative
+app.include_router(growth_narrative.router)
+from routers import growth_data
+app.include_router(growth_data.router)
 
 
 # ── Health check ─────────────────────────────────────────────────────────────
@@ -247,6 +256,22 @@ _static_dir = Path(__file__).resolve().parent / "static"
 
 if _static_dir.is_dir():
     _assets_dir = _static_dir / "assets"
+
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.requests import Request as StarletteRequest
+
+    class NoCacheStaticMiddleware(BaseHTTPMiddleware):
+        """Prevent browser from caching stale static assets."""
+        async def dispatch(self, request: StarletteRequest, call_next):
+            response = await call_next(request)
+            path = request.url.path
+            if path.startswith("/assets/") or path.endswith(".html"):
+                response.headers["Cache-Control"] = "no-cache, must-revalidate"
+                response.headers["Pragma"] = "no-cache"
+            return response
+
+    app.add_middleware(NoCacheStaticMiddleware)
+
     if _assets_dir.is_dir():
         app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")
 
@@ -258,4 +283,7 @@ if _static_dir.is_dir():
         file_path = _static_dir / full_path
         if file_path.is_file():
             return FileResponse(file_path)
-        return FileResponse(_static_dir / "index.html")
+        return FileResponse(
+            _static_dir / "index.html",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"},
+        )

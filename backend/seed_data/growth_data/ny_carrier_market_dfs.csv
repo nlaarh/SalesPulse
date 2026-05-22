@@ -1,0 +1,29 @@
+carrier,year,ny_auto_premium_m,total_complaints
+CSAA (AAA preferred),2021,11.8,3
+CSAA (AAA preferred),2022,12.2,8
+CSAA (AAA preferred),2023,16.1,7
+CSAA (AAA preferred),2024,22.3,12
+NY Central Mutual,2021,335.0,49
+NY Central Mutual,2022,355.0,62
+NY Central Mutual,2023,423.2,58
+NY Central Mutual,2024,531.7,111
+Palisades P&C,2021,43.5,17
+Palisades P&C,2022,32.0,19
+Palisades P&C,2023,22.1,7
+Palisades P&C,2024,19.2,18
+Plymouth Rock,2021,79.1,25
+Plymouth Rock,2022,81.9,35
+Plymouth Rock,2023,96.4,28
+Plymouth Rock,2024,120.6,36
+Progressive,2021,1641.0,481
+Progressive,2022,1628.1,510
+Progressive,2023,1749.2,479
+Progressive,2024,2063.9,728
+Travelers,2021,536.2,60
+Travelers,2022,560.7,101
+Travelers,2023,604.4,88
+Travelers,2024,680.5,116
+Unitrin/Kemper,2021,88.7,42
+Unitrin/Kemper,2022,80.6,53
+Unitrin/Kemper,2023,67.4,34
+Unitrin/Kemper,2024,55.1,31

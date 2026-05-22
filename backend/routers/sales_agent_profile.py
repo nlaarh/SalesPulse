@@ -25,6 +25,7 @@ from shared import (
     val as _val,
     is_sales_agent,
     six_months_ago,
+    get_owner_map,
 )
 from routers.agent_brief import template_brief, ai_brief
 from routers.agent_profile_queries import (
@@ -85,7 +86,11 @@ def agent_profile(
         sma = six_months_ago()
         lf = _line_filter_opp(line)
         lf_lead = _line_filter_lead(line)
-        ow = f"Owner.Name = '{safe}'"
+        # Resolve OwnerId for indexed filter — avoids per-row User cross-join on ~12 queries
+        _owner_map = get_owner_map()
+        _name_to_id = {v.strip().lower(): k for k, v in _owner_map.items()}
+        _owner_id = _name_to_id.get(name.strip().lower())
+        ow = f"OwnerId = '{_owner_id}'" if _owner_id else f"Owner.Name = '{safe}'"
 
         queries = build_profile_queries(
             safe=safe, lf=lf, lf_lead=lf_lead, ow=ow,

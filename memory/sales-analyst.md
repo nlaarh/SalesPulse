@@ -154,6 +154,12 @@ Other coverage values exist (PLRV, etc.) but are excluded from Territory Map's a
 - **~14,880** active members turning 65 within next year (born Apr 2060–Apr 2061)
 - **92,290** active members age 64–69 (near-Medicare)
 
+### Sorting Limitation (Person Accounts)
+**`Name` and `LastName` cannot be used in ORDER BY** on Person Account queries. SF returns: "field 'Name' can not be sorted in a query call". Use `CreatedDate` or omit ORDER BY entirely.
+
+### BillingPostalCode Stores Zip+4
+`BillingPostalCode` often contains zip+4 format (e.g. "14221-3456"). Use `LIKE '14225%'` instead of `= '14225'` for zip-level filtering.
+
 ### Other Account Fields
 | Field | Type | Groupable | Notes |
 |---|---|---|---|

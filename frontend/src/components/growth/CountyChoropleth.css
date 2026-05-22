@@ -1,0 +1,62 @@
+/* Choropleth — Leaflet tooltip overrides
+ * Forces label font-size / weight + removes default tooltip background so the
+ * permanent labels sit cleanly inside each county polygon, matching the
+ * PDF map look.
+ */
+
+/* Permanent county labels (rendered via bindTooltip permanent + direction: center) */
+.leaflet-tooltip.cc-perm-label {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  font: inherit;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.leaflet-tooltip.cc-perm-label::before {
+  display: none !important;
+}
+.cc-label {
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+  color: rgba(15, 23, 42, 0.85) !important;
+  text-shadow:
+    0 0 2px rgba(255, 255, 255, 0.95),
+    0 0 3px rgba(255, 255, 255, 0.9),
+    1px 1px 0 rgba(255, 255, 255, 0.85),
+    -1px -1px 0 rgba(255, 255, 255, 0.85),
+    1px -1px 0 rgba(255, 255, 255, 0.85),
+    -1px 1px 0 rgba(255, 255, 255, 0.85) !important;
+  letter-spacing: 0 !important;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+/* Hover tooltip — keep the standard Leaflet bubble look but a touch crisper */
+.leaflet-tooltip.cc-hover-tip {
+  background: #ffffff;
+  border: 1px solid #d6dde5;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: #1a2332;
+  box-shadow: 0 2px 8px rgba(0, 20, 60, 0.12);
+}
+.leaflet-tooltip.cc-hover-tip::before {
+  display: none;
+}
+
+/* Print: hide hover tip, keep permanent labels */
+@media print {
+  .leaflet-tooltip.cc-hover-tip { display: none !important; }
+}
+
+/* Force legend above all Leaflet panes (Leaflet uses z-index up to ~700) */
+.cc-legend {
+  z-index: 1000 !important;
+}
+.leaflet-container {
+  z-index: 1;
+}

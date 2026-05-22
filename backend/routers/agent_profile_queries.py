@@ -10,6 +10,7 @@ from shared import (
     WON_STAGES, MONTHS,
     val as _val,
     is_sales_agent,
+    get_owner_map,
 )
 from constants import (
     COVERAGE_LOW, COVERAGE_HEALTHY,
@@ -175,12 +176,12 @@ def build_profile_queries(*, safe, lf, lf_lead, ow, sd, ed, p_sd, p_ed,
             WHERE StageName IN ('Closed Won','Invoice','Closed Lost') AND {lf}
               AND CloseDate >= {sd} AND CloseDate <= {ed}
         """,
-        # Team: per-agent won (for agent count)
+        # Team: per-agent won (for agent count) — OwnerId avoids User cross-join
         t_agents=f"""
-            SELECT Owner.Name, COUNT(Id) cnt FROM Opportunity
+            SELECT OwnerId, COUNT(Id) cnt FROM Opportunity
             WHERE {WON_STAGES} AND {lf}
               AND CloseDate >= {sd} AND CloseDate <= {ed} AND Amount != null
-            GROUP BY Owner.Name
+            GROUP BY OwnerId
         """,
         # Open tasks for this agent
         open_tasks=f"""
@@ -283,8 +284,12 @@ def compute_team_averages(data, line, is_insurance):
     t_comm = t_rev if is_insurance else _val(data['t_won'], 'comm')
     t_won_cnt = _val(data['t_won'], 'cnt')
     t_closed_cnt = _val(data['t_closed'], 'cnt')
+    owner_map = get_owner_map()
     t_agent_list = [a for a in data['t_agents'] if (a.get('cnt', 0) or 0) > 0]
-    t_agent_list = [a for a in t_agent_list if is_sales_agent(a.get('Name', ''), line)]
+    t_agent_list = [
+        a for a in t_agent_list
+        if is_sales_agent(owner_map.get(a.get('OwnerId', ''), ''), line)
+    ]
     n_agents = len(t_agent_list)
 
     t_wr = round(t_won_cnt / t_closed_cnt * 100, 1) if t_closed_cnt else 0

@@ -153,7 +153,7 @@ def leads_time_to_convert(
               AND ConvertedDate >= {sd} AND ConvertedDate <= {ed}
               AND {lf}
             ORDER BY ConvertedDate DESC
-            LIMIT 5000
+            LIMIT 1500
         """)
 
         from datetime import datetime
@@ -232,7 +232,7 @@ def leads_source_effectiveness(
                   AND {lf} AND LeadSource != null
                   AND ConvertedOpportunity.Amount != null
                 ORDER BY ConvertedOpportunity.Amount DESC
-                LIMIT 5000
+                LIMIT 2000
             """,
             leads_by_source=f"""
                 SELECT LeadSource, COUNT(Id) cnt
@@ -288,21 +288,23 @@ def agent_close_speed(
 
     def fetch():
         from datetime import datetime
+        from shared import get_owner_map
         lf = _opp_line_filter(line)
+        owner_map = get_owner_map()
         records = sf_query_all(f"""
-            SELECT Owner.Name, CreatedDate, CloseDate
+            SELECT OwnerId, CreatedDate, CloseDate
             FROM Opportunity
             WHERE StageName IN ('Closed Won','Invoice')
               AND {lf}
               AND CloseDate >= {sd} AND CloseDate <= {ed}
             ORDER BY CloseDate DESC
-            LIMIT 10000
+            LIMIT 2000
         """)
 
         agent_days: dict[str, list] = {}
         for r in records:
             try:
-                owner = r.get('Owner', {}).get('Name', '')
+                owner = owner_map.get(r.get('OwnerId', ''), '')
                 if not owner:
                     continue
                 created = datetime.fromisoformat(

@@ -149,54 +149,27 @@ def val(rows, field: str = 'cnt'):
 
 _log = logging.getLogger('shared')
 
-# ── Owner Map (OwnerId → Name) ────────────────────────────────────────────────
-# Cached once per process. Allows all SOQL GROUP BY queries to use OwnerId
-# (a direct indexed field) instead of Owner.Name (cross-object join per row).
+# ── User data — single query populates owner map + both agent sets ────────────
+# One SF call replaces the previous three separate User queries (owner_map,
+# travel agents, insurance agents). Called lazily on first use; preloaded at
+# startup by main.py to eliminate cold-start serial blocking.
 
 _OWNER_MAP: dict[str, str] | None = None
-_OWNER_MAP_LOCK = threading.Lock()
-
-
-def get_owner_map(force_refresh: bool = False) -> dict[str, str]:
-    """Return cached OwnerId → Name mapping for all active SF users.
-
-    Loaded once at first call. On error, does NOT cache empty — retries next call.
-    Pass force_refresh=True to bust the cache.
-    """
-    global _OWNER_MAP
-    if _OWNER_MAP is not None and not force_refresh:
-        return _OWNER_MAP
-    with _OWNER_MAP_LOCK:
-        if _OWNER_MAP is not None and not force_refresh:
-            return _OWNER_MAP
-        try:
-            from sf_client import sf_query_all
-            records = sf_query_all(
-                "SELECT Id, Name FROM User WHERE IsActive = true LIMIT 2000"
-            )
-            if records:
-                _OWNER_MAP = {r['Id']: r['Name'] for r in records}
-                _log.info("Loaded %d users into owner_map", len(_OWNER_MAP))
-            else:
-                _log.warning("owner_map query returned 0 records — not caching")
-        except Exception as exc:
-            _log.error("Failed to load owner_map: %s", exc)
-            # Do NOT cache empty — next call will retry
-    return _OWNER_MAP or {}
-
-# ── Travel (dynamic from SF) ──────────────────────────────────────────────
-
 _TRAVEL_AGENTS: set[str] | None = None
+_INSURANCE_AGENTS: set[str] | None = None
+_USERS_LOCK = threading.Lock()
+
+# Non-sales title keywords for insurance agents.
+_INS_EXCLUDE_TITLE_KEYWORDS = [
+    'manager', 'supervisor', 'quality control', 'training',
+    'specialist', 'administrator', 'coordinator',
+]
 
 
 def _is_travel_sales_title(title: str) -> bool:
-    """Return True if a User.Title indicates a Travel sales agent."""
     t = title.lower()
-    # TSC roles (Travel Sales Center) are always sales
     if 'tsc' in t:
         return True
-    # "Travel Advisor" variants — but exclude Member Experience,
-    # Call Center, and Group Travel roles (support/management).
     if 'travel advisor' in t:
         return ('member experience' not in t
                 and 'call center' not in t
@@ -204,116 +177,118 @@ def _is_travel_sales_title(title: str) -> bool:
     return False
 
 
-def _load_travel_agents() -> set[str]:
-    """Query SF for Travel/Support User profiles and apply title rules."""
+def _load_all_users() -> None:
+    """One SOQL query builds owner_map, travel_agents, and insurance_agents."""
+    global _OWNER_MAP, _TRAVEL_AGENTS, _INSURANCE_AGENTS
     try:
         from sf_client import sf_query_all
-        records = sf_query_all("""
-            SELECT Name, Profile.Name, Title
-            FROM User
-            WHERE IsActive = true
-              AND (Profile.Name = 'Travel User' OR Profile.Name = 'Support User')
-        """)
-        names: set[str] = set()
-        excluded: list[str] = []
+        records = sf_query_all(
+            "SELECT Id, Name, Title, Profile.Name FROM User WHERE IsActive = true LIMIT 2000"
+        )
+        if not records:
+            _log.warning("User query returned 0 records — not caching")
+            return
+
+        owner_map: dict[str, str] = {}
+        travel_names: set[str] = set()
+        insurance_names: set[str] = set()
+        travel_excluded: list[str] = []
+        insurance_excluded: list[str] = []
+
         for r in records:
-            uname = r.get('Name', '').strip()
-            title = r.get('Title') or ''
+            uid = r.get('Id', '')
+            uname = (r.get('Name') or '').strip()
+            title = (r.get('Title') or '').strip()
+            profile = ((r.get('Profile') or {}).get('Name') or '')
+
+            if uid and uname:
+                owner_map[uid] = uname
+
             if not uname or uname == 'Travel User':
                 continue
-            if _is_travel_sales_title(title):
-                names.add(uname.lower())
-            else:
-                excluded.append(f"{uname} ({title})")
+
+            lname = uname.lower()
+
+            if profile in ('Travel User', 'Support User'):
+                if _is_travel_sales_title(title):
+                    travel_names.add(lname)
+                else:
+                    travel_excluded.append(f"{uname} ({title})")
+
+            if profile == 'Insurance User':
+                if any(kw in title.lower() for kw in _INS_EXCLUDE_TITLE_KEYWORDS):
+                    insurance_excluded.append(f"{uname} ({title})")
+                else:
+                    insurance_names.add(lname)
+
+        _OWNER_MAP = owner_map
+        _TRAVEL_AGENTS = travel_names
+        _INSURANCE_AGENTS = insurance_names
         _log.info(
-            f"Loaded {len(names)} travel sales agents from SF "
-            f"(excluded {len(excluded)} non-sales)"
+            "Loaded %d users: %d travel agents, %d insurance agents "
+            "(excluded travel=%d, ins=%d)",
+            len(owner_map), len(travel_names), len(insurance_names),
+            len(travel_excluded), len(insurance_excluded),
         )
-        return names
-    except Exception as e:
-        _log.error(f"Failed to load travel agents from SF: {e}")
-        return set()
+    except Exception as exc:
+        _log.error("Failed to load users: %s", exc)
+
+
+def _ensure_users_loaded(force_refresh: bool = False) -> None:
+    """Load user data if any cache is missing or force_refresh is set."""
+    global _OWNER_MAP, _TRAVEL_AGENTS, _INSURANCE_AGENTS
+    if (not force_refresh
+            and _OWNER_MAP is not None
+            and _TRAVEL_AGENTS is not None
+            and _INSURANCE_AGENTS is not None):
+        return
+    with _USERS_LOCK:
+        if (not force_refresh
+                and _OWNER_MAP is not None
+                and _TRAVEL_AGENTS is not None
+                and _INSURANCE_AGENTS is not None):
+            return
+        if force_refresh:
+            _OWNER_MAP = None
+            _TRAVEL_AGENTS = None
+            _INSURANCE_AGENTS = None
+        _load_all_users()
+
+
+def get_owner_map(force_refresh: bool = False) -> dict[str, str]:
+    """Return cached OwnerId → Name mapping for all active SF users."""
+    _ensure_users_loaded(force_refresh=force_refresh)
+    return _OWNER_MAP or {}
 
 
 def get_travel_sales_agents() -> set[str]:
     """Return the cached set of travel sales agent names (lowercased)."""
-    global _TRAVEL_AGENTS
-    if _TRAVEL_AGENTS is None:
-        _TRAVEL_AGENTS = _load_travel_agents()
-    return _TRAVEL_AGENTS
-
-
-def is_travel_sales_agent(name: str) -> bool:
-    """Check if a name is a travel sales agent (case-insensitive)."""
-    return name.strip().lower() in get_travel_sales_agents()
-
-
-# ── Insurance (dynamic from SF) ───────────────────────────────────────────
-
-# Non-sales title keywords — agents with these in their Title are excluded.
-_INS_EXCLUDE_TITLE_KEYWORDS = [
-    'manager', 'supervisor', 'quality control', 'training',
-    'specialist', 'administrator', 'coordinator',
-]
-
-_INSURANCE_AGENTS: set[str] | None = None
-
-
-def _load_insurance_agents() -> set[str]:
-    """Query SF for Insurance User profiles and exclude non-sales titles."""
-    try:
-        from sf_client import sf_query_all
-        records = sf_query_all("""
-            SELECT Name, Profile.Name, Title
-            FROM User
-            WHERE IsActive = true
-              AND Profile.Name = 'Insurance User'
-        """)
-        names: set[str] = set()
-        excluded: list[str] = []
-        for r in records:
-            uname = r.get('Name', '').strip()
-            title = (r.get('Title') or '').lower()
-            if any(kw in title for kw in _INS_EXCLUDE_TITLE_KEYWORDS):
-                excluded.append(f"{uname} ({r.get('Title', '')})")
-                continue
-            names.add(uname.lower())
-        _log.info(
-            f"Loaded {len(names)} insurance sales agents from SF "
-            f"(excluded {len(excluded)} non-sales)"
-        )
-        return names
-    except Exception as e:
-        _log.error(f"Failed to load insurance agents from SF: {e}")
-        return set()
+    _ensure_users_loaded()
+    return _TRAVEL_AGENTS or set()
 
 
 def get_insurance_sales_agents() -> set[str]:
     """Return the cached set of insurance sales agent names (lowercased)."""
-    global _INSURANCE_AGENTS
-    if _INSURANCE_AGENTS is None:
-        _INSURANCE_AGENTS = _load_insurance_agents()
-    return _INSURANCE_AGENTS
+    _ensure_users_loaded()
+    return _INSURANCE_AGENTS or set()
+
+
+def is_travel_sales_agent(name: str) -> bool:
+    return name.strip().lower() in get_travel_sales_agents()
 
 
 def is_insurance_sales_agent(name: str) -> bool:
-    """Check if a name is an insurance sales agent."""
     return name.strip().lower() in get_insurance_sales_agents()
 
 
 # ── Unified filter ─────────────────────────────────────────────────────────
 
 def is_sales_agent(name: str, line: str) -> bool:
-    """Check if an agent should be included in reports for the given line.
-
-    Both lines are dynamically loaded from Salesforce User profiles + titles.
-    No hardcoded lists — when SF users change, restart the backend to pick up.
-    """
+    """Check if an agent should be included in reports for the given line."""
     if line == 'Travel':
         return is_travel_sales_agent(name)
     if line == 'Insurance':
         return is_insurance_sales_agent(name)
-    # line == 'All': agent is valid if in either list
     return is_travel_sales_agent(name) or is_insurance_sales_agent(name)
 
 

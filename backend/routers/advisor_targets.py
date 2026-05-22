@@ -304,24 +304,26 @@ def targets_with_actuals(
     cache_key = f"targets_actuals_comm_{line}_{sd}_{ed}"
 
     def fetch_actuals():
-        # Compare targets against revenue (Amount).
         return sf_query_all(f"""
-            SELECT Owner.Name, CALENDAR_YEAR(CloseDate) yr,
+            SELECT OwnerId, CALENDAR_YEAR(CloseDate) yr,
                    CALENDAR_MONTH(CloseDate) mo,
                    COUNT(Id) cnt, SUM(Amount) rev
             FROM Opportunity
             WHERE {WON_STAGES} AND {lf}
               AND CloseDate >= {sd} AND CloseDate <= {ed}
               AND Amount != null
-            GROUP BY Owner.Name, CALENDAR_YEAR(CloseDate), CALENDAR_MONTH(CloseDate)
+            GROUP BY OwnerId, CALENDAR_YEAR(CloseDate), CALENDAR_MONTH(CloseDate)
         """)
 
     records = cache.cached_query(cache_key, fetch_actuals, ttl=CACHE_TTL_MEDIUM, disk_ttl=CACHE_TTL_12H)
 
+    from shared import get_owner_map
+    owner_map = get_owner_map()
+
     # Build actual revenue per agent per month
     agent_months: dict[str, dict[str, float]] = {}
     for r in records:
-        name = r.get('Name', '')
+        name = owner_map.get(r.get('OwnerId', ''), '')
         if not name:
             continue
         ym = f"{r.get('yr')}-{str(r.get('mo', 0)).zfill(2)}"
