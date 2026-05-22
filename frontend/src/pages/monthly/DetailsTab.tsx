@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { fmtMonth } from '@/lib/formatters'
-import { ArrowUpDown, ChevronDown, ChevronUp, Download } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, ChevronUp, Download, ExternalLink } from 'lucide-react'
 import type { AgentReport, Metric, SortField } from './types'
 import { fmtCell } from './types'
 import { exportToExcel } from '@/lib/exportExcel'
@@ -118,9 +118,28 @@ export default function DetailsTab({
                 >
                   <td className="sticky left-0 z-10 bg-inherit px-3 py-2 text-center text-[11px] text-muted-foreground/50">{idx + 1}</td>
                   <td className="sticky left-10 z-10 bg-inherit px-3 py-2 text-[12px] font-medium">
-                    <Link to={`/agent/${encodeURIComponent(agent.name)}`} className="text-primary transition-colors hover:text-primary/80 hover:underline">
-                      {agent.name}
-                    </Link>
+                    <div className="flex items-center gap-1.5">
+                      <Link to={`/agent/${encodeURIComponent(agent.name)}`} className="text-primary transition-colors hover:text-primary/80 hover:underline">
+                        {agent.name}
+                      </Link>
+                      {agent.inactive && (
+                        <span className="rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                          inactive
+                        </span>
+                      )}
+                      {agent.sf_id && (
+                        <a
+                          href={`https://aaawcny.my.salesforce.com/${agent.sf_id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="View in Salesforce"
+                          className="text-muted-foreground/40 hover:text-[#00A1E0] transition-colors"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
                   </td>
                   {monthColumns.map((m) => {
                     const d = monthMap.get(m)

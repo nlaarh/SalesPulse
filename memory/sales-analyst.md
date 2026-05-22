@@ -305,7 +305,7 @@ These high-frequency travelers are:
 
 ---
 
-*Last updated: 2026-04-12. Update this file when new data patterns, field behaviors, or business rules are discovered.*
+*Last updated: 2026-05-22. Update this file when new data patterns, field behaviors, or business rules are discovered.*
 
 ---
 
@@ -433,3 +433,155 @@ Run `seed_geodata.py` or the admin "Refresh Census Data" action to re-seed.
 Market Share % = (AAA Active Members in zip / Census Population in zip) × 100
 ```
 Uses active member filter (Section 11) for accurate numerator.
+
+---
+
+## 14. Power BI Data Sources
+
+### Access
+- **Service principal**: `85f2ef18-703b-4b5f-9b7f-09d93b703217`
+- **Workspace**: `019c6471-5f67-4838-970b-35b186425c78` — "Business Intelligence Datasets"
+- All datasets listed below are in that single workspace.
+- Auth: client_credentials flow, scope `https://analysis.windows.net/powerbi/api/.default`
+- Constants live in `backend/pbi_client.py`
+
+### Dataset Catalog
+
+| Line | Dataset Name | Constant | ID | Purpose |
+|---|---|---|---|---|
+| Travel | BI Dataset - Travel Scorecard | `TRAVEL_DS` | `5c60c1bf` | **Advisor performance** — commission, gross sales, branch. Currently wired to all advisor endpoints. |
+| Travel | BI Dataset - Travel Transactions | `TRAVEL_TRANSACTIONS_DS` | `e03a823a` | Raw booking-level transactions. More granular than Scorecard. Not yet wired. |
+| Insurance | BI Dataset - Insurance Transactions Invoices | `INSURANCE_DS` | `2e3c94a1` | **Advisor performance** — commission, premium, branch. Currently wired to all advisor endpoints. |
+| Insurance | BI Dataset - Insurance Comprehensive v3 | `INSURANCE_COMPREHENSIVE_DS` | `61c03e69` | Full book of business view. Also used by "Insurance Daily Report v2". Not yet wired. |
+| Membership | BI Dataset - Membership Comprehensive | `MEMBERSHIP_DS` | `d7cdf3bc` | Two key tables: **Membership Consolidated** (current state snapshot) and **Membership Transactions** (transaction history). Not yet wired. |
+
+### Table / Column Reference
+
+**Travel Scorecard** (`TRAVEL_DS`) — table: `Travel Transactions f transformed`
+| Column | Type | Notes |
+|---|---|---|
+| `Primary Advisor Full Name` | text | Advisor name |
+| `Primary Advisor Branch Name` | text | Branch |
+| `Primary Advisor Teller Code` | text | Advisor code |
+| `Invoice Date` | date | Transaction date. Use `DATE(y,m,d)` in DAX filters. |
+| `Revenue Club Commission Amount` | decimal | Commission earned |
+| `Gross Sales Amount` | decimal | Gross trip value (bookings) |
+
+**Insurance Transactions Invoices** (`INSURANCE_DS`) — table: `insurance_transactions_f`
+| Column | Type | Notes |
+|---|---|---|
+| `inserted_by_name` | text | Advisor name |
+| `branch_name` | text | Branch |
+| `invoice_date_generation` | date | Transaction date |
+| `transaction_type` | text | RENB, ENDT, NEWB, CANC, REIN, REWR, AUDI |
+| `commission_amount` | decimal | Commission (RENB+ENDT have commission; NEWB=$0) |
+| `transaction_amount` | decimal | Premium written |
+| `assoc_job_title_grps` | text | **Always filter**: `= "Insurance Advisors"` to get AAA staff only |
+
+**Insurance transaction type reference:**
+| Type | Meaning | Has Commission? |
+|---|---|---|
+| RENB | Renewal | ✅ Yes — primary commission source |
+| ENDT | Endorsement (policy change) | ✅ Yes |
+| NEWB | New Business | ❌ No ($0 commission in this table) |
+| CANC | Cancellation | Clawback — sign may vary |
+| REIN | Reinstatement | ✅ Small |
+| REWR | Rewrite | ✅ Small |
+
+**Membership Comprehensive** (`MEMBERSHIP_DS`) — two tables:
+- `Membership Consolidated` — current state of all memberships (snapshot). Use for counts, tier distribution, active member analysis.
+- `Membership Transactions` — history of membership transactions (joins, renewals, upgrades, cancellations). Use for trend/activity analysis.
+- Schema not yet explored. Run `COLUMNSTATISTICS()` DAX query before building any endpoint.
+
+---
+
+## 15. Power BI Query Design
+
+### The SUMMARIZE vs SUMMARIZECOLUMNS Problem
+
+**Problem discovered 2026-05-22**: The PBI `executeQueries` REST API returns `None` for all text column values when using `SUMMARIZE` or `GROUPBY`. Numeric measures aggregate correctly but the group-by text columns are blank.
+
+```python
+# BROKEN — returns rows but all name/branch values are None
+EVALUATE
+SUMMARIZE(
+    'Travel Transactions f transformed',
+    'Travel Transactions f transformed'[Primary Advisor Full Name],
+    "commission", SUM(...)
+)
+# Result: {"[Primary Advisor Full Name]": None, "[commission]": 47086.0}
+```
+
+**Solution**: Use `SUMMARIZECOLUMNS` (a different DAX function). Fully supported via `executeQueries` as of June 2024. Returns correct text + numeric aggregations.
+
+```python
+# CORRECT — returns pre-aggregated rows with text columns populated
+EVALUATE
+SUMMARIZECOLUMNS(
+    'Travel Transactions f transformed'[Primary Advisor Full Name],
+    'Travel Transactions f transformed'[Primary Advisor Branch Name],
+    FILTER(ALL('Travel Transactions f transformed'),
+        'Travel Transactions f transformed'[Invoice Date] >= DATE(2026,4,1) &&
+        'Travel Transactions f transformed'[Invoice Date] <= DATE(2026,4,30)
+    ),
+    "commission", SUM('Travel Transactions f transformed'[Revenue Club Commission Amount]),
+    "sales",      SUM('Travel Transactions f transformed'[Gross Sales Amount]),
+    "txns",       COUNTROWS('Travel Transactions f transformed')
+)
+ORDER BY [commission] DESC
+```
+
+**Row key format**: Columns appear as `TableName[ColumnName]` (no brackets around table). Measures appear as `[measure_name]`.
+```python
+row["Travel Transactions f transformed[Primary Advisor Full Name]"]  # text column
+row["[commission]"]                                                    # measure
+```
+
+### Filter Pattern for Date + Extra Conditions
+
+The `extra_filter` goes **inside** the `FILTER(ALL(...), ...)` clause alongside the date filter:
+```dax
+FILTER(ALL('table'),
+    'table'[date_col] >= DATE(...) &&
+    'table'[date_col] <= DATE(...) &&
+    'table'[extra_col] = "value"       -- extra filter appended with &&
+)
+```
+
+### Data Volume — Why This Matters
+
+| Query type | Old approach (raw rows) | New approach (SUMMARIZECOLUMNS) | Reduction |
+|---|---|---|---|
+| Leaderboard — Travel | ~11,000 rows/month | 151 rows (1 per advisor) | 70× |
+| Leaderboard — Insurance | 4,724 rows/month | 41 rows (1 per advisor) | 115× |
+| YoY full year — either line | ~50,000+ rows | ~140 rows (1 per day) | 350× |
+| Branch monthly — Travel | ~44,000 rows | ~300 rows (branch+day) | 150× |
+
+### Generic Query Builders in pbi_client.py
+
+Three generic functions handle all aggregation patterns. Pass table/column names; they build the DAX and normalize the response:
+
+| Function | Groups by | Use for |
+|---|---|---|
+| `_by_advisor(ws, ds, table, ...)` | name + branch | Leaderboard |
+| `_by_day(ws, ds, table, ...)` | date | Summary totals, YoY, trend |
+| `_by_branch_day(ws, ds, table, ...)` | branch + date | Branch tab |
+
+Line-specific wrappers (`travel_by_advisor`, `insurance_by_day`, etc.) call these with the correct constants.
+
+### What Doesn't Work via executeQueries
+
+- `SUMMARIZE` — text column values come back `None`
+- `GROUPBY` — same problem
+- `INFO.TABLES()` — error code 3239575574 (not supported)
+- MDX queries — not supported, DAX only
+- Row limit: 100,000 rows or 1,000,000 values per query (whichever comes first)
+
+### Schema Discovery
+
+When exploring a new dataset, use `COLUMNSTATISTICS()`:
+```dax
+EVALUATE COLUMNSTATISTICS()
+```
+Returns all tables and columns with cardinality. Use this before building any new endpoint.
+Then pull 20 sample rows with `SELECTCOLUMNS + FILTER` to verify column meanings.

@@ -1,20 +1,25 @@
 import { useState } from 'react'
 import { useSales } from '@/contexts/SalesContext'
 import { cn } from '@/lib/utils'
-import { UserCheck, Plane, Map } from 'lucide-react'
+import { UserCheck, Plane, Map, Users, Building2 } from 'lucide-react'
 import { type Tab } from './TopRevenueContributors/shared'
 import { CustomersTab } from './TopRevenueContributors/CustomersTab'
 import { DestinationsTab, RegionsTab } from './TopRevenueContributors/DestRegionsTabs'
+import { AdvisorsTab, BranchesTab } from './TopRevenueContributors/AdvisorsTab'
 
-const TABS: { key: Tab; label: string; icon: typeof UserCheck }[] = [
-  { key: 'customers', label: 'Customers', icon: UserCheck },
-  { key: 'destinations', label: 'Destinations', icon: Plane },
-  { key: 'regions', label: 'Regions', icon: Map },
+const ALL_TABS: { key: Tab; label: string; icon: typeof UserCheck; travelOnly?: boolean }[] = [
+  { key: 'customers',    label: 'Customers',    icon: UserCheck },
+  { key: 'advisors',     label: 'Advisors',     icon: Users },
+  { key: 'branches',     label: 'Branches',     icon: Building2, travelOnly: true },
+  { key: 'destinations', label: 'Destinations', icon: Plane, travelOnly: true },
+  { key: 'regions',      label: 'Regions',      icon: Map, travelOnly: true },
 ]
 
 export default function TopRevenueContributors() {
   const { line } = useSales()
   const [tab, setTab] = useState<Tab>('customers')
+  const isTravel = line.toLowerCase() === 'travel'
+  const TABS = ALL_TABS.filter(t => !t.travelOnly || isTravel)
 
   return (
     <div className="space-y-6">
@@ -22,7 +27,7 @@ export default function TopRevenueContributors() {
         <p className="text-[12px] font-medium text-muted-foreground">Revenue Analysis</p>
         <h1 className="mt-0.5 text-2xl font-bold tracking-tight">Top Revenue Contributors</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          {line === 'All' ? 'All business lines' : `${line} division`} — Ranked by bookings
+          {line === 'All' ? 'All business lines' : `${line} division`} — Ranked by revenue
         </p>
       </div>
 
@@ -48,9 +53,11 @@ export default function TopRevenueContributors() {
         })}
       </div>
 
-      {tab === 'customers' && <CustomersTab />}
+      {tab === 'customers'    && <CustomersTab />}
+      {tab === 'advisors'     && <AdvisorsTab />}
+      {tab === 'branches'     && <BranchesTab />}
       {tab === 'destinations' && <DestinationsTab />}
-      {tab === 'regions' && <RegionsTab />}
+      {tab === 'regions'      && <RegionsTab />}
     </div>
   )
 }

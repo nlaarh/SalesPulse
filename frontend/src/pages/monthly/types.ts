@@ -15,6 +15,8 @@ export interface MonthData {
 
 export interface AgentReport {
   name: string
+  sf_id?: string | null
+  inactive?: boolean
   months: MonthData[]
   totals: { leads: number; opps: number; invoiced: number; inv_opp_pct: number; sales: number; commission: number }
 }

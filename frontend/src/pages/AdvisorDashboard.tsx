@@ -15,6 +15,7 @@ import {
   fetchPipelineSlipping, fetchLeadsVolume,
   fetchAgentCloseSpeed,
   fetchTargets, fetchTargetAchievement,
+  fetchBranchMonthly, type BranchMonthlyData,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useChartColors } from '@/lib/chart-theme'
@@ -24,7 +25,8 @@ import type { FunnelData } from '@/components/FunnelChart'
 import OverviewTab from './advisor/OverviewTab'
 import RankingsTab from './advisor/RankingsTab'
 import SummaryTab from './advisor/SummaryTab'
-import { Loader2, BarChart3, Trophy, Sparkles, Printer, BookOpen, DollarSign } from 'lucide-react'
+import BranchTab from './advisor/BranchTab'
+import { Loader2, BarChart3, Trophy, Sparkles, Printer, BookOpen, DollarSign, Building2 } from 'lucide-react'
 import type { AchievementResponse } from '@/lib/api'
 import EmailPopover from '@/components/EmailPopover'
 import { emailAdvisorDashboard } from '@/lib/api'
@@ -34,12 +36,13 @@ import TargetProgressBar from '@/components/TargetProgressBar'
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'rankings' | 'summary'
+type Tab = 'overview' | 'rankings' | 'branch' | 'summary'
 
-const TABS: { key: Tab; label: string; icon: typeof BarChart3 }[] = [
-  { key: 'overview', label: 'Overview', icon: BarChart3 },
-  { key: 'rankings', label: 'Rankings & Data', icon: Trophy },
-  { key: 'summary', label: 'Executive Summary', icon: Sparkles },
+const ALL_TABS: { key: Tab; label: string; icon: typeof BarChart3; travelOnly?: boolean }[] = [
+  { key: 'overview',  label: 'Overview',          icon: BarChart3 },
+  { key: 'rankings',  label: 'Rankings & Data',   icon: Trophy },
+  { key: 'branch',    label: 'By Branch',         icon: Building2, travelOnly: true },
+  { key: 'summary',   label: 'Executive Summary', icon: Sparkles },
 ]
 
 /* ── Main Component ──────────────────────────────────────────────────────── */
@@ -58,6 +61,7 @@ export default function AdvisorDashboard() {
   const [slipping, setSlipping] = useState<SlippingDeal[]>([])
   const [leadSources, setLeadSources] = useState<{ source: string; count: number }[]>([])
   const [closeSpeed, setCloseSpeed] = useState<CloseSpeed | null>(null)
+  const [branchData, setBranchData] = useState<BranchMonthlyData | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
@@ -74,6 +78,8 @@ export default function AdvisorDashboard() {
   }
 
   const isInsurance = line.toLowerCase() === 'insurance'
+  const isTravel    = line.toLowerCase() === 'travel'
+  const TABS = ALL_TABS.filter(t => !t.travelOnly || isTravel)
 
   const periodLabel = viewMode === 'custom' && startDate && endDate
     ? `${startDate} \u2192 ${endDate}`
@@ -132,11 +138,16 @@ export default function AdvisorDashboard() {
       .catch(() => {})
     // Load achievement data for progress bars (respects selected date range)
     fetchTargetAchievement(line, undefined, startDate, endDate)
-      .then((data) => {
-        if (cancelled) return
-        setAchievement(data)
-      })
+      .then((data) => { if (cancelled) return; setAchievement(data) })
       .catch(() => {})
+    // Branch monthly data (Travel only)
+    if (line.toLowerCase() === 'travel') {
+      fetchBranchMonthly(line, period, startDate, endDate)
+        .then((data) => { if (cancelled) return; setBranchData(data) })
+        .catch(() => {})
+    } else {
+      setBranchData(null)
+    }
     return () => { cancelled = true }
   }, [line, period, startDate, endDate, retryCount, viewMode])
 
@@ -299,8 +310,13 @@ export default function AdvisorDashboard() {
           leaders={leaders} slipping={slipping}
           leadSources={leadSources} c={c}
           targetMap={targetMap}
+          line={line}
           onSelectAdvisor={(name) => navigate(`/agent/${encodeURIComponent(name)}`)}
         />
+      )}
+
+      {tab === 'branch' && (
+        <BranchTab data={branchData} c={c} />
       )}
 
       {tab === 'summary' && summary && (

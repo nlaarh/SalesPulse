@@ -28,16 +28,17 @@ export interface RankingsTabProps {
   c: ChartColors
   targetMap?: Map<string, number>
   onSelectAdvisor: (name: string) => void
+  line?: string
 }
 
 /* ── Main ──────────────────────────────────────────────────────────────────── */
 
-export default function RankingsTab({ leaders, slipping, leadSources, c, targetMap, onSelectAdvisor }: RankingsTabProps) {
+export default function RankingsTab({ leaders, slipping, leadSources, c, targetMap, onSelectAdvisor, line }: RankingsTabProps) {
   return (
     <>
       {/* Full Leaderboard */}
       <div className="animate-enter card-premium overflow-hidden">
-        <LeaderboardFull leaders={leaders} onSelect={onSelectAdvisor} targetMap={targetMap} />
+        <LeaderboardFull leaders={leaders} onSelect={onSelectAdvisor} targetMap={targetMap} showBranch={line === 'Travel'} />
       </div>
 
       {/* At-Risk + Lead Sources */}
@@ -57,8 +58,20 @@ export default function RankingsTab({ leaders, slipping, leadSources, c, targetM
 
 type SortKey = 'commission' | 'bookings' | 'deals' | 'win_rate' | 'avg_deal_size' | 'pipeline_value'
 
-function LeaderboardFull({ leaders, onSelect, targetMap }: {
-  leaders: Advisor[]; onSelect: (name: string) => void; targetMap?: Map<string, number>
+function ShareBar({ pct, rank }: { pct: number; rank: number }) {
+  const color = rank === 1 ? 'bg-amber-500' : rank === 2 ? 'bg-slate-400' : rank === 3 ? 'bg-amber-700/70' : 'bg-primary/40'
+  return (
+    <div className="flex items-center justify-end gap-1.5">
+      <span className="tabular-nums text-[11px] font-semibold w-9 text-right">{pct.toFixed(1)}%</span>
+      <div className="w-16 h-1.5 rounded-full bg-secondary overflow-hidden">
+        <div className={cn('h-full rounded-full', color)} style={{ width: `${Math.min(pct * 4, 100)}%` }} />
+      </div>
+    </div>
+  )
+}
+
+function LeaderboardFull({ leaders, onSelect, targetMap, showBranch }: {
+  leaders: Advisor[]; onSelect: (name: string) => void; targetMap?: Map<string, number>; showBranch?: boolean
 }) {
   const hasTargets = targetMap && targetMap.size > 0
   const [sortKey, setSortKey] = useState<SortKey>('commission')
@@ -78,6 +91,11 @@ function LeaderboardFull({ leaders, onSelect, targetMap }: {
 
   const displayed = showAll ? sorted : sorted.slice(0, 15)
 
+  // Totals for share calculation
+  const totalBookings = leaders.reduce((s, a) => s + (a.bookings || 0), 0)
+  const totalCommission = leaders.reduce((s, a) => s + (a.commission || 0), 0)
+  const shareBase = totalCommission > 0 ? totalCommission : totalBookings
+
   const COLS: { key: SortKey; label: string; fmt: (a: Advisor) => string }[] = [
     { key: 'commission',    label: 'Commission', fmt: (a) => a.commission > 0 ? formatCurrency(a.commission, true) : formatCurrency(a.bookings, true) },
     { key: 'bookings',      label: 'Bookings',   fmt: (a) => formatCurrency(a.bookings, true) },
@@ -95,20 +113,25 @@ function LeaderboardFull({ leaders, onSelect, targetMap }: {
           <h3 className="text-sm font-semibold">Advisor Leaderboard</h3>
         </div>
         <div className="flex items-center gap-3">
-      <span className="text-[12px] text-muted-foreground">{leaders.length} advisors</span>
+          <span className="text-[12px] text-muted-foreground">{leaders.length} advisors</span>
           <button
             onClick={() => {
-              const rows = sorted.map((a, i) => ({
-                Rank: i + 1,
-                Advisor: a.name,
-                Commission: a.commission ?? 0,
-                Bookings: a.bookings ?? 0,
-                Deals: a.deals ?? 0,
-                'Win Rate': (a.win_rate ?? 0) * 100,
-                'Avg Deal': a.avg_deal_size ?? 0,
-                Pipeline: a.pipeline_value ?? 0,
-                ...(hasTargets ? { Target: targetMap!.get(a.name) ?? 0 } : {}),
-              }))
+              const rows = sorted.map((a, i) => {
+                const agentBase = totalCommission > 0 ? (a.commission || 0) : (a.bookings || 0)
+                const sharePct = shareBase > 0 ? (agentBase / shareBase) * 100 : 0
+                return {
+                  Rank: i + 1,
+                  Advisor: a.name,
+                  Commission: a.commission ?? 0,
+                  Bookings: a.bookings ?? 0,
+                  'Share %': parseFloat(sharePct.toFixed(2)),
+                  Deals: a.deals ?? 0,
+                  'Win Rate': (a.win_rate ?? 0) * 100,
+                  'Avg Deal': a.avg_deal_size ?? 0,
+                  Pipeline: a.pipeline_value ?? 0,
+                  ...(hasTargets ? { Target: targetMap!.get(a.name) ?? 0 } : {}),
+                }
+              })
               exportToExcel(rows, `Advisor_Leaderboard_${new Date().toISOString().slice(0,10)}`)
             }}
             className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition">
@@ -124,6 +147,7 @@ function LeaderboardFull({ leaders, onSelect, targetMap }: {
             <tr className="border-b border-border bg-secondary/20">
               <th className="w-10 px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">#</th>
               <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Advisor</th>
+              {showBranch && <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Branch</th>}
               {COLS.map((col) => (
                 <th
                   key={col.key}
@@ -136,6 +160,9 @@ function LeaderboardFull({ leaders, onSelect, targetMap }: {
                   </div>
                 </th>
               ))}
+              <th className="whitespace-nowrap px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                Share
+              </th>
               {hasTargets && (
                 <th className="whitespace-nowrap px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                   vs Target
@@ -145,47 +172,55 @@ function LeaderboardFull({ leaders, onSelect, targetMap }: {
             </tr>
           </thead>
           <tbody>
-            {displayed.map((a, idx) => (
-              <tr
-                key={a.name}
-                onClick={() => onSelect(a.name)}
-                className={cn(
-                  'group cursor-pointer border-b transition-colors duration-100',
-                  idx % 2 === 0 ? 'border-border/20' : 'border-border/20 bg-secondary/10',
-                  'hover:bg-primary/5',
-                )}
-              >
-                <td className="px-3 py-2.5 text-center">
-                  <span className={cn(
-                    'inline-flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold',
-                    a.rank === 1 && 'bg-amber-500/15 text-amber-500',
-                    a.rank === 2 && 'bg-slate-400/15 text-slate-400',
-                    a.rank === 3 && 'bg-orange-600/15 text-orange-500',
-                    a.rank > 3 && 'text-muted-foreground',
-                  )}>
-                    {a.rank}
-                  </span>
-                </td>
-                <td className="px-3 py-2.5 text-[12px] font-medium text-primary">{a.name}</td>
-                {COLS.map((col) => (
-                  <td key={col.key} className={cn(
-                    'tabular-nums whitespace-nowrap px-3 py-2.5 text-right text-[12px]',
-                    col.key === 'commission' ? 'font-semibold' : 'text-muted-foreground',
-                    col.key === 'win_rate' && a.win_rate >= 55 && 'text-emerald-500',
-                    col.key === 'win_rate' && a.win_rate < 35 && 'text-rose-500',
-                  )}>
-                    {col.fmt(a)}
+            {displayed.map((a, idx) => {
+              const agentBase = totalCommission > 0 ? (a.commission || 0) : (a.bookings || 0)
+              const sharePct = shareBase > 0 ? (agentBase / shareBase) * 100 : 0
+              return (
+                <tr
+                  key={a.name}
+                  onClick={() => onSelect(a.name)}
+                  className={cn(
+                    'group cursor-pointer border-b transition-colors duration-100',
+                    idx % 2 === 0 ? 'border-border/20' : 'border-border/20 bg-secondary/10',
+                    'hover:bg-primary/5',
+                  )}
+                >
+                  <td className="px-3 py-2.5 text-center">
+                    <span className={cn(
+                      'inline-flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold',
+                      a.rank === 1 && 'bg-amber-500/15 text-amber-500',
+                      a.rank === 2 && 'bg-slate-400/15 text-slate-400',
+                      a.rank === 3 && 'bg-orange-600/15 text-orange-500',
+                      a.rank > 3 && 'text-muted-foreground',
+                    )}>
+                      {a.rank}
+                    </span>
                   </td>
-                ))}
-                {hasTargets && <TargetCell name={a.name} bookings={a.bookings} targetMap={targetMap!} />}
-                <td className="pr-3 py-2.5">
-                  <ChevronRight className="h-3 w-3 text-muted-foreground/50 transition-colors group-hover:text-primary" />
-                </td>
-              </tr>
-            ))}
+                  <td className="px-3 py-2.5 text-[12px] font-medium text-primary">{a.name}</td>
+                  {showBranch && <td className="px-3 py-2.5 text-[12px] text-muted-foreground">{a.branch ?? '—'}</td>}
+                  {COLS.map((col) => (
+                    <td key={col.key} className={cn(
+                      'tabular-nums whitespace-nowrap px-3 py-2.5 text-right text-[12px]',
+                      col.key === 'commission' ? 'font-semibold' : 'text-muted-foreground',
+                      col.key === 'win_rate' && a.win_rate >= 55 && 'text-emerald-500',
+                      col.key === 'win_rate' && a.win_rate < 35 && 'text-rose-500',
+                    )}>
+                      {col.fmt(a)}
+                    </td>
+                  ))}
+                  <td className="px-3 py-2.5">
+                    <ShareBar pct={sharePct} rank={a.rank} />
+                  </td>
+                  {hasTargets && <TargetCell name={a.name} bookings={a.bookings} targetMap={targetMap!} />}
+                  <td className="pr-3 py-2.5">
+                    <ChevronRight className="h-3 w-3 text-muted-foreground/50 transition-colors group-hover:text-primary" />
+                  </td>
+                </tr>
+              )
+            })}
             {leaders.length === 0 && (
               <tr>
-                <td colSpan={COLS.length + 3} className="px-5 py-8 text-center text-[12px] text-muted-foreground">
+                <td colSpan={COLS.length + 4} className="px-5 py-8 text-center text-[12px] text-muted-foreground">
                   No advisor data available
                 </td>
               </tr>

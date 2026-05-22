@@ -3,7 +3,7 @@ import { useSales } from '@/contexts/SalesContext'
 import { fetchPerformanceMonthly, fetchTargets } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { Tip } from '@/components/MetricTip'
-import { Loader2, BarChart3, Table2, Sparkles } from 'lucide-react'
+import { Loader2, BarChart3, Table2, Sparkles, RefreshCw } from 'lucide-react'
 import type { AgentReport, Metric, SortField, MonthData } from './monthly/types'
 import { METRICS } from './monthly/types'
 import ChartsTab from './monthly/ChartsTab'
@@ -44,6 +44,10 @@ export default function MonthlyReport() {
   const [showAll, setShowAll] = useState(false)
   const [tab, setTab] = useState<Tab>('details')
   const [targetMap, setTargetMap] = useState<Map<string, number>>(new Map())
+  const [retryCount, setRetryCount] = useState(0)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const forceRefresh = () => { setRetryCount(c => c + 1); setRefreshing(true) }
 
   useEffect(() => {
     let cancelled = false
@@ -60,7 +64,7 @@ export default function MonthlyReport() {
         setDivTotals(data.division_totals ?? {})
       })
       .catch(console.error)
-      .finally(() => { if (!cancelled) setLoading(false) })
+      .finally(() => { if (!cancelled) { setLoading(false); setRefreshing(false) } })
     fetchTargets()
       .then((td) => {
         if (cancelled) return
@@ -72,7 +76,7 @@ export default function MonthlyReport() {
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [line, period, startDate, endDate])
+  }, [line, period, startDate, endDate, retryCount])
 
   // Sorting logic (shared across tabs)
   const toggleSort = (field: SortField) => {
@@ -126,6 +130,15 @@ export default function MonthlyReport() {
           </h1>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={forceRefresh}
+            disabled={refreshing}
+            title="Force refresh from source"
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary/40 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all disabled:opacity-50"
+          >
+            <RefreshCw className={cn('h-3 w-3', refreshing && 'animate-spin')} />
+            Refresh
+          </button>
           {/* Metric selector */}
           <Tip text={METRICS.find(m => m.key === metric)?.tip ?? ''} />
           <div className="flex gap-1 rounded-lg border border-border bg-secondary/30 p-1">

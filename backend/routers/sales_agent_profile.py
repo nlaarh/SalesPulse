@@ -95,7 +95,7 @@ def agent_profile(
         queries = build_profile_queries(
             safe=safe, lf=lf, lf_lead=lf_lead, ow=ow,
             sd=sd, ed=ed, p_sd=p_sd, p_ed=p_ed,
-            cy=cy, py=py, sma=sma,
+            cy=cy, py=py, sma=sma, today=today,
         )
         data = sf_parallel(**queries)
 
@@ -215,7 +215,7 @@ def agent_top_customers(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
 ):
-    """Top 10 customers by spend for this advisor, with membership/insurance/travel flags."""
+    """Top 50 customers by spend for this advisor, with membership/insurance/travel flags + deal drill-down."""
     from shared import (
         resolve_dates as _resolve_dates,
         line_filter_opp as _line_filter_opp,
@@ -240,17 +240,19 @@ def agent_top_customers(
           AND Amount != null AND AccountId != null
         GROUP BY AccountId
         ORDER BY SUM(Amount) DESC
-        LIMIT 10
+        LIMIT 50
     """)
     if not rows:
-        return {"customers": []}
+        return {"customers": [], "total_revenue": 0}
 
     account_ids = [r.get('AccountId') for r in rows if r.get('AccountId')]
     ids_csv = ",".join(f"'{aid}'" for aid in account_ids)
 
+    # Parallel: account details + travel portfolios + individual deals
     acct_rows = sf_query_all(f"""
-        SELECT Id, Name, Account_Member_ID__c, ImportantActiveMemCoverage__c,
-               Insuance_Customer_ID__c, Member_Status__c
+        SELECT Id, Name, Phone, PersonMobilePhone, PersonEmail, BillingCity,
+               Account_Member_ID__c, ImportantActiveMemCoverage__c,
+               Insuance_Customer_ID__c, Member_Status__c, Account_Member_Since__c
         FROM Account
         WHERE Id IN ({ids_csv})
     """)
@@ -259,41 +261,81 @@ def agent_top_customers(
         FROM Travel_Portfolio__c
         WHERE Account__c IN ({ids_csv})
     """)
+    deal_rows = sf_query_all(f"""
+        SELECT Id, Name, AccountId, Amount, CloseDate, StageName, Earned_Commission_Amount__c
+        FROM Opportunity
+        WHERE AccountId IN ({ids_csv}) AND {ow} AND StageName IN ('Closed Won','Invoice') AND {lf}
+          AND CloseDate >= {sd} AND CloseDate <= {ed}
+          AND Amount != null
+        ORDER BY CloseDate DESC
+        LIMIT 500
+    """)
 
     acct_map = {r.get('Id', ''): r for r in acct_rows if r.get('Id')}
     has_travel = {r.get('Account__c') for r in tp_rows if r.get('Account__c')}
     sf_base = sf_instance_url()
 
+    # Group deals by AccountId
+    from collections import defaultdict
+    deals_by_acct: dict = defaultdict(list)
+    for d in deal_rows:
+        aid = d.get('AccountId', '')
+        if aid:
+            deals_by_acct[aid].append({
+                'id': d.get('Id', ''),
+                'name': d.get('Name', '') or '',
+                'amount': round(d.get('Amount') or 0, 2),
+                'commission': round(d.get('Earned_Commission_Amount__c') or 0, 2),
+                'close_date': d.get('CloseDate', '') or '',
+                'stage': d.get('StageName', '') or '',
+                'sf_link': f"{sf_base}/{d.get('Id', '')}",
+            })
+
     def _mem_label(raw):
-        value = (raw or '').strip()
-        labels = {
-            'PLUS': 'Plus',
-            'PREMIER': 'Premier',
-            'B': 'Basic',
-            'BASIC': 'Basic',
-        }
+        value = (raw or '').strip().upper()
+        labels = {'PLUS': 'Plus', 'PREMIER': 'Premier', 'B': 'Basic', 'BASIC': 'Basic',
+                  'PLRV': 'Plus RV', 'PMRV': 'Premier RV'}
         return labels.get(value, value.title()) if value else ''
 
+    def _phone(acct):
+        return (acct.get('Phone') or acct.get('PersonMobilePhone') or '').strip()
+
+    def _tenure(ms):
+        try:
+            from datetime import date as _date
+            since = _date.fromisoformat(ms)
+            return _date.today().year - since.year
+        except Exception:
+            return None
+
+    total_revenue = sum(r.get('total') or 0 for r in rows)
     customers = []
     for row in rows:
         aid = row.get('AccountId')
         if not aid:
             continue
         acct = acct_map.get(aid, {})
+        spend = round(row.get('total', 0) or 0, 2)
         customers.append({
             'account_id': aid,
-            'name': acct.get('Name', ''),
-            'total_spend': round(row.get('total', 0) or 0, 2),
+            'name': acct.get('Name', '') or '',
+            'phone': _phone(acct),
+            'email': acct.get('PersonEmail', '') or '',
+            'city': acct.get('BillingCity', '') or '',
+            'total_spend': spend,
+            'revenue_share': round(spend / total_revenue * 100, 1) if total_revenue else 0,
             'deal_count': row.get('cnt', 0) or 0,
-            'last_close': row.get('last_close', ''),
+            'last_close': row.get('last_close', '') or '',
             'membership': _mem_label(acct.get('ImportantActiveMemCoverage__c')),
+            'tenure_years': _tenure(acct.get('Account_Member_Since__c', '') or ''),
             'member_status': acct.get('Member_Status__c', '') or '',
             'has_insurance': bool(acct.get('Insuance_Customer_ID__c')),
             'has_travel': aid in has_travel,
             'sf_link': f"{sf_base}/{aid}",
+            'deals': deals_by_acct.get(aid, []),
         })
 
-    return {"customers": customers}
+    return {"customers": customers, "total_revenue": round(total_revenue, 2)}
 
 
 @router.get("/api/sales/agent/cross-sell")

@@ -25,6 +25,49 @@ from shared import (
 )
 from constants import WIN_RATE_COACHING_THRESHOLD, MIN_CLOSED_DEALS_FOR_EVAL, PIPELINE_COVERAGE_HEALTHY, CACHE_TTL_HOUR, CACHE_TTL_MEDIUM, CACHE_TTL_DAY, CACHE_TTL_12H
 
+# Lines whose commission+sales come from PBI (authoritative) rather than Salesforce
+_PBI_COMMISSION_LINES = frozenset({'Travel', 'Insurance'})
+
+# PBI noise entries that are aggregator buckets, not real advisors
+_PBI_NOISE_FRAGMENTS = ('misc', 'aaa.com', 'dept agent', 'group dept')
+
+
+def _norm_name(n: str) -> str:
+    """Normalize for matching: lowercase, strip single-letter middle names."""
+    return ' '.join(p for p in n.lower().split() if len(p) > 1)
+
+
+def _is_pbi_noise(name: str) -> bool:
+    nl = name.lower()
+    return any(f in nl for f in _PBI_NOISE_FRAGMENTS)
+
+
+def _pbi_monthly_map(line: str, sd: str, ed: str) -> dict:
+    """Pull PBI data (Travel or Insurance) grouped by advisor+day, collapsed to YYYY-MM.
+
+    Returns: {norm_name: {YYYY-MM: {commission, sales, _raw_name}}}
+    """
+    if line == 'Travel':
+        from pbi_client import travel_by_advisor_day as pbi_fn
+    else:
+        from pbi_client import insurance_by_advisor_day as pbi_fn
+    result: dict = {}
+    for r in pbi_fn(sd, ed):
+        name = r['name']
+        if not name or _is_pbi_noise(name):
+            continue
+        nk = _norm_name(name)
+        month = r['date'][:7]
+        if not nk or len(month) != 7:
+            continue
+        if nk not in result:
+            result[nk] = {}
+        if month not in result[nk]:
+            result[nk][month] = {'commission': 0.0, 'sales': 0.0, '_raw_name': name}
+        result[nk][month]['commission'] += r['commission']
+        result[nk][month]['sales']      += r['sales']
+    return result
+
 router = APIRouter()
 log = logging.getLogger('sales.performance')
 
@@ -92,6 +135,8 @@ def performance_monthly(
         )
 
         owner_map = get_owner_map()
+        # Reverse map for sf_id lookup: lowercased name → SF User ID (active only)
+        name_lower_to_id = {name.lower(): uid for uid, name in owner_map.items()}
 
         agents: dict = {}
 
@@ -134,12 +179,39 @@ def performance_monthly(
             ym = f"{r.get('yr')}-{str(r.get('mo', 0)).zfill(2)}"
             ensure(name, ym)
             agents[name][ym]['sales'] = r.get('rev', 0) or 0
-            # Insurance: Amount IS the commission (Earned_Commission_Amount__c is $0)
-            # Travel: use Earned_Commission_Amount__c for actual commission
+            # Insurance: Amount IS the commission; Travel: SF commission is incomplete
             if is_insurance:
                 agents[name][ym]['commission'] = r.get('rev', 0) or 0
             else:
                 agents[name][ym]['commission'] = r.get('comm', 0) or 0
+
+        # ── PBI overlay: replace commission+sales with authoritative PBI data ──
+        if line in _PBI_COMMISSION_LINES:
+            pbi = _pbi_monthly_map(line, sd, ed)
+            matched: set[str] = set()
+            # Update SF-matched agents; zero out unmatched (SF rev ≠ PBI commission)
+            for sf_name in list(agents.keys()):
+                nk = _norm_name(sf_name)
+                if nk in pbi:
+                    matched.add(nk)
+                    for ym, pd in pbi[nk].items():
+                        ensure(sf_name, ym)
+                        agents[sf_name][ym]['commission'] = pd['commission']
+                        agents[sf_name][ym]['sales']      = pd['sales']
+                else:
+                    # No PBI record → zero commission so this agent is filtered out below
+                    for ym in agents[sf_name]:
+                        agents[sf_name][ym]['commission'] = 0.0
+                        agents[sf_name][ym]['sales']      = 0.0
+            # Add PBI-only advisors (inactive or not in SF — e.g. Tracey Miller)
+            for nk, months in pbi.items():
+                if nk in matched:
+                    continue
+                raw_name = next(iter(months.values()))['_raw_name']
+                for ym, pd in months.items():
+                    ensure(raw_name, ym)
+                    agents[raw_name][ym]['commission'] = pd['commission']
+                    agents[raw_name][ym]['sales']      = pd['sales']
 
         result = []
         for name, months_data in agents.items():
@@ -171,13 +243,20 @@ def performance_monthly(
                 },
             })
 
-        # Remove agents with $0 total sales (non-sales people)
-        result = [a for a in result if a['totals']['sales'] > 0]
-        # Filter to whitelisted sales agents
-        result = [a for a in result if is_sales_agent(a['name'], line)]
-        result.sort(key=lambda x: x['totals']['sales'], reverse=True)
+        if line in _PBI_COMMISSION_LINES:
+            # PBI is authoritative: include any advisor with PBI commission > 0
+            result = [a for a in result if a['totals']['commission'] > 0]
+        else:
+            # SF-backed lines: filter to whitelisted sales agents with actual sales
+            result = [a for a in result if a['totals']['sales'] > 0]
+            result = [a for a in result if is_sales_agent(a['name'], line)]
+        result.sort(key=lambda x: x['totals']['commission'], reverse=True)
         for i, a in enumerate(result):
             a['rank'] = i + 1
+            sf_id = name_lower_to_id.get(a['name'].lower())
+            a['sf_id'] = sf_id
+            # Inactive = produced PBI data but not an active SF user
+            a['inactive'] = sf_id is None and line in _PBI_COMMISSION_LINES
 
         # Division totals
         div_leads = sum(a['totals']['leads'] for a in result)

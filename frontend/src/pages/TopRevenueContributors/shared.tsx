@@ -19,7 +19,7 @@ export function fmtNum(n: number) {
   return n.toLocaleString('en-US', { maximumFractionDigits: 0 })
 }
 
-export type Tab = 'customers' | 'destinations' | 'regions'
+export type Tab = 'customers' | 'destinations' | 'regions' | 'advisors' | 'branches'
 
 /* ── Pie3D ───────────────────────────────────────────────────────────────────*/
 

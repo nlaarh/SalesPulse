@@ -4,7 +4,8 @@ export interface TaskItem {
   id: string; subject: string; status: string; priority: string
   due_date: string | null; related_to: string; what_id: string
   opp_amount: number | null; overdue: boolean
-  days_overdue: number | null; created: string
+  days_overdue: number | null; created?: string
+  description?: string
 }
 
 export interface TaskStats {

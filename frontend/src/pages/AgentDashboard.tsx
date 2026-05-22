@@ -54,7 +54,11 @@ export interface AgentProfile {
     id: string; name: string; amount: number; stage: string
     probability: number; close_date: string; commission: number
   }>
-  team: { avg_revenue: number; avg_commission: number; win_rate: number; avg_deal: number; total_agents: number }
+  team: {
+    avg_revenue: number; avg_commission: number; win_rate: number; avg_deal: number; total_agents: number
+    division_month_revenue?: number; division_ytd_revenue?: number
+    division_month_commission?: number; division_ytd_commission?: number
+  }
   strengths: string[]; improvements: string[]
   pushed_count: number; pushed_value: number; stale_count: number
   writeup: string; ai_powered: boolean
@@ -441,8 +445,66 @@ export default function AgentDashboard() {
         </div>
       )}
 
+      {/* ── Division Contribution ──────────────────────────────────────── */}
+      {(() => {
+        const isIns = profile.line.toLowerCase() === 'insurance'
+        const divMonthRev  = isIns ? (profile.team.division_month_commission ?? 0) : (profile.team.division_month_revenue ?? 0)
+        const divYtdRev    = isIns ? (profile.team.division_ytd_commission   ?? 0) : (profile.team.division_ytd_revenue   ?? 0)
+        if (!divMonthRev && !divYtdRev) return null
+
+        const today = new Date()
+        const currentMo = today.getMonth() + 1
+        const agentMoRev  = isIns
+          ? (profile.months.find(m => m.month === currentMo)?.commission ?? 0)
+          : (profile.months.find(m => m.month === currentMo)?.revenue   ?? 0)
+        const agentYtdRev = profile.months
+          .filter(m => m.month <= currentMo)
+          .reduce((s, m) => s + (isIns ? m.commission : m.revenue), 0)
+
+        const moPct  = divMonthRev  > 0 ? (agentMoRev  / divMonthRev)  * 100 : 0
+        const ytdPct = divYtdRev    > 0 ? (agentYtdRev / divYtdRev)    * 100 : 0
+
+        const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        const moLabel = MONTHS_SHORT[currentMo - 1]
+
+        function ContribBar({ pct, label, actual, total }: { pct: number; label: string; actual: number; total: number }) {
+          return (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
+                <span className="text-[13px] font-bold tabular-nums">{pct.toFixed(1)}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-secondary overflow-hidden">
+                <div
+                  className={cn('h-full rounded-full transition-all', pct >= 10 ? 'bg-primary' : pct >= 5 ? 'bg-primary/70' : 'bg-primary/40')}
+                  style={{ width: `${Math.min(pct * 4, 100)}%` }}
+                />
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-[11px] text-muted-foreground">{formatCurrency(actual, true)} of {formatCurrency(total, true)}</span>
+                <span className="text-[11px] text-muted-foreground">{profile!.team.total_agents} advisors</span>
+              </div>
+            </div>
+          )
+        }
+
+        return (
+          <div className="animate-enter stagger-3 card-premium px-5 py-4">
+            <div className="mb-3">
+              <span className="text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                Division Contribution — {profile.name}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-6">
+              <ContribBar label={`${moLabel} Contribution`} pct={moPct} actual={agentMoRev} total={divMonthRev} />
+              <ContribBar label={`${today.getFullYear()} YTD Contribution`} pct={ytdPct} actual={agentYtdRev} total={divYtdRev} />
+            </div>
+          </div>
+        )
+      })()}
+
       {/* ── Tabbed Section ────────────────────────────────────────────── */}
-      <div className="animate-enter stagger-3 card-premium overflow-hidden">
+      <div className="animate-enter stagger-4 card-premium overflow-hidden">
         {/* Tab bar — scrollable for many tabs */}
         <div className="flex items-center gap-1 overflow-x-auto border-b border-border px-4">
           <TabButton

@@ -43,8 +43,13 @@ def win_rate(rows):
 # ── SOQL Query Builder ──────────────────────────────────────────────────────
 
 def build_profile_queries(*, safe, lf, lf_lead, ow, sd, ed, p_sd, p_ed,
-                          cy, py, sma):
+                          cy, py, sma, today=None):
     """Return dict of named SOQL queries for sf_parallel(**queries)."""
+    from datetime import date as _date
+    _today = today or _date.today()
+    _month_start = f"{cy}-{_today.month:02d}-01"
+    _ytd_start   = f"{cy}-01-01"
+    _today_iso   = _today.isoformat()
     return dict(
         # Agent: email lookup
         agent_user=f"""
@@ -206,6 +211,20 @@ def build_profile_queries(*, safe, lf, lf_lead, ow, sd, ed, p_sd, p_ed,
               AND CreatedDate >= {sd}T00:00:00Z
               AND CreatedDate <= {ed}T23:59:59Z
         """,
+        # Team: division total for current calendar month (for contribution %)
+        t_won_month=f"""
+            SELECT SUM(Amount) rev, SUM(Earned_Commission_Amount__c) comm
+            FROM Opportunity
+            WHERE {WON_STAGES} AND {lf}
+              AND CloseDate >= {_month_start} AND CloseDate <= {_today_iso} AND Amount != null
+        """,
+        # Team: division total YTD (for contribution %)
+        t_won_ytd=f"""
+            SELECT SUM(Amount) rev, SUM(Earned_Commission_Amount__c) comm
+            FROM Opportunity
+            WHERE {WON_STAGES} AND {lf}
+              AND CloseDate >= {_ytd_start} AND CloseDate <= {_today_iso} AND Amount != null
+        """,
     )
 
 
@@ -297,10 +316,19 @@ def compute_team_averages(data, line, is_insurance):
     t_avg_comm = round(t_comm / n_agents) if n_agents else 0
     t_avg_deal = round(t_rev / t_won_cnt) if t_won_cnt else 0
 
+    div_month_rev  = _val(data.get('t_won_month', [{}]), 'rev')
+    div_ytd_rev    = _val(data.get('t_won_ytd',   [{}]), 'rev')
+    div_month_comm = div_month_rev if is_insurance else _val(data.get('t_won_month', [{}]), 'comm')
+    div_ytd_comm   = div_ytd_rev   if is_insurance else _val(data.get('t_won_ytd',   [{}]), 'comm')
+
     return {
         'avg_revenue': t_avg_rev, 'avg_commission': t_avg_comm,
         'win_rate': t_wr, 'avg_deal': t_avg_deal,
         'total_agents': n_agents,
+        'division_month_revenue':    div_month_rev,
+        'division_ytd_revenue':      div_ytd_rev,
+        'division_month_commission': div_month_comm,
+        'division_ytd_commission':   div_ytd_comm,
     }
 
 

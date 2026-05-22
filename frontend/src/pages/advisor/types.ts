@@ -22,6 +22,7 @@ export interface Advisor {
   bookings: number; commission: number; revenue: number
   deals: number; win_rate: number; avg_deal_size: number
   pipeline_value: number; pipeline_count: number
+  branch?: string
 }
 
 export interface YoYData {

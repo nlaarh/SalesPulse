@@ -168,13 +168,27 @@ _INS_EXCLUDE_TITLE_KEYWORDS = [
 
 def _is_travel_sales_title(title: str) -> bool:
     t = title.lower()
+    # TSC roles (advisors and reps) are always sales
     if 'tsc' in t:
         return True
-    if 'travel advisor' in t:
-        return ('member experience' not in t
-                and 'call center' not in t
-                and 'group travel' not in t)
-    return False
+    # Non-sales regardless of other keywords: pure call-center inbound, trainers, contractors
+    if any(kw in t for kw in (
+        'call center',
+        'trainer',
+        'product development',
+        'sales development coordinator',
+        'independent contractor',
+    )):
+        return False
+    # Travel sales roles — includes all advisor variants (Member Experience, Virtual,
+    # Senior, Associate…), group travel sales roles, and selling branch managers
+    return (
+        'travel advisor' in t
+        or 'travel concierge' in t
+        or 'group travel advisor' in t
+        or t.startswith('manager, group travel')
+        or t.startswith('manager, branch')
+    )
 
 
 def _load_all_users() -> None:
