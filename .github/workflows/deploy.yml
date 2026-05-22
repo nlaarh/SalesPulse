@@ -42,10 +42,15 @@ jobs:
           *.py \
           *.json \
           routers/ \
+          data/ \
+          seed_data/ \
           gunicorn_conf.py \
           requirements.txt \
-          static/
+          static/ \
+          -x "*/__pycache__/*" "*.pyc"
         echo "Package size: $(du -h ../deploy.zip | cut -f1)"
+        echo "Package contents (top-level):"
+        unzip -l ../deploy.zip | head -25
 
     - name: Deploy to Azure via Kudu ZIP Deploy
       env:
