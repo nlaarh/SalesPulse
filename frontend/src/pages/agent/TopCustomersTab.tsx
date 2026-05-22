@@ -132,7 +132,15 @@ export default function TopCustomersTab({
 
             {/* Name + membership tier */}
             <div className="min-w-0">
-              <span className="block truncate text-[13px] font-medium">{c.name}</span>
+              <a
+                href={c.sf_link || `https://aaawcny.my.salesforce.com/${c.account_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block truncate text-[13px] font-medium hover:text-primary hover:underline transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {c.name}
+              </a>
               <MembershipBadge tier={c.membership} />
             </div>
 

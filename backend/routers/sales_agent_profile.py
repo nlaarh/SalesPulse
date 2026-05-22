@@ -301,10 +301,11 @@ def agent_cross_sell(
     name: str,
     line: str = "Travel",
 ):
-    """Members owned by this agent: who needs insurance, who needs travel."""
+    """Members owned by this agent: who needs insurance, travel, upgrade, or new membership."""
     from shared import (
         get_owner_map,
         escape_soql as _escape,
+        line_filter_opp as _line_filter_opp,
     )
     from sf_client import sf_query_all, sf_instance_url
 
@@ -313,6 +314,7 @@ def agent_cross_sell(
     name_to_id = {v.strip().lower(): k for k, v in owner_map.items()}
     owner_id = name_to_id.get(name.strip().lower())
     ow = f"OwnerId = '{owner_id}'" if owner_id else f"Owner.Name = '{safe}'"
+    lf = _line_filter_opp(line)
 
     members = sf_query_all(f"""
         SELECT Id, Name, PersonEmail, Phone, BillingCity, Account_Member_ID__c,
@@ -323,38 +325,19 @@ def agent_cross_sell(
         ORDER BY CreatedDate DESC
         LIMIT 500
     """)
-    if not members:
-        return {
-            'members_no_insurance': [],
-            'members_no_travel': [],
-            'summary': {
-                'total_active_members': 0,
-                'with_insurance': 0,
-                'with_travel': 0,
-            },
-        }
 
-    member_ids = [m.get('Id') for m in members if m.get('Id')]
-    ids_csv = ",".join(f"'{aid}'" for aid in member_ids)
-    tp_rows = sf_query_all(f"""
-        SELECT Account__c
-        FROM Travel_Portfolio__c
-        WHERE Account__c IN ({ids_csv})
-    """)
-    has_travel_set = {r.get('Account__c') for r in tp_rows if r.get('Account__c')}
+    today = date.today()
     sf_base = sf_instance_url()
 
     def _mem_label(raw):
-        value = (raw or '').strip()
-        labels = {
-            'PLUS': 'Plus',
-            'PREMIER': 'Premier',
-            'B': 'Basic',
-            'BASIC': 'Basic',
-            'PLRV': 'Plus RV',
-            'PMRV': 'Premier RV',
-        }
-        return labels.get(value, value.title()) if value else ''
+        value = (raw or '').strip().upper()
+        labels = {'PLUS': 'Plus', 'PREMIER': 'Premier', 'B': 'Basic', 'BASIC': 'Basic',
+                  'PLRV': 'Plus RV', 'PMRV': 'Premier RV'}
+        return labels.get(value, value.title()) if value else 'Basic'
+
+    def _is_basic(raw):
+        v = (raw or '').strip().upper()
+        return v in ('', 'B', 'BASIC')
 
     def _tenure(ms):
         try:
@@ -363,20 +346,102 @@ def agent_cross_sell(
         except Exception:
             return None
 
-    today = date.today()
+    if not members:
+        # Still query non-member customers even if no active members
+        won_rows = sf_query_all(f"""
+            SELECT AccountId, SUM(Amount) total, COUNT(Id) cnt
+            FROM Opportunity
+            WHERE {ow} AND StageName IN ('Closed Won','Invoice') AND {lf}
+              AND AccountId != null AND Amount != null
+            GROUP BY AccountId
+            ORDER BY SUM(Amount) DESC
+            LIMIT 50
+        """)
+        non_member_customers = []
+        if won_rows:
+            acct_ids = [r.get('AccountId') for r in won_rows if r.get('AccountId')]
+            ids_csv = ",".join(f"'{aid}'" for aid in acct_ids)
+            acct_rows = sf_query_all(f"SELECT Id, Name, BillingCity FROM Account WHERE Id IN ({ids_csv})")
+            acct_map = {r.get('Id'): r for r in acct_rows if r.get('Id')}
+            for r in won_rows:
+                aid = r.get('AccountId', '')
+                acct = acct_map.get(aid, {})
+                non_member_customers.append({
+                    'account_id': aid, 'name': acct.get('Name', '') or '',
+                    'city': acct.get('BillingCity', '') or '',
+                    'total_spend': round(r.get('total') or 0, 2),
+                    'deal_count': r.get('cnt') or 0,
+                    'sf_link': f"{sf_base}/{aid}",
+                })
+        return {
+            'members_no_insurance': [], 'members_no_travel': [],
+            'members_upgrade': [], 'non_member_customers': non_member_customers,
+            'summary': {'total_active_members': 0, 'with_insurance': 0,
+                        'with_travel': 0, 'basic_tier': 0},
+        }
+
+    member_ids = [m.get('Id') for m in members if m.get('Id')]
+    member_id_set = set(member_ids)
+    ids_csv = ",".join(f"'{aid}'" for aid in member_ids)
+
+    tp_rows = sf_query_all(f"""
+        SELECT Account__c FROM Travel_Portfolio__c WHERE Account__c IN ({ids_csv})
+    """)
+    has_travel_set = {r.get('Account__c') for r in tp_rows if r.get('Account__c')}
+
+    # Non-member customers: had won deals with this agent but not an active member
+    won_rows = sf_query_all(f"""
+        SELECT AccountId, SUM(Amount) total, COUNT(Id) cnt
+        FROM Opportunity
+        WHERE {ow} AND StageName IN ('Closed Won','Invoice') AND {lf}
+          AND AccountId != null AND Amount != null
+        GROUP BY AccountId
+        ORDER BY SUM(Amount) DESC
+        LIMIT 50
+    """)
+    non_member_customers = []
+    if won_rows:
+        non_member_ids = [r.get('AccountId') for r in won_rows
+                          if r.get('AccountId') and r.get('AccountId') not in member_id_set]
+        if non_member_ids:
+            nm_csv = ",".join(f"'{aid}'" for aid in non_member_ids)
+            nm_rows = sf_query_all(f"SELECT Id, Name, BillingCity FROM Account WHERE Id IN ({nm_csv})")
+            nm_map = {r.get('Id'): r for r in nm_rows if r.get('Id')}
+            spend_map = {r.get('AccountId'): r for r in won_rows}
+            for aid in non_member_ids:
+                acct = nm_map.get(aid, {})
+                if not acct:
+                    continue
+                r = spend_map.get(aid, {})
+                non_member_customers.append({
+                    'account_id': aid,
+                    'name': acct.get('Name', '') or '',
+                    'city': acct.get('BillingCity', '') or '',
+                    'total_spend': round(r.get('total') or 0, 2),
+                    'deal_count': r.get('cnt') or 0,
+                    'sf_link': f"{sf_base}/{aid}",
+                })
+
     members_no_insurance = []
     members_no_travel = []
+    members_upgrade = []
     with_insurance = 0
     with_travel = 0
+    basic_count = 0
 
     for member in members:
         aid = member.get('Id', '')
         has_ins = bool(member.get('Insuance_Customer_ID__c'))
         has_trv = aid in has_travel_set
+        mem_raw = member.get('ImportantActiveMemCoverage__c')
+        is_basic = _is_basic(mem_raw)
+
         if has_ins:
             with_insurance += 1
         if has_trv:
             with_travel += 1
+        if is_basic:
+            basic_count += 1
 
         row = {
             'account_id': aid,
@@ -384,7 +449,7 @@ def agent_cross_sell(
             'email': member.get('PersonEmail', '') or '',
             'phone': member.get('Phone', '') or '',
             'city': member.get('BillingCity', '') or '',
-            'membership': _mem_label(member.get('ImportantActiveMemCoverage__c')),
+            'membership': _mem_label(mem_raw),
             'tenure_years': _tenure(member.get('Account_Member_Since__c', '') or ''),
             'has_insurance': has_ins,
             'has_travel': has_trv,
@@ -394,13 +459,18 @@ def agent_cross_sell(
             members_no_insurance.append(row)
         if not has_trv:
             members_no_travel.append(row)
+        if is_basic:
+            members_upgrade.append(row)
 
     return {
         'members_no_insurance': members_no_insurance[:100],
         'members_no_travel': members_no_travel[:100],
+        'members_upgrade': members_upgrade[:100],
+        'non_member_customers': non_member_customers[:50],
         'summary': {
             'total_active_members': len(members),
             'with_insurance': with_insurance,
             'with_travel': with_travel,
+            'basic_tier': basic_count,
         },
     }

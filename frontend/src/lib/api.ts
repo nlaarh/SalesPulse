@@ -601,37 +601,22 @@ export async function fetchAgentTopCustomers(
 
 // ── Agent Cross-Sell ──────────────────────────────────────────────────────
 
-export async function fetchAgentCrossSell(name: string) {
-  const { data } = await api.get('/api/sales/agent/cross-sell', { params: { name } })
+export async function fetchAgentCrossSell(name: string, line?: string) {
+  const { data } = await api.get('/api/sales/agent/cross-sell', { params: { name, ...(line ? { line } : {}) } })
+  type Member = {
+    account_id: string; name: string; email: string; phone: string; city: string
+    membership: string; tenure_years: number | null; has_insurance: boolean; has_travel: boolean; sf_link: string
+  }
   return data as {
-    members_no_insurance: Array<{
-      account_id: string
-      name: string
-      email: string
-      phone: string
-      city: string
-      membership: string
-      tenure_years: number | null
-      has_insurance: boolean
-      has_travel: boolean
-      sf_link: string
-    }>
-    members_no_travel: Array<{
-      account_id: string
-      name: string
-      email: string
-      phone: string
-      city: string
-      membership: string
-      tenure_years: number | null
-      has_insurance: boolean
-      has_travel: boolean
-      sf_link: string
+    members_no_insurance: Member[]
+    members_no_travel: Member[]
+    members_upgrade: Member[]
+    non_member_customers: Array<{
+      account_id: string; name: string; city: string
+      total_spend: number; deal_count: number; sf_link: string
     }>
     summary: {
-      total_active_members: number
-      with_insurance: number
-      with_travel: number
+      total_active_members: number; with_insurance: number; with_travel: number; basic_tier: number
     }
   }
 }
