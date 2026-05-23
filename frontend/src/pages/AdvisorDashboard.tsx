@@ -15,7 +15,8 @@ import {
   fetchPipelineSlipping, fetchLeadsVolume,
   fetchAgentCloseSpeed,
   fetchTargets, fetchTargetAchievement,
-  fetchBranchMonthly, type BranchMonthlyData,
+  fetchBranchMonthly, fetchMonthlyTargets,
+  type BranchMonthlyData, type MonthlyTargetsResponse,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useChartColors } from '@/lib/chart-theme'
@@ -62,6 +63,7 @@ export default function AdvisorDashboard() {
   const [leadSources, setLeadSources] = useState<{ source: string; count: number }[]>([])
   const [closeSpeed, setCloseSpeed] = useState<CloseSpeed | null>(null)
   const [branchData, setBranchData] = useState<BranchMonthlyData | null>(null)
+  const [monthlyTargets, setMonthlyTargets] = useState<MonthlyTargetsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
@@ -140,14 +142,14 @@ export default function AdvisorDashboard() {
     fetchTargetAchievement(line, undefined, startDate, endDate)
       .then((data) => { if (cancelled) return; setAchievement(data) })
       .catch(() => {})
-    // Branch monthly data (Travel only)
-    if (line.toLowerCase() === 'travel') {
-      fetchBranchMonthly(line, period, startDate, endDate)
-        .then((data) => { if (cancelled) return; setBranchData(data) })
-        .catch(() => {})
-    } else {
-      setBranchData(null)
-    }
+    // Branch monthly data (all lines — used in Overview branch chart + BranchTab)
+    fetchBranchMonthly(line, period, startDate, endDate)
+      .then((data) => { if (cancelled) return; setBranchData(data) })
+      .catch(() => { if (!cancelled) setBranchData(null) })
+    // Monthly targets for the Overview bullet chart
+    fetchMonthlyTargets(new Date().getFullYear(), line)
+      .then((data) => { if (cancelled) return; setMonthlyTargets(data) })
+      .catch(() => {})
     return () => { cancelled = true }
   }, [line, period, startDate, endDate, retryCount, viewMode])
 
@@ -226,8 +228,8 @@ export default function AdvisorDashboard() {
         </div>
       </div>
 
-      {/* ── Target Achievement ────────────────────────────────────────── */}
-      {achievement?.current_month && achievement?.yearly && (
+      {/* ── Target Achievement (hidden on Overview — gauge shows it there) ── */}
+      {tab !== 'overview' && achievement?.current_month && achievement?.yearly && (
         <div className="animate-enter card-premium px-5 py-4">
           <div className="mb-3 flex items-center justify-between">
             <span className="text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
@@ -294,7 +296,6 @@ export default function AdvisorDashboard() {
         <OverviewTab
           summary={summary} isInsurance={isInsurance}
           dealsYoyPct={dealsYoyPct} pipelineCoverage={pipelineCoverage}
-          yoy={yoy}
           funnel={funnel} c={c}
           leaders={leaders} insights={insights}
           slipping={slipping}
@@ -302,6 +303,10 @@ export default function AdvisorDashboard() {
           onViewSummary={() => setTab('summary')}
           periodLabel={periodLabel}
           viewMode={viewMode}
+          achievement={achievement}
+          achBase={achBase}
+          monthlyTargets={monthlyTargets}
+          branchData={branchData}
         />
       )}
 
