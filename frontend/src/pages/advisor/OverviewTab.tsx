@@ -2,9 +2,9 @@
  * AdvisorDashboard — Tab 1: Overview (CEO edition)
  *
  * Answers 3 questions at a glance:
- *   1. Will we hit the goal?  → Annual gauge + monthly progress
- *   2. Who is driving it?     → Branch contribution + top advisors
- *   3. Where are we losing?   → Laggards + at-risk pipeline + AI insights
+ *   1. Will we hit the goal?  → Annual gauge + monthly progress (dashed target line)
+ *   2. Who is driving it?     → Branch + top advisors with % share
+ *   3. What's the pipeline?   → Funnel + at-risk + activity
  */
 
 import { useNavigate } from 'react-router-dom'
@@ -23,11 +23,7 @@ import {
   buildGaugeOption, buildMonthlyBulletOption,
   buildBranchBarOption, buildAdvisorBarOption,
 } from './overviewCharts'
-import {
-  DollarSign, Trophy, GitBranch, Target, Users,
-  Megaphone, TrendingDown, Sparkles, MapPin,
-  CheckCircle2, AlertTriangle, Lightbulb,
-} from 'lucide-react'
+import { DollarSign, Trophy, GitBranch, Target, Users, Megaphone, MapPin } from 'lucide-react'
 
 /* ── Props ── */
 
@@ -45,7 +41,6 @@ export interface OverviewTabProps {
   onViewSummary?: () => void
   periodLabel: string
   viewMode: string
-  // goal / progress data
   achievement?: AchievementResponse | null
   achBase?: 'commission' | 'bookings'
   monthlyTargets?: MonthlyTargetsResponse | null
@@ -96,56 +91,31 @@ function ActivityCell({ icon: Icon, label, value, color, bg, onClick, tip }: {
   )
 }
 
-const INSIGHT_ICON = {
-  success: <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />,
-  warning: <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />,
-  danger:  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-rose-500" />,
-  info:    <Lightbulb     className="h-3.5 w-3.5 shrink-0 text-primary" />,
-}
-const INSIGHT_BG = {
-  success: 'bg-emerald-500/6', warning: 'bg-amber-500/6',
-  danger:  'bg-rose-500/6',    info:    'bg-primary/6',
-}
-
 /* ── Main ── */
 
 export default function OverviewTab({
   summary, isInsurance, dealsYoyPct, pipelineCoverage,
-  funnel, c, leaders, insights, slipping,
-  onSelectAdvisor, onViewSummary, periodLabel,
+  funnel, c, leaders, slipping,
+  onSelectAdvisor, periodLabel,
   achievement, achBase = 'commission', monthlyTargets, branchData,
 }: OverviewTabProps) {
   const nav = useNavigate()
 
-  const billedValue = summary.bookings
-  const billedPct   = summary.bookings_yoy_pct
-  const commValue   = isInsurance ? summary.bookings : summary.commission
+  const billedValue      = summary.bookings
+  const billedPct        = summary.bookings_yoy_pct
+  const currentMonthIdx  = new Date().getMonth()
 
-  const currentMonthIdx  = new Date().getMonth() // 0-indexed
-  const annualPct        = achievement?.yearly?.company?.achievement_pct ?? null
-  const pacePct          = achievement?.yearly?.pace_pct ?? 0
-  const monthPct         = achievement?.current_month?.company?.achievement_pct ?? null
-  const monthActual      = achBase === 'bookings'
+  const annualPct    = achievement?.yearly?.company?.achievement_pct ?? null
+  const pacePct      = achievement?.yearly?.pace_pct ?? 0
+  const monthPct     = achievement?.current_month?.company?.achievement_pct ?? null
+  const monthActual  = achBase === 'bookings'
     ? (achievement?.current_month?.company?.bookings_actual ?? achievement?.current_month?.company?.actual ?? 0)
     : (achievement?.current_month?.company?.commission_actual ?? achievement?.current_month?.company?.actual ?? 0)
-  const monthTarget      = achBase === 'bookings'
+  const monthTarget  = achBase === 'bookings'
     ? (achievement?.current_month?.company?.bookings_target ?? achievement?.current_month?.company?.target ?? 0)
     : (achievement?.current_month?.company?.target ?? 0)
-  const companyMonths    = monthlyTargets?.company?.months ?? []
-  const hasGoalData      = annualPct !== null && achievement?.yearly
-
-  const top8     = leaders.slice(0, 8)
-  const reversed8 = [...top8].reverse()
-  const laggards = leaders.length >= 6 ? leaders.slice(-5) : []
-  const topVal   = leaders[0]
-    ? Math.max(leaders[0].commission > 0 ? leaders[0].commission : leaders[0].bookings, 1)
-    : 1
-
-  const showBranch   = !!(branchData?.branches?.length)
-  const leadsCount   = funnel?.steps?.[0]?.count ?? 0
-  const oppsCount    = funnel?.steps?.find(s => s.step.toLowerCase().includes('opp'))?.count
-                    ?? funnel?.steps?.[1]?.count ?? 0
-  const coveragePct  = Math.min(pipelineCoverage / 3 * 100, 100)
+  const companyMonths = monthlyTargets?.company?.months ?? []
+  const hasGoalData   = annualPct !== null && achievement?.yearly
 
   const yearlyActual = achBase === 'bookings'
     ? (achievement?.yearly?.company?.bookings_actual ?? achievement?.yearly?.company?.actual ?? 0)
@@ -154,7 +124,18 @@ export default function OverviewTab({
     ? (achievement?.yearly?.company?.bookings_target ?? achievement?.yearly?.company?.target ?? 0)
     : (achievement?.yearly?.company?.target ?? 0)
 
-  /* KPI tiles data */
+  const top8       = leaders.slice(0, 8)
+  const reversed8  = [...top8].reverse()
+  const showBranch = !!(branchData?.branches?.filter(b => b.total_commission > 0).length)
+  const leadsCount = funnel?.steps?.[0]?.count ?? 0
+  const oppsCount  = funnel?.steps?.find(s => s.step.toLowerCase().includes('opp'))?.count
+                  ?? funnel?.steps?.[1]?.count ?? 0
+  const coveragePct = Math.min(pipelineCoverage / 3 * 100, 100)
+
+  const totalAdvisorValue = leaders.reduce((s, a) =>
+    s + (isInsurance ? a.bookings : (a.commission > 0 ? a.commission : a.bookings)), 0)
+  const totalBranchValue = branchData?.branches?.reduce((s, b) => s + b.total_commission, 0) ?? 0
+
   const kpis = [
     { icon: DollarSign, iconBg: 'bg-primary/10',     iconColor: 'text-primary',
       title: 'Billed Bookings', tip: TIPS.billedRevenue,
@@ -178,10 +159,9 @@ export default function OverviewTab({
 
   return (
     <>
-      {/* ── HERO: Gauge (if goal data) + 4 KPI tiles ───────────────────────── */}
+      {/* ── HERO: Gauge + KPI tiles ─────────────────────────────────────────── */}
       {hasGoalData ? (
         <div className="animate-enter grid gap-3" style={{ gridTemplateColumns: '260px 1fr' }}>
-          {/* Annual Gauge card */}
           <div className="card-premium flex flex-col overflow-hidden">
             <div className="border-b border-border/50 px-4 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -194,7 +174,6 @@ export default function OverviewTab({
                 style={{ height: '155px' }}
               />
             </div>
-            {/* Actual / Target strip */}
             <div className="grid grid-cols-2 divide-x divide-border/50 border-t border-border/50 text-center">
               <div className="px-3 py-2.5">
                 <p className="tabular-nums text-[15px] font-bold leading-none">{formatCurrency(yearlyActual, true)}</p>
@@ -205,22 +184,14 @@ export default function OverviewTab({
                 <p className="mt-1 text-[10px] text-muted-foreground">Target</p>
               </div>
             </div>
-            {/* Current month footer */}
             {achievement?.current_month && (
               <div className={cn(
                 'border-t border-border/50 px-4 py-2 text-center text-[11px]',
-                (monthPct ?? 0) >= 100 ? 'bg-emerald-500/5' :
-                (monthPct ?? 0) >= 80  ? 'bg-amber-500/5'   : 'bg-rose-500/5',
+                (monthPct ?? 0) >= 100 ? 'bg-emerald-500/5' : (monthPct ?? 0) >= 80 ? 'bg-amber-500/5' : 'bg-rose-500/5',
               )}>
-                <span className="font-semibold">
-                  {formatCurrency(monthActual, true)} /&nbsp;
-                  {formatCurrency(monthTarget, true)}
-                </span>
-                <span className={cn(
-                  'ml-1.5 font-bold',
-                  (monthPct ?? 0) >= 100 ? 'text-emerald-500' :
-                  (monthPct ?? 0) >= 80  ? 'text-amber-500'   : 'text-rose-500',
-                )}>
+                <span className="font-semibold">{formatCurrency(monthActual, true)} / {formatCurrency(monthTarget, true)}</span>
+                <span className={cn('ml-1.5 font-bold',
+                  (monthPct ?? 0) >= 100 ? 'text-emerald-500' : (monthPct ?? 0) >= 80 ? 'text-amber-500' : 'text-rose-500')}>
                   {monthPct !== null ? `${monthPct.toFixed(0)}%` : '—'}
                 </span>
                 <span className="ml-1 text-muted-foreground">
@@ -229,8 +200,6 @@ export default function OverviewTab({
               </div>
             )}
           </div>
-
-          {/* 2×2 KPI grid */}
           <div className="grid grid-cols-2 gap-3">
             {kpis.map((tile, i) => (
               <motion.div key={tile.title}
@@ -242,7 +211,6 @@ export default function OverviewTab({
           </div>
         </div>
       ) : (
-        /* Fallback: 4-column KPI tiles when no goal data */
         <div className="animate-enter grid grid-cols-4 gap-3">
           {kpis.map((tile, i) => (
             <motion.div key={tile.title}
@@ -254,24 +222,20 @@ export default function OverviewTab({
         </div>
       )}
 
-      {/* ── MONTHLY PROGRESS: Jan-Dec bullet chart ──────────────────────────── */}
+      {/* ── MONTHLY PROGRESS: actual bars + dashed target line ──────────────── */}
       {companyMonths.length > 0 && (
         <div className="animate-enter stagger-1 card-premium p-5">
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-1 flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-semibold">Monthly Performance vs Target · {periodLabel}</h3>
+              <h3 className="text-sm font-semibold">Monthly Performance vs Target</h3>
               <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Green = met target &nbsp;·&nbsp; Amber = within 20% &nbsp;·&nbsp; Red = missed &nbsp;·&nbsp; Blue = current month
+                Green = met &nbsp;·&nbsp; Amber = within 20% &nbsp;·&nbsp; Red = missed &nbsp;·&nbsp; Blue = current month &nbsp;·&nbsp; — — dashed = target
               </p>
-            </div>
-            <div className="flex items-center gap-3 text-[11px] font-medium text-muted-foreground">
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-[#94a3b8] opacity-30" /> Target bar</span>
-              <span className="flex items-center gap-1"><span className="h-0.5 w-4 rounded bg-amber-400" /> Target level</span>
             </div>
           </div>
           <ReactECharts
             option={buildMonthlyBulletOption(companyMonths, currentMonthIdx, c)}
-            style={{ height: '220px' }}
+            style={{ height: '230px' }}
           />
         </div>
       )}
@@ -286,14 +250,12 @@ export default function OverviewTab({
             <div className="flex items-center gap-2 border-b border-border px-5 py-3.5">
               <MapPin className="h-4 w-4 text-primary" />
               <h3 className="text-sm font-semibold">Branch Contribution</h3>
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                commissions
-              </span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">% of total</span>
             </div>
             <div className="px-4 pb-4 pt-3">
               <ReactECharts
-                option={buildBranchBarOption(branchData!.branches, c)}
-                style={{ height: `${Math.max(branchData!.branches.length * 36, 140)}px` }}
+                option={buildBranchBarOption(branchData!.branches, c, totalBranchValue)}
+                style={{ height: `${Math.max(branchData!.branches.filter(b => b.total_commission > 0).length * 36, 140)}px` }}
               />
             </div>
           </div>
@@ -304,9 +266,7 @@ export default function OverviewTab({
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4 text-primary" />
               <h3 className="text-sm font-semibold">Top Advisors</h3>
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                click to drill in
-              </span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">click to drill in</span>
             </div>
             <span className="text-[12px] font-medium text-muted-foreground">
               {leaders.length} total · top {top8.length} shown
@@ -315,7 +275,7 @@ export default function OverviewTab({
           <div className="px-4 pb-4 pt-3">
             {top8.length > 0 ? (
               <ReactECharts
-                option={buildAdvisorBarOption(reversed8, isInsurance, c)}
+                option={buildAdvisorBarOption(reversed8, isInsurance, c, totalAdvisorValue)}
                 style={{ height: `${Math.max(top8.length * 40, 200)}px` }}
                 onEvents={{
                   click: (params: { dataIndex: number }) => {
@@ -331,85 +291,18 @@ export default function OverviewTab({
         </div>
       </div>
 
-      {/* ── BOTTOM ROW: Laggards + At-Risk + AI Insights ────────────────────── */}
+      {/* ── FUNNEL + AT-RISK + ACTIVITY ─────────────────────────────────────── */}
       <div className="animate-enter stagger-3 grid grid-cols-3 gap-3">
-        {/* Laggards */}
-        <div className="card-premium p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <TrendingDown className="h-4 w-4 text-rose-500" />
-            <h3 className="text-sm font-semibold">Lowest Performers</h3>
-          </div>
-          {laggards.length > 0 ? (
-            <div className="space-y-2">
-              {laggards.map(a => {
-                const val = isInsurance ? a.bookings : (a.commission > 0 ? a.commission : a.bookings)
-                const pct = Math.round(val / topVal * 100)
-                return (
-                  <div key={a.name} onClick={() => onSelectAdvisor(a.name)}
-                    className="group cursor-pointer rounded-lg border border-border/30 bg-secondary/10 p-3 transition-colors hover:bg-rose-500/5">
-                    <div className="mb-1.5 flex items-center justify-between">
-                      <span className="text-[12px] font-medium text-primary group-hover:underline">{a.name}</span>
-                      <span className="text-[10px] text-muted-foreground">#{a.rank}{a.branch ? ` · ${a.branch}` : ''}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary/40">
-                        <div className="h-full rounded-full bg-rose-500/70" style={{ width: `${pct}%` }} />
-                      </div>
-                      <span className="shrink-0 tabular-nums text-[11px] text-rose-400">{formatCurrency(val, true)}</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <p className="py-8 text-center text-[11px] text-muted-foreground">Not enough advisors to compare.</p>
-          )}
-        </div>
-
-        {/* At-Risk Pipeline */}
-        <div className="card-premium p-4">
-          <AtRiskDeals deals={slipping} onSelectAdvisor={onSelectAdvisor} />
-        </div>
-
-        {/* AI Insights */}
-        <div className="card-premium p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-semibold">AI Insights</h3>
-            </div>
-            {onViewSummary && (
-              <button onClick={onViewSummary} className="text-[11px] font-medium text-primary/70 hover:text-primary">
-                Full briefing →
-              </button>
-            )}
-          </div>
-          <div className="space-y-2">
-            {insights.slice(0, 4).map((ins, i) => (
-              <div key={i} onClick={() => onViewSummary?.()}
-                className={cn('flex cursor-pointer items-start gap-2.5 rounded-lg p-2.5 hover:opacity-75', INSIGHT_BG[ins.type])}>
-                <div className="mt-0.5">{INSIGHT_ICON[ins.type]}</div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[12px] font-semibold leading-tight">{ins.title}</p>
-                  <p className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">{ins.text}</p>
-                </div>
-              </div>
-            ))}
-            {insights.length === 0 && (
-              <p className="py-6 text-center text-[11px] text-muted-foreground">No insights for this period.</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ── FUNNEL + ACTIVITY ────────────────────────────────────────────────── */}
-      <div className="animate-enter stagger-4 grid grid-cols-2 gap-3">
         <div onClick={() => nav('/pipeline')} className="card-premium cursor-pointer hover:bg-secondary/5">
           <FunnelChart funnel={funnel} variant="compact" />
         </div>
 
+        <div className="card-premium p-4">
+          <AtRiskDeals deals={slipping} onSelectAdvisor={onSelectAdvisor} />
+        </div>
+
         <div className="card-premium p-5">
-          <h3 className="mb-4 text-sm font-semibold">Sales Activity · {periodLabel}</h3>
+          <h3 className="mb-3 text-sm font-semibold">Sales Activity · {periodLabel}</h3>
           <div className="grid grid-cols-2 gap-2.5">
             <ActivityCell icon={Megaphone}  label="Leads"    value={formatNumber(leadsCount)}                     color="text-primary"     bg="bg-primary/10"     onClick={() => nav('/leads')}    tip={TIPS.leads} />
             <ActivityCell icon={Target}     label="Opps"     value={formatNumber(oppsCount)}                     color="text-amber-500"   bg="bg-amber-500/10"   onClick={() => nav('/pipeline')} tip={TIPS.opps} />

@@ -65,7 +65,7 @@ export function buildGaugeOption(achievementPct: number, pacePct: number, c: Cha
   }
 }
 
-// ── Monthly Bullet Chart (Jan-Dec actual vs target) ──────────────────────────
+// ── Monthly Progress Chart (actual bars + dashed target line) ─────────────────
 
 export function buildMonthlyBulletOption(
   months: MonthlyTargetMonth[],
@@ -78,21 +78,21 @@ export function buildMonthlyBulletOption(
   })
 
   const barColor = (m: MonthlyTargetMonth, i: number): string | object => {
-    if (i > currentMonthIdx) return '#64748b28'           // future: ghost
-    if (i === currentMonthIdx) return {                   // current: glowing blue gradient
+    if (i > currentMonthIdx) return '#64748b22'
+    if (i === currentMonthIdx) return {
       type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
       colorStops: [{ offset: 0, color: '#60a5fa' }, { offset: 1, color: '#2563eb' }],
     }
-    if (!m.target) return '#94a3b844'                     // no target set
-    if (m.actual >= m.target)        return '#22c55e'     // green — met
-    if (m.actual >= m.target * 0.8)  return '#f59e0b'     // amber — close
-    return '#ef4444'                                      // red — missed
+    if (!m.target) return '#94a3b844'
+    if (m.actual >= m.target)       return '#22c55e'
+    if (m.actual >= m.target * 0.8) return '#f59e0b'
+    return '#ef4444'
   }
 
   return {
     backgroundColor: 'transparent',
     animation: true,
-    grid: { top: 16, right: 16, bottom: 36, left: 52 },
+    grid: { top: 28, right: 16, bottom: 36, left: 52 },
     xAxis: {
       type: 'category', data: MONTH_LABELS,
       axisLine: { show: false }, axisTick: { show: false },
@@ -103,6 +103,14 @@ export function buildMonthlyBulletOption(
       axisLine: { show: false }, axisTick: { show: false },
       splitLine: { lineStyle: { color: c.grid } },
       axisLabel: { color: c.tick, fontSize: 10, formatter: (v: number) => fmtAxis(v) },
+    },
+    legend: {
+      top: 4, right: 0, textStyle: { fontSize: 10, color: c.tick },
+      itemWidth: 14, itemHeight: 2,
+      data: [
+        { name: 'Actual', icon: 'rect' },
+        { name: 'Target', icon: 'line' },
+      ],
     },
     tooltip: {
       trigger: 'axis',
@@ -120,16 +128,7 @@ export function buildMonthlyBulletOption(
       },
     },
     series: [
-      // Background bar = target (gray, full height = target)
-      {
-        type: 'bar', name: 'Target', barMaxWidth: 44, barGap: '-100%',
-        data: filled.map(m => ({
-          value: m.target,
-          itemStyle: { color: '#94a3b818', borderRadius: [3, 3, 0, 0] },
-        })),
-        z: 1, emphasis: { disabled: true },
-      },
-      // Foreground bar = actual (colored)
+      // Actual bars — color-coded green/amber/red/blue/ghost
       {
         type: 'bar', name: 'Actual', barMaxWidth: 44,
         data: filled.map((m, i) => ({
@@ -146,31 +145,46 @@ export function buildMonthlyBulletOption(
         label: {
           show: true, position: 'top', fontSize: 9, color: c.tick,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          formatter: (p: any) => p.value > 0 ? formatCurrency(p.value as number, true) : '',
+          formatter: (p: any) => (p.value as number) > 0 ? formatCurrency(p.value as number, true) : '',
         },
+      },
+      // Dashed target line — connects monthly target values
+      {
+        type: 'line', name: 'Target',
+        data: filled.map(m => m.target > 0 ? m.target : null),
+        lineStyle: { color: '#f59e0b', width: 2, type: 'dashed' },
+        itemStyle: { color: '#f59e0b' },
+        symbol: 'circle', symbolSize: 5,
+        connectNulls: false,
+        z: 3,
       },
     ],
   }
 }
 
-// ── Branch Contribution (horizontal bar) ─────────────────────────────────────
+// ── Branch Contribution (horizontal bar + % share) ────────────────────────────
 
-export function buildBranchBarOption(branches: BranchEntry[], c: ChartColors) {
+export function buildBranchBarOption(
+  branches: BranchEntry[],
+  c: ChartColors,
+  totalValue = 0,
+) {
   const sorted   = [...branches]
     .filter(b => b.total_commission > 0)
     .sort((a, b) => b.total_commission - a.total_commission)
     .slice(0, 8)
   const reversed = [...sorted].reverse()
+  const total    = totalValue > 0 ? totalValue : sorted.reduce((s, b) => s + b.total_commission, 0)
 
   return {
     backgroundColor: 'transparent',
     animation: true,
-    grid: { top: 4, right: 76, bottom: 4, left: 8, containLabel: true },
+    grid: { top: 4, right: 92, bottom: 4, left: 8, containLabel: true },
     xAxis: {
       type: 'value',
       axisLine: { show: false }, axisTick: { show: false },
       splitLine: { lineStyle: { color: c.grid } },
-      axisLabel: { color: c.tick, fontSize: 9, formatter: (v: number) => fmtAxis(v) },
+      axisLabel: { show: false },
     },
     yAxis: {
       type: 'category', data: reversed.map(b => b.branch),
@@ -184,8 +198,10 @@ export function buildBranchBarOption(branches: BranchEntry[], c: ChartColors) {
       formatter: (p: any) => {
         const b = reversed[p.dataIndex as number]
         if (!b) return ''
+        const pct = total > 0 ? Math.round(b.total_commission / total * 100) : 0
         return `<b>${b.branch}</b><br/>` +
           `Commission: <b>${formatCurrency(b.total_commission, true)}</b><br/>` +
+          `Share: <b>${pct}%</b><br/>` +
           `Sales: <b>${formatCurrency(b.total_sales, true)}</b>`
       },
     },
@@ -206,29 +222,37 @@ export function buildBranchBarOption(branches: BranchEntry[], c: ChartColors) {
       label: {
         show: true, position: 'right',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        formatter: (p: any) => formatCurrency(p.value as number, true),
+        formatter: (p: any) => {
+          const pct = total > 0 ? Math.round((p.value as number) / total * 100) : 0
+          return `${formatCurrency(p.value as number, true)}  ${pct > 0 ? `${pct}%` : ''}`
+        },
         color: c.tick, fontSize: 9,
       },
     }],
   }
 }
 
-// ── Advisor Leaderboard (horizontal bar) ─────────────────────────────────────
+// ── Advisor Leaderboard (horizontal bar + % share) ────────────────────────────
 
 export function buildAdvisorBarOption(
   reversed8: Advisor[],
   isInsurance: boolean,
   c: ChartColors,
+  totalValue = 0,
 ) {
+  const total = totalValue > 0
+    ? totalValue
+    : reversed8.reduce((s, a) => s + (isInsurance ? a.bookings : (a.commission > 0 ? a.commission : a.bookings)), 0)
+
   return {
     backgroundColor: 'transparent',
     animation: true,
-    grid: { top: 4, right: 88, bottom: 4, left: 8, containLabel: true },
+    grid: { top: 4, right: 106, bottom: 4, left: 8, containLabel: true },
     xAxis: {
       type: 'value',
       axisLine: { show: false }, axisTick: { show: false },
       splitLine: { lineStyle: { color: c.grid } },
-      axisLabel: { color: c.tick, fontSize: 9, formatter: (v: number) => fmtAxis(v) },
+      axisLabel: { show: false },
     },
     yAxis: {
       type: 'category',
@@ -246,9 +270,11 @@ export function buildAdvisorBarOption(
       formatter: (p: any) => {
         const a = reversed8[p.dataIndex as number]
         if (!a) return ''
+        const pct = total > 0 ? Math.round((p.value as number) / total * 100) : 0
         const branchStr = a.branch ? `<br/>Branch: <b>${a.branch}</b>` : ''
         return `<b>${a.name}</b>${branchStr}<br/>` +
           `${isInsurance ? 'Bookings' : 'Commission'}: <b>${formatCurrency(p.value as number, true)}</b><br/>` +
+          `Share: <b>${pct}%</b><br/>` +
           `Deals: <b>${a.deals}</b> &nbsp; Win: <b>${Math.round((a.win_rate ?? 0) * 100)}%</b><br/>` +
           `Pipeline: <b>${formatCurrency(a.pipeline_value, true)}</b>`
       },
@@ -271,7 +297,10 @@ export function buildAdvisorBarOption(
       label: {
         show: true, position: 'right',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        formatter: (p: any) => formatCurrency(p.value as number, true),
+        formatter: (p: any) => {
+          const pct = total > 0 ? Math.round((p.value as number) / total * 100) : 0
+          return `${formatCurrency(p.value as number, true)}  ${pct > 0 ? `${pct}%` : ''}`
+        },
         color: c.tick, fontSize: 10,
       },
     }],

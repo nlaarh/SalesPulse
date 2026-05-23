@@ -182,6 +182,16 @@ export default function AdvisorDashboard() {
     ? Math.round(summary!.pipeline_value / annualizedBookings * 10) / 10
     : 0
 
+  // Current calendar month data — pulled from monthlyTargets (per-month, not period-aggregate)
+  const _today          = new Date()
+  const _curCalMonth    = _today.getMonth() + 1                                     // 1-12
+  const _dayOfMonth     = _today.getDate()
+  const _daysInMonth    = new Date(_today.getFullYear(), _curCalMonth, 0).getDate()
+  const _curMonthEntry  = monthlyTargets?.company?.months?.find(m => m.month === _curCalMonth)
+  const _MONTHS         = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const _curMonthLabel  = _MONTHS[_curCalMonth - 1]
+  const _curMonthPacePct = _dayOfMonth / _daysInMonth * 100
+
   return (
     <div id="advisor-print-root" className="space-y-3">
       <div className="animate-enter flex items-end justify-between">
@@ -228,14 +238,13 @@ export default function AdvisorDashboard() {
         </div>
       </div>
 
-      {/* ── Target Achievement (hidden on Overview — gauge shows it there) ── */}
-      {tab !== 'overview' && achievement?.current_month && achievement?.yearly && (
+      {/* ── Target Achievement — always visible, current calendar month vs yearly ── */}
+      {achievement?.yearly && (_curMonthEntry || achievement?.current_month) && (
         <div className="animate-enter card-premium px-5 py-4">
           <div className="mb-3 flex items-center justify-between">
             <span className="text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               Target Achievement
             </span>
-            {/* Bookings / Commission toggle */}
             <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-0.5">
               <button
                 onClick={() => switchAchBase('commission')}
@@ -258,21 +267,16 @@ export default function AdvisorDashboard() {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-6">
+            {/* Current CALENDAR month only — never aggregates multi-month period */}
             <TargetProgressBar
-              label={(() => {
-                const pm = achievement.current_month.period_months
-                const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-                if (!pm || pm.length === 1) return `${MONTHS[achievement.current_month.month - 1]} Target (${achBase})`
-                return `${MONTHS[pm[0]-1]}–${MONTHS[pm[pm.length-1]-1]} Target (${achBase})`
-              })()}
-              actual={achBase === 'bookings'
-                ? (achievement.current_month.company.bookings_actual ?? achievement.current_month.company.actual)
-                : (achievement.current_month.company.commission_actual ?? achievement.current_month.company.actual)}
+              label={`${_curMonthLabel} Target (${achBase})`}
+              actual={_curMonthEntry?.actual
+                ?? (achievement.current_month?.company?.commission_actual ?? achievement.current_month?.company?.actual ?? 0)}
               target={achBase === 'bookings'
-                ? (achievement.current_month.company.bookings_target ?? achievement.current_month.company.target)
-                : achievement.current_month.company.target}
-              pacePct={achievement.current_month.pace_pct}
-              paceLabel={achievement.current_month.period_label ?? `Day ${achievement.current_month.day_of_month}/${achievement.current_month.days_in_month}`}
+                ? (_curMonthEntry?.target_bookings ?? _curMonthEntry?.target ?? achievement.current_month?.company?.bookings_target ?? achievement.current_month?.company?.target ?? 0)
+                : (_curMonthEntry?.target ?? achievement.current_month?.company?.target ?? 0)}
+              pacePct={_curMonthPacePct}
+              paceLabel={`Day ${_dayOfMonth}/${_daysInMonth}`}
               color="indigo"
             />
             <TargetProgressBar
