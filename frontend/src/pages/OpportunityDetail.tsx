@@ -17,6 +17,7 @@ import {
   AlertTriangle, CheckCircle2, Clock,
   Sparkles, GitBranch, CheckSquare, CalendarDays, Loader2,
   ChevronRight, RefreshCw, ChevronRight as Arrow, Printer,
+  BadgeCheck, Award,
 } from 'lucide-react'
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
@@ -105,6 +106,32 @@ function scoreColor(score: number) {
   if (score >= 70) return 'text-emerald-500'
   if (score >= 40) return 'text-amber-500'
   return 'text-rose-500'
+}
+
+function formatMemberLevel(raw: string | null | undefined): string {
+  if (!raw) return ''
+  const val = raw.trim().toUpperCase()
+  const labels: Record<string, string> = {
+    'PLUS': 'Plus',
+    'PREMIER': 'Premier',
+    'B': 'Basic',
+    'BASIC': 'Basic',
+    'PLRV': 'Plus RV',
+    'PMRV': 'Premier RV'
+  }
+  return labels[val] || val.charAt(0) + val.slice(1).toLowerCase()
+}
+
+function getMemberLevelStyles(raw: string | null | undefined): string {
+  if (!raw) return ''
+  const val = raw.trim().toUpperCase()
+  if (val.includes('PREMIER')) {
+    return 'border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-500'
+  }
+  if (val.includes('PLUS')) {
+    return 'border-sky-500/20 bg-sky-500/10 text-sky-600 dark:text-sky-500'
+  }
+  return 'border-border bg-muted/50 text-muted-foreground'
 }
 
 /* ── Stage Pipeline Visual ───────────────────────────────────────────────── */
@@ -237,6 +264,7 @@ export default function OpportunityDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [retrying, setRetrying] = useState(false)
+  const [generatingAi, setGeneratingAi] = useState(false)
 
   const load = () => {
     if (!id) return
@@ -246,6 +274,15 @@ export default function OpportunityDetail() {
       .then(setDetail)
       .catch(() => setError(true))
       .finally(() => { setLoading(false); setRetrying(false) })
+  }
+
+  const generateOrRefreshAi = () => {
+    if (!id) return
+    setGeneratingAi(true)
+    fetchOpportunityDetail(id, true)
+      .then(setDetail)
+      .catch((err) => console.error("AI Generation failed:", err))
+      .finally(() => setGeneratingAi(false))
   }
 
   useEffect(load, [id])
@@ -328,20 +365,45 @@ export default function OpportunityDetail() {
           {/* Customer mini-card — clickable link to 360 profile */}
           {detail.account && detail.account_id && (
             <Link to={`/customer/${detail.account_id}`}
-              className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 hover:bg-muted/60 hover:border-primary/30 transition-all group">
-              <Building2 className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary shrink-0" />
+              className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3.5 py-2.5 hover:bg-muted/60 hover:border-primary/30 transition-all group">
+              <Building2 className="h-4 w-4 text-muted-foreground group-hover:text-primary shrink-0" />
               <div className="text-left">
                 <p className="text-[13px] font-semibold text-foreground group-hover:text-primary leading-tight">{detail.account}</p>
-                <p className="text-[11px] text-muted-foreground leading-tight flex items-center gap-2 mt-0.5">
-                  {detail.account_member_status === 'A'
-                    ? <span className="text-emerald-500">● Active member</span>
-                    : detail.account_member_status
-                    ? <span className="text-muted-foreground">● {detail.account_member_status}</span>
-                    : null}
-                  {detail.account_coverage && <span>{detail.account_coverage}</span>}
-                  {detail.account_member_since && <span>since {new Date(detail.account_member_since).getFullYear()}</span>}
-                  {detail.account_mpi != null && <span>MPI {detail.account_mpi}</span>}
-                </p>
+                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                  {detail.account_member_status === 'A' ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-500">
+                      <BadgeCheck className="h-3 w-3" /> Active Member
+                    </span>
+                  ) : detail.account_member_status ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                      Status: {detail.account_member_status}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                      Non-Member
+                    </span>
+                  )}
+                  
+                  {detail.account_coverage && (
+                    <span className={cn(
+                      "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold",
+                      getMemberLevelStyles(detail.account_coverage)
+                    )}>
+                      <Award className="h-3 w-3" /> {formatMemberLevel(detail.account_coverage)}
+                    </span>
+                  )}
+                  
+                  {detail.account_member_since && (
+                    <span className="text-[11px] text-muted-foreground">
+                      since {new Date(detail.account_member_since).getFullYear()}
+                    </span>
+                  )}
+                  {detail.account_mpi != null && (
+                    <span className="text-[11px] text-muted-foreground">
+                      MPI {detail.account_mpi}
+                    </span>
+                  )}
+                </div>
               </div>
               <Arrow className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary ml-auto shrink-0" />
             </Link>
@@ -383,6 +445,18 @@ export default function OpportunityDetail() {
             ['Account', detail.account_id
               ? <Link to={`/customer/${detail.account_id}`} className="text-primary hover:underline">{detail.account}</Link>
               : detail.account],
+            ['Membership', detail.account_member_status === 'A' ? (
+              <span className="inline-flex items-center gap-1 text-emerald-500 font-medium">
+                <BadgeCheck className="h-3.5 w-3.5" /> Active Member
+              </span>
+            ) : detail.account_member_status ? (
+              `Status: ${detail.account_member_status}`
+            ) : 'Non-Member'],
+            detail.account_coverage ? ['Member Level', (
+              <span className="inline-flex items-center gap-1 font-semibold text-primary">
+                <Award className="h-3.5 w-3.5" /> {formatMemberLevel(detail.account_coverage)}
+              </span>
+            )] : ['', null],
             ['Record Type', detail.record_type],
             ['Type', detail.type],
             ['Lead Source', detail.lead_source],
@@ -402,16 +476,44 @@ export default function OpportunityDetail() {
         </div>
 
         {/* AI Analysis */}
-        <div className="card-premium p-4">
-          <h3 className="mb-3 flex items-center gap-1.5 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            <Sparkles className="h-3.5 w-3.5 text-primary" />
-            AI Analysis
-          </h3>
-          {detail.ai_analysis ? (
+        <div className="card-premium p-4 relative group/ai">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="flex items-center gap-1.5 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              AI Analysis
+            </h3>
+            {detail.ai_analysis && (
+              <button
+                disabled={generatingAi}
+                onClick={generateOrRefreshAi}
+                className="opacity-0 group-hover/ai:opacity-100 transition-opacity flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-60"
+              >
+                <RefreshCw className={cn("h-2.5 w-2.5", generatingAi && "animate-spin")} />
+                Refresh
+              </button>
+            )}
+          </div>
+
+          {generatingAi ? (
+            <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
+              <Loader2 className="h-5 w-5 animate-spin text-primary/50" />
+              <p className="text-[12px] text-muted-foreground">Generating AI health assessment...</p>
+            </div>
+          ) : detail.ai_analysis ? (
             <Markdown>{detail.ai_analysis}</Markdown>
           ) : (
-            <p className="text-[13px] text-muted-foreground italic">Configure an AI provider in Settings to enable deal analysis.</p>
+            <div className="text-center py-6">
+              <p className="text-[13px] text-muted-foreground italic mb-3">No deal health analysis generated yet.</p>
+              <button
+                onClick={generateOrRefreshAi}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 border border-primary/20 text-primary px-3 py-1.5 text-[12px] font-semibold hover:bg-primary/20 transition-all shadow-sm"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Generate AI Analysis
+              </button>
+            </div>
           )}
+
           {detail.score_reasons.length > 0 && (
             <div className="mt-4">
               <p className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">Score Factors</p>

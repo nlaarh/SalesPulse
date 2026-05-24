@@ -227,8 +227,11 @@ export async function fetchTopOpportunities(
   return data
 }
 
-export async function fetchOpportunityDetail(oppId: string) {
-  const { data } = await api.get(`/api/sales/opportunities/${oppId}`, { timeout: 30000 })
+export async function fetchOpportunityDetail(oppId: string, ai = false) {
+  const { data } = await api.get(`/api/sales/opportunities/${oppId}`, {
+    params: { ai },
+    timeout: 30000,
+  })
   return data
 }
 
