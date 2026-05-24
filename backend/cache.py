@@ -94,7 +94,11 @@ def flush_prefix(prefix: str) -> int:
 
 # Azure App Service Linux: /home/ is persistent, /root/ is ephemeral.
 _azure_home = Path('/home')
-_BASE_DIR = (_azure_home / '.salesinsight') if _azure_home.is_dir() and os.getenv('WEBSITE_SITE_NAME') else Path(os.path.expanduser('~/.salesinsight'))
+_custom_dir = os.getenv('SALESINSIGHT_CACHE_DIR')
+if _custom_dir:
+    _BASE_DIR = Path(_custom_dir)
+else:
+    _BASE_DIR = (_azure_home / '.salesinsight') if _azure_home.is_dir() and os.getenv('WEBSITE_SITE_NAME') else Path(os.path.expanduser('~/.salesinsight'))
 _CACHE_DIR = _BASE_DIR / 'cache'
 _CACHE_DIR.mkdir(parents=True, exist_ok=True)
 

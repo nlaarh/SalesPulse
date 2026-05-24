@@ -17,11 +17,12 @@ interface SummaryTabProps {
   metric: Metric
   line: string
   periodLabel: string
+  viewType: 'advisor' | 'branch'
 }
 
 /* ── Component ────────────────────────────────────────────────────────────── */
 
-export default function SummaryTab({ agents, monthColumns, divTotals, metric, line, periodLabel }: SummaryTabProps) {
+export default function SummaryTab({ agents, monthColumns, divTotals, metric, line, periodLabel, viewType }: SummaryTabProps) {
   const { line: ctxLine, period, startDate, endDate } = useSales()
   const [aiNarrative, setAiNarrative] = useState<string | null>(null)
   const [aiGenerated, setAiGenerated] = useState(false)
@@ -114,7 +115,7 @@ export default function SummaryTab({ agents, monthColumns, divTotals, metric, li
   const qoqWord = trendPct > 5 ? 'up' : trendPct < -5 ? 'down' : 'flat'
 
   // Build narrative
-  const { narrative, healthCards, actions } = buildNarrative({
+  const rawData = buildNarrative({
     metric, isCurrency, totalVal, avgPerAgent, topAgents, metricLabel,
     totalOpps, totalLeads, totalInvoiced, totalSales, totalComm,
     leadToOppRate, oppToInvRate, avgDealSize, revenuePerOpp, revenuePerLead,
@@ -126,6 +127,36 @@ export default function SummaryTab({ agents, monthColumns, divTotals, metric, li
     periodLabel, line, agents,
   })
 
+  // String helper to process advisor terminology to branch terminology when viewType is 'branch'
+  const processText = (text: string) => {
+    if (viewType === 'branch') {
+      return text
+        .replace(/advisors/g, 'branches')
+        .replace(/Advisors/g, 'Branches')
+        .replace(/advisor/g, 'branch')
+        .replace(/Advisor/g, 'Branch')
+        .replace(/team/g, 'division')
+        .replace(/Team/g, 'Division')
+        .replace(/earner/g, 'branch')
+        .replace(/earners/g, 'branches')
+    }
+    return text
+  }
+
+  const narrative = processText(aiNarrative ?? rawData.narrative)
+  
+  const healthCards = rawData.healthCards.map((hc) => ({
+    ...hc,
+    label: processText(hc.label),
+    detail: processText(hc.detail),
+  }))
+
+  const actions = rawData.actions.map((act) => ({
+    ...act,
+    label: processText(act.label),
+    action: processText(act.action),
+  }))
+
   return (
     <>
       {/* Narrative */}
@@ -136,10 +167,10 @@ export default function SummaryTab({ agents, monthColumns, divTotals, metric, li
           </div>
           <div>
             <h3 className="text-[13px] font-semibold">Executive Briefing</h3>
-            <p className="text-[10px] text-muted-foreground">{line} Division · {periodLabel} · {metricLabel}</p>
+            <p className="text-[10px] text-muted-foreground">{line} Division · {periodLabel} · {metricLabel} · {viewType === 'advisor' ? 'Advisors' : 'Branches'}</p>
           </div>
         </div>
-        <RichNarrative text={aiNarrative ?? narrative} aiGenerated={aiGenerated} />
+        <RichNarrative text={narrative} aiGenerated={aiGenerated} />
         {aiLoading && <p className="text-[10px] text-primary/50 animate-pulse mt-1">AI analyzing...</p>}
       </div>
 

@@ -33,6 +33,7 @@ const ZipDetail = lazy(() => import('@/pages/ZipDetail'))
 const CensusData = lazy(() => import('@/pages/CensusData'))
 
 const GrowthPlan = lazy(() => import('@/pages/GrowthPlan'))
+const Projection = lazy(() => import('@/pages/settings/TargetsTab'))
 
 /* ── React Query client ──────────────────────────────────────────────────── */
 
@@ -71,6 +72,7 @@ export default function App() {
                 <Route element={<Layout />}>
                   <Route path="dashboard" element={<Suspense fallback={LazyFallback}><AdvisorDashboard /></Suspense>} />
                   <Route path="monthly" element={<Suspense fallback={LazyFallback}><MonthlyReport /></Suspense>} />
+                  <Route path="projection" element={<Suspense fallback={LazyFallback}><Projection /></Suspense>} />
                   <Route path="opportunities" element={<Suspense fallback={LazyFallback}><TopOpportunities /></Suspense>} />
                   <Route path="agent/:name" element={<Suspense fallback={LazyFallback}><AgentDashboard /></Suspense>} />
                   <Route path="pipeline" element={<Suspense fallback={LazyFallback}><Pipeline /></Suspense>} />

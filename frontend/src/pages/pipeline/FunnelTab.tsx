@@ -1,5 +1,5 @@
 import { formatCurrency, formatNumber } from '@/lib/utils'
-import { useChartColors, tooltipStyle } from '@/lib/chart-theme'
+import { useChartColors, tooltipStyle, ChartGradients } from '@/lib/chart-theme'
 import KPICard from '@/components/KPICard'
 import { Tip, TIPS } from '@/components/MetricTip'
 import FunnelChart from '@/components/FunnelChart'
@@ -62,12 +62,12 @@ export default function FunnelTab({ totalPipeline, totalDeals, avgDeal, slipping
             {stages?.stages?.length ? (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={stages.stages} layout="vertical">
-                  <CartesianGrid strokeDasharray="none" stroke={c.grid} horizontal={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={c.grid} horizontal={false} />
                   <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }}
                     tickFormatter={(v: number) => v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1)}M` : `$${(v / 1000).toFixed(0)}K`} />
                   <YAxis type="category" dataKey="stage" width={120} axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} />
-                  <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [formatCurrency(Number(v), true), 'Booking Value']} />
-                  <Bar dataKey="amount" fill={c.primary} radius={[0, 6, 6, 0]} barSize={20} />
+                  <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [formatCurrency(Number(v), true), 'Booking Value']} cursor={{ fill: c.cursor }} />
+                  <Bar dataKey="amount" fill={c.primary} radius={[0, 4, 4, 0]} barSize={20} />
                 </BarChart>
               </ResponsiveContainer>
             ) : <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">No active pipeline deals</div>}
@@ -84,13 +84,8 @@ export default function FunnelTab({ totalPipeline, totalDeals, avgDeal, slipping
             {forecast?.months?.length ? (
               <ResponsiveContainer width="100%" height={300}>
                 <AreaChart data={forecast.months}>
-                  <defs>
-                    <linearGradient id="wonGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={c.primary} stopOpacity={0.2} />
-                      <stop offset="100%" stopColor={c.primary} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="none" stroke={c.grid} vertical={false} />
+                  <ChartGradients colors={c} idPrefix="funnelForecast" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
                   <XAxis
                     dataKey="label" axisLine={false} tickLine={false}
                     tick={{ fill: c.tick, fontSize: 11 }}
@@ -106,9 +101,10 @@ export default function FunnelTab({ totalPipeline, totalDeals, avgDeal, slipping
                       name === 'Won Bookings' ? formatCurrency(Number(v), true) : `${Number(v).toFixed(1)}%`,
                       name,
                     ]) as any}
+                    cursor={{ stroke: c.primary, strokeWidth: 1 }}
                   />
                   <Legend wrapperStyle={{ fontSize: 11, color: c.tick }} />
-                  <Area yAxisId="rev" type="monotone" dataKey="won_revenue" stroke={c.primary} strokeWidth={2} fill="url(#wonGrad)" dot={false} name="Won Bookings" />
+                  <Area yAxisId="rev" type="monotone" dataKey="won_revenue" stroke={c.primary} strokeWidth={2} fill="url(#grad_funnelForecast_primaryArea)" dot={false} name="Won Bookings" />
                   <Area yAxisId="pct" type="monotone" dataKey="close_rate" stroke={c.secondary} strokeWidth={1.5} fill="transparent" dot={false} name="Close Rate %" />
                 </AreaChart>
               </ResponsiveContainer>

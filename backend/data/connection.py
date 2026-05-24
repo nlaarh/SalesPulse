@@ -18,7 +18,7 @@ log = logging.getLogger('salesinsight.db')
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
-PG_HOST = os.getenv('PG_HOST', 'fslapp-pg.postgres.database.azure.com')
+PG_HOST = os.getenv('PG_HOST') or 'fslapp-pg.postgres.database.azure.com'
 PG_DATABASE = os.getenv('PG_DATABASE', 'fslapp')
 PG_SCHEMA = os.getenv('PG_SCHEMA', 'sales')
 PG_USER = os.getenv('PG_USER', 'nlaaroubi@nyaaa.com')
@@ -26,6 +26,9 @@ PG_PORT = int(os.getenv('PG_PORT', '5432'))
 
 # Tests only: USE_SQLITE=1 for unit tests that don't need PG
 USE_SQLITE = os.getenv('USE_SQLITE', '').strip() in ('1', 'true', 'yes')
+
+if not os.getenv('PG_HOST') and not USE_SQLITE:
+    log.warning("PG_HOST not set — using hardcoded default. Set PG_HOST explicitly in production.")
 
 # ── Token management (Azure Entra / DefaultAzureCredential) ──────────────────
 

@@ -248,7 +248,7 @@ export default function TopCustomers() {
                 layout="vertical"
                 margin={{ top: 0, right: 60, left: 10, bottom: 0 }}
               >
-                <CartesianGrid horizontal={false} stroke={c.grid} />
+                <CartesianGrid horizontal={false} stroke={c.grid} strokeDasharray="3 3" />
                 <XAxis
                   type="number"
                   tickFormatter={fmt}

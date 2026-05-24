@@ -65,7 +65,7 @@ function MembershipBadge({ tier }: { tier: string }) {
 /* ── Revenue bar ──────────────────────────────────────────────────────────── */
 
 function RevenueBar({ pct, rank }: { pct: number; rank: number }) {
-  const color = rank === 0 ? 'bg-amber-500' : rank === 1 ? 'bg-slate-400' : rank === 2 ? 'bg-amber-700/70' : 'bg-primary/40'
+  const color = rank === 0 ? 'bg-amber-500' : rank === 1 ? 'bg-slate-500' : rank === 2 ? 'bg-amber-700/70' : 'bg-primary/40'
   return (
     <div className="flex items-center gap-1.5 min-w-[80px]">
       <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
@@ -117,7 +117,7 @@ function CustomerRow({ c, rank, expanded, onToggle, isInsurance }: {
   c: Customer; rank: number; expanded: boolean; onToggle: () => void; isInsurance: boolean
 }) {
   const sfUrl = c.sf_link || `https://aaawcny.my.salesforce.com/${c.account_id}`
-  const rankColor = rank === 0 ? 'text-amber-500' : rank === 1 ? 'text-slate-400' : rank === 2 ? 'text-amber-700' : 'text-muted-foreground/40'
+  const rankColor = rank === 0 ? 'text-amber-500' : rank === 1 ? 'text-slate-500' : rank === 2 ? 'text-amber-700' : 'text-muted-foreground/40'
 
   return (
     <>

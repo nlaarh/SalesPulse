@@ -74,7 +74,7 @@ const SEVERITY_CONFIG: Record<string, {
     badge: 'bg-muted text-muted-foreground ring-1 ring-border',
     icon: 'text-muted-foreground',
     action: 'bg-muted/50 text-muted-foreground border border-border',
-    dot: 'bg-slate-400',
+    dot: 'bg-slate-500',
   },
 }
 

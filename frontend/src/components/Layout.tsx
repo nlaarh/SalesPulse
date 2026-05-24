@@ -27,7 +27,8 @@ import { api } from '@/lib/api'
 const NAV_ANALYTICS = [
   { to: '/dashboard', label: 'Sales Performance', icon: Users, desc: 'Bookings, pipeline & team' },
   { to: '/revenue', label: 'Top Revenue Contributors', icon: DollarSign, desc: 'Customers, destinations & regions' },
-  { to: '/monthly', label: 'Advisor Monthly Report', icon: Table2, desc: 'Agent × month breakdown' },
+  { to: '/monthly', label: 'Monthly Report', icon: Table2, desc: 'Agent or branch monthly breakdown' },
+  { to: '/projection', label: 'Advisor Targets', icon: Target, desc: 'Stretch goals & thresholds' },
   { to: '/pipeline', label: 'Pipeline & Forecast', icon: GitBranch, desc: 'Stages, velocity & risk' },
   { to: '/opportunities', label: 'Top Opportunities', icon: Target, desc: 'AI-scored deal ranking' },
   { to: '/leads', label: 'Lead Funnel', icon: Megaphone, desc: 'Conversion & sources' },

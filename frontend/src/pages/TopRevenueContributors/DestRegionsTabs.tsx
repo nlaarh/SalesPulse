@@ -99,13 +99,13 @@ export function DestinationsTab() {
         </h2>
         <ResponsiveContainer width="100%" height={Math.max(300, chartData.length * 32)}>
           <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 60, left: 10, bottom: 0 }}>
-            <CartesianGrid horizontal={false} stroke={c.grid} />
+            <CartesianGrid horizontal={false} stroke={c.grid} strokeDasharray="3 3" />
             <XAxis type="number" tickFormatter={fmt} tick={{ fill: c.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
             <YAxis type="category" dataKey="name" width={130} tick={{ fill: c.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
             <Tooltip content={({ active, payload }: any) => {
               if (!active || !payload?.length) return null
               const d = payload[0].payload
-              return <div style={tooltipStyle(c)} className="px-3 py-2 text-sm"><p className="font-semibold mb-1">{d.fullName}</p><p style={{ color: c.primary }}>{fmtFull(d.value)}</p></div>
+              return <div style={tooltipStyle(c)} className="px-3 py-2 text-sm"><p className="font-semibold mb-1">{d.fullName}</p><p style={{ color: c.primary }} className="font-medium">{fmtFull(d.value)}</p></div>
             }} cursor={{ fill: c.cursor }} />
             <Bar dataKey="value" radius={[0, 4, 4, 0]}
               label={{ position: 'right', formatter: (v: any) => fmt(Number(v)), fill: c.tick, fontSize: 11 }}>
@@ -224,7 +224,7 @@ export function RegionsTab() {
   const totalMembers = regions.reduce((s, r) => s + r.members, 0)
   const totalPop = regions.reduce((s, r) => s + r.population, 0)
   const totalCusts = regions.reduce((s, r) => s + r.customers, 0)
-  const COLORS = [c.primary, c.secondary, c.cyan, '#f59e0b', '#8b5cf6']
+  const COLORS = [c.primary, c.secondary, c.cyan, c.tertiary, c.purple]
 
   if (loading) return <div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
   if (!regions.length) return <div className="flex flex-col items-center justify-center h-64 text-muted-foreground"><Map className="w-12 h-12 mb-3 opacity-30" /><p>No region data found</p></div>
@@ -251,7 +251,7 @@ export function RegionsTab() {
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Bookings by Region</h2>
           <ResponsiveContainer width="100%" height={regions.length * 60 + 40}>
             <BarChart data={regions} layout="vertical" margin={{ top: 0, right: 60, left: 10, bottom: 0 }}>
-              <CartesianGrid horizontal={false} stroke={c.grid} />
+              <CartesianGrid horizontal={false} stroke={c.grid} strokeDasharray="3 3" />
               <XAxis type="number" tickFormatter={fmt} tick={{ fill: c.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis type="category" dataKey="name" width={100} tick={{ fill: c.tick, fontSize: 12 }} axisLine={false} tickLine={false} />
               <Tooltip content={({ active, payload }: any) => {

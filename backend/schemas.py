@@ -47,6 +47,7 @@ class AdvisorPreview(BaseModel):
     branch: str | None = None
     title: str | None = None
     monthly_target: float | None = None
+    annual_stretch: float | None = None
     monthly_targets: dict[str, float] | None = None
 
 class ConfirmRequest(BaseModel):
@@ -58,6 +59,10 @@ class ConfirmRequest(BaseModel):
 class MonthlyTargetUpdate(BaseModel):
     advisor_target_id: int
     months: dict[str, float]
+    title: Optional[str] = None
+    branch: Optional[str] = None
+    monthly_target: Optional[float] = None
+    annual_stretch: Optional[float] = None
 
 class MonthlyTargetSaveRequest(BaseModel):
     year: int

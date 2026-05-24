@@ -111,6 +111,19 @@ def _ensure_advisor_targets(db: Session, sf_names: list[str]):
     return {at.sf_name.strip().lower(): at.id for at in existing_map.values()}
 
 
+def _get_existing_advisor_targets(db: Session, sf_names: list[str]):
+    """Read-only lookup for existing AdvisorTarget rows by Salesforce name."""
+    wanted = {name.strip().lower() for name in sf_names if name and name.strip()}
+    if not wanted:
+        return {}
+    rows = db.query(AdvisorTarget).all()
+    return {
+        row.sf_name.strip().lower(): row.id
+        for row in rows
+        if row.sf_name and row.sf_name.strip().lower() in wanted
+    }
+
+
 DEFAULT_SEED_GROWTH = 1.10  # 10% growth over prior year when seeding targets
 
 
@@ -139,7 +152,7 @@ def _ensure_monthly_targets(db: Session, year: int, advisor_ids: dict[str, int],
     company_shape = [0.0] * 12
     for months in py_monthly.values():
         for m, v in months.items():
-            company_shape[m - 1] += v
+            company_shape[int(m) - 1] += v
     company_total = sum(company_shape)
 
     seeded = 0
@@ -159,7 +172,8 @@ def _ensure_monthly_targets(db: Session, year: int, advisor_ids: dict[str, int],
             if (at_id, m) in existing_keys:
                 continue  # Don't overwrite user-edited values
             if adv_total > 0:
-                target = round(base * (adv_months.get(m, 0) / adv_total))
+                val = adv_months.get(m, adv_months.get(str(m), 0))
+                target = round(base * (val / adv_total))
             elif company_total > 0:
                 target = round(base * (company_shape[m - 1] / company_total))
             else:

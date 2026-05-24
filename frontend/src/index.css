@@ -4,43 +4,43 @@
 /* ═══ Dual Theme Variables ═══ */
 
 :root {
-  /* ── Light Mode — improved readability ── */
-  --si-bg: #EEF2F7;
-  --si-fg: #0F172A;
-  --si-card: #F8FAFC;
+  /* ── Light Mode — industry standard premium dashboard ── */
+  --si-bg: #F8FAFC;              /* Slate-50 background */
+  --si-fg: #0F172A;              /* Slate-900 foreground */
+  --si-card: #FFFFFF;            /* Pure white card */
   --si-card-fg: #0F172A;
-  --si-popover: #F8FAFC;
+  --si-popover: #FFFFFF;
   --si-popover-fg: #0F172A;
-  --si-primary: #F97316;
+  --si-primary: #4F46E5;         /* Indigo-600 */
   --si-primary-fg: #FFFFFF;
-  --si-primary-soft: rgba(249, 115, 22, 0.08);
-  --si-secondary: #E2E8F0;
-  --si-secondary-fg: #1E293B;
-  --si-muted: #E2E8F0;
-  --si-muted-fg: #475569;
-  --si-accent: #F97316;
+  --si-primary-soft: rgba(79, 70, 229, 0.06);
+  --si-secondary: #F1F5F9;       /* Slate-100 */
+  --si-secondary-fg: #334155;    /* Slate-700 */
+  --si-muted: #F1F5F9;
+  --si-muted-fg: #475569;        /* Slate-600 */
+  --si-accent: #4F46E5;
   --si-accent-fg: #FFFFFF;
   --si-destructive: #EF4444;
   --si-destructive-fg: #FFFFFF;
-  --si-border: #CBD5E1;
-  --si-input: #CBD5E1;
-  --si-ring: #F97316;
-  --si-sidebar: #E8EEF6;
-  --si-sidebar-border: #CBD5E1;
-  --si-card-shadow: 0 1px 4px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
-  --si-card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.06);
-  --si-success: #16A34A;
-  --si-warning: #D97706;
-  --si-chart-1: #F97316;
-  --si-chart-2: #16A34A;
-  --si-chart-3: #2563EB;
-  --si-chart-4: #DB2777;
-  --si-chart-5: #7C3AED;
-  --si-chart-6: #0891B2;
-  --si-grid: rgba(0, 0, 0, 0.06);
-  --si-tick: #64748B;
-  --si-tooltip-bg: #F8FAFC;
-  --si-tooltip-border: #CBD5E1;
+  --si-border: #E2E8F0;          /* Slate-200 */
+  --si-input: #F1F5F9;
+  --si-ring: rgba(79, 70, 229, 0.4);
+  --si-sidebar: #FFFFFF;         /* White sidebar */
+  --si-sidebar-border: #E2E8F0;
+  --si-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --si-card-shadow-hover: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  --si-success: #10B981;
+  --si-warning: #F59E0B;
+  --si-chart-1: #4F46E5;
+  --si-chart-2: #10B981;
+  --si-chart-3: #06B6D4;
+  --si-chart-4: #EC4899;
+  --si-chart-5: #8B5CF6;
+  --si-chart-6: #F59E0B;
+  --si-grid: rgba(15, 23, 42, 0.05);
+  --si-tick: #475569;
+  --si-tooltip-bg: #FFFFFF;
+  --si-tooltip-border: #E2E8F0;
   color-scheme: light;
 }
 

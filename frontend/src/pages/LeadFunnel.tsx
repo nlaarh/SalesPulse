@@ -148,11 +148,11 @@ function ChartsTab({ totalLeads, totalConverted, convRate, expiredRate, volume, 
             {volume?.by_status?.length ? (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={volume.by_status} layout="vertical">
-                  <CartesianGrid strokeDasharray="none" stroke={c.grid} horizontal={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={c.grid} horizontal={false} />
                   <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} />
                   <YAxis type="category" dataKey="status" width={140} axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} />
-                  <Tooltip contentStyle={tooltipStyle(c)} />
-                  <Bar dataKey="count" fill={c.primary} radius={[0, 6, 6, 0]} barSize={18} />
+                  <Tooltip contentStyle={tooltipStyle(c)} cursor={{ fill: c.cursor }} />
+                  <Bar dataKey="count" fill={c.primary} radius={[0, 4, 4, 0]} barSize={18} />
                 </BarChart>
               </ResponsiveContainer>
             ) : <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">No data</div>}
@@ -168,10 +168,10 @@ function ChartsTab({ totalLeads, totalConverted, convRate, expiredRate, volume, 
             {timeToConvert?.buckets?.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={timeToConvert.buckets}>
-                  <CartesianGrid strokeDasharray="none" stroke={c.grid} vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
                   <XAxis dataKey="range" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} />
-                  <Tooltip contentStyle={tooltipStyle(c)} />
+                  <Tooltip contentStyle={tooltipStyle(c)} cursor={{ fill: c.cursor }} />
                   <Bar dataKey="count" fill={c.secondary} radius={[4, 4, 0, 0]} barSize={24} />
                 </BarChart>
               </ResponsiveContainer>
@@ -190,7 +190,7 @@ function ChartsTab({ totalLeads, totalConverted, convRate, expiredRate, volume, 
           <div className="p-5">
             <ResponsiveContainer width="100%" height={Math.max(280, agentData.length * 32)}>
               <BarChart data={agentData} layout="vertical" margin={{ left: 0, right: 20 }}>
-                <CartesianGrid strokeDasharray="none" stroke={c.grid} horizontal={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={c.grid} horizontal={false} />
                 <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }}
                   label={{ value: 'Days', position: 'insideBottomRight', offset: -5, fill: c.tick, fontSize: 10 }} />
                 <YAxis type="category" dataKey="label" width={150} axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} />
@@ -204,9 +204,9 @@ function ChartsTab({ totalLeads, totalConverted, convRate, expiredRate, volume, 
                     const agent = agentData.find(a => a.label === (label as string))
                     return agent ? `${agent.name} (${agent.deals} deals)` : (label as string)
                   }}
-                  cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+                  cursor={{ fill: c.cursor }}
                 />
-                <Bar dataKey="avg_days" fill={c.tertiary} radius={[0, 6, 6, 0]} barSize={16} fillOpacity={0.8} name="avg_days" />
+                <Bar dataKey="avg_days" fill={c.tertiary} radius={[0, 4, 4, 0]} barSize={16} fillOpacity={0.8} name="avg_days" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -264,11 +264,11 @@ function DetailsTab({ sourceEff, timeToConvert, c }: { sourceEff: any; timeToCon
           <div className="p-5">
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={timeToConvert.by_source.slice(0, 10)} layout="vertical">
-                <CartesianGrid strokeDasharray="none" stroke={c.grid} horizontal={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={c.grid} horizontal={false} />
                 <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} />
                 <YAxis type="category" dataKey="source" width={120} axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} />
-                <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [`${Number(v).toFixed(0)} days`, 'Avg']} />
-                <Bar dataKey="avg_days" fill={c.purple} radius={[0, 6, 6, 0]} barSize={16} />
+                <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [`${Number(v).toFixed(0)} days`, 'Avg']} cursor={{ fill: c.cursor }} />
+                <Bar dataKey="avg_days" fill={c.purple} radius={[0, 4, 4, 0]} barSize={16} />
               </BarChart>
             </ResponsiveContainer>
           </div>

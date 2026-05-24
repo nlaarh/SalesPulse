@@ -1,4 +1,4 @@
-import { useChartColors, tooltipStyle } from '@/lib/chart-theme'
+import { useChartColors, tooltipStyle, ChartGradients } from '@/lib/chart-theme'
 import { formatCurrency, cn } from '@/lib/utils'
 import { Tip, TIPS } from '@/components/MetricTip'
 import CompareBar from '@/components/CompareBar'
@@ -75,13 +75,8 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
           </div>
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={chartData}>
-              <defs>
-                <linearGradient id="agentGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={c.primary} stopOpacity={0.2} />
-                  <stop offset="100%" stopColor={c.primary} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="none" stroke={c.grid} vertical={false} />
+              <ChartGradients colors={c} idPrefix="agentPerf" />
+              <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
               <XAxis dataKey="label" axisLine={false} tickLine={false}
                 tick={{ fill: c.tick, fontSize: 11 }} />
               <YAxis axisLine={false} tickLine={false}
@@ -105,7 +100,7 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
                 stroke={c.tick} strokeWidth={1.5} strokeDasharray="6 3"
                 fill="none" dot={false} connectNulls={false} />
               <Area type="monotone" dataKey="revenue" name="current"
-                stroke={c.primary} strokeWidth={2} fill="url(#agentGrad)"
+                stroke={c.primary} strokeWidth={2} fill="url(#grad_agentPerf_primaryArea)"
                 dot={false}
                 activeDot={{ r: 4, fill: c.primary, stroke: c.activeDotStroke, strokeWidth: 2 }}
               />
@@ -199,7 +194,7 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
           </div>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={dealsBarData}>
-              <CartesianGrid strokeDasharray="none" stroke={c.grid} vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
               <XAxis dataKey="label" axisLine={false} tickLine={false}
                 tick={{ fill: c.tick, fontSize: 11 }} />
               <YAxis axisLine={false} tickLine={false}

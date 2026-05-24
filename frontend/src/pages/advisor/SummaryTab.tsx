@@ -236,7 +236,7 @@ export default function SummaryTab({
             <div className="space-y-3">
               {top3.map((a, i) => {
                 const share = billedValue > 0 ? (a.bookings / billedValue * 100) : 0
-                const medalColor = i === 0 ? 'text-amber-500 bg-amber-500/10' : i === 1 ? 'text-slate-400 bg-slate-400/10' : 'text-orange-500 bg-orange-500/10'
+                const medalColor = i === 0 ? 'text-amber-500 bg-amber-500/10' : i === 1 ? 'text-slate-500 bg-slate-500/10' : 'text-orange-500 bg-orange-500/10'
                 return (
                   <div
                     key={a.name}

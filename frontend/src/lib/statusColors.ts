@@ -20,7 +20,7 @@ export function stageColor(stage: string): string {
 export function stageDot(stage: string): string {
   const s = stage?.toLowerCase() ?? ''
   if (s === 'closed won' || s === 'invoice') return 'bg-emerald-500'
-  if (s === 'closed lost')                   return 'bg-slate-400'
+  if (s === 'closed lost')                   return 'bg-slate-500'
   return 'bg-blue-500'
 }
 
@@ -50,13 +50,13 @@ export function severityColor(severity: string): string {
 /** Dot color class for an issue status. */
 export function statusColor(status: string): string {
   switch (status) {
-    case 'backlog':       return 'bg-slate-400'
+    case 'backlog':       return 'bg-slate-500'
     case 'acknowledged':  return 'bg-blue-400'
     case 'investigating': return 'bg-violet-400'
     case 'in-progress':   return 'bg-amber-400'
     case 'released':      return 'bg-emerald-500'
-    case 'closed':        return 'bg-slate-400'
+    case 'closed':        return 'bg-slate-500'
     case 'cancelled':     return 'bg-rose-400'
-    default:              return 'bg-slate-400'
+    default:              return 'bg-slate-500'
   }
 }

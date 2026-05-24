@@ -27,3 +27,6 @@ htmlcov/
 # Logs
 logs
 *.log
+
+# Test Cache
+tests/.test_cache/

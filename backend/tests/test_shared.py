@@ -79,18 +79,18 @@ def test_prev_dates_consistent_with_resolve_dates():
 
 def test_line_filter_opp_travel():
     f = line_filter_opp('Travel')
-    assert "RecordType.Name = 'Travel'" in f
+    assert "RecordTypeId = '012Pb0000006hIjIAI'" in f
     assert 'Insurance' not in f
 
 
 def test_line_filter_opp_insurance():
     f = line_filter_opp('Insurance')
-    assert "RecordType.Name = 'Insurance'" in f
+    assert "RecordTypeId = '012Pb0000006hIgIAI'" in f
 
 
 def test_line_filter_opp_all():
     f = line_filter_opp('All')
-    assert 'Travel' in f and 'Insurance' in f
+    assert '012Pb0000006hIjIAI' in f and '012Pb0000006hIgIAI' in f
     assert 'IN' in f
 
 
@@ -98,13 +98,13 @@ def test_line_filter_opp_all():
 
 def test_line_filter_lead_travel():
     f = line_filter_lead('Travel')
-    assert "RecordType.Name = 'Travel'" in f
+    assert "RecordTypeId = '012Pb0000006hIdIAI'" in f
 
 
 def test_line_filter_lead_all_includes_extra_types():
     f = line_filter_lead('All')
-    assert 'Financial Services' in f
-    assert 'Outbound Lead' in f
+    assert '012Pb0000006hIaIAI' in f
+    assert '012Pb0000006hIZIAY' in f
 
 
 # ── escape_soql ───────────────────────────────────────────────────────────────

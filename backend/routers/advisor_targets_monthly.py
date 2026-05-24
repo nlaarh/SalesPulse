@@ -19,7 +19,7 @@ from shared import get_owner_map
 from constants import CACHE_TTL_MEDIUM, CACHE_TTL_HOUR, CACHE_TTL_DAY, CACHE_TTL_12H
 from routers.advisor_targets_helpers import (
     _get_comm_rate, _sf_advisors_with_bookings, _get_comm_rate_accurate,
-    _ensure_advisor_targets, _ensure_monthly_targets, DEFAULT_SEED_GROWTH,
+    _ensure_advisor_targets, _get_existing_advisor_targets, DEFAULT_SEED_GROWTH,
 )
 
 router = APIRouter()
@@ -154,6 +154,86 @@ def compute_estimates(
         'advisors': advisors,
     }
 
+def _get_advisor_monthly_actuals(line: str, year: int, cache_module, sf_query_all, WON_STAGES, lf) -> dict:
+    """Unified actuals getter. Queries PBI for Travel/Insurance, falls back to Salesforce for other lines.
+    Returns: {
+        'actuals': {name_lower: {month: {'bookings': float, 'commission': float}}},
+        'names': {name_lower: original_name},
+        'branches': {name_lower: branch_name}
+    }
+    """
+    from pbi_client import travel_by_advisor_day, insurance_by_advisor_day
+
+    key = f"advisor_monthly_actuals_v5_{line}_{year}"
+
+    def fetch():
+        out = {}
+        name_case_map = {}
+        branch_map = {}
+
+        if line in ('Travel', 'Insurance'):
+            sd = f"{year}-01-01"
+            ed = f"{year}-12-31"
+            try:
+                if line == 'Travel':
+                    rows = travel_by_advisor_day(sd, ed)
+                else:
+                    rows = insurance_by_advisor_day(sd, ed)
+            except Exception as e:
+                log.error(f"Failed to fetch PBI actuals for {line} {year}: {e}")
+                rows = []
+
+            for r in rows:
+                original_name = (r.get('name') or '').strip()
+                name = original_name.lower()
+                if not name:
+                    continue
+                name_case_map[name] = original_name
+                if r.get('branch'):
+                    branch_map[name] = r.get('branch')
+                date_str = r.get('date', '')
+                if not date_str or len(date_str) < 7:
+                    continue
+                mo = int(date_str[5:7])
+                comm = float(r.get('commission', 0.0) or 0.0)
+                sales = float(r.get('sales', 0.0) or 0.0)
+
+                if name not in out:
+                    out[name] = {m: {'bookings': 0.0, 'commission': 0.0} for m in range(1, 13)}
+                out[name][mo]['bookings'] += sales
+                out[name][mo]['commission'] += comm
+        else:
+            # Salesforce Fallback
+            rows = sf_query_all(f"""
+                SELECT OwnerId, CALENDAR_MONTH(CloseDate) mo,
+                       SUM(Amount) rev, SUM(Earned_Commission_Amount__c) comm
+                FROM Opportunity
+                WHERE {WON_STAGES} AND {lf}
+                  AND CloseDate >= {year}-01-01 AND CloseDate <= {year}-12-31
+                  AND Amount != null
+                GROUP BY OwnerId, CALENDAR_MONTH(CloseDate)
+            """)
+            owner_map = get_owner_map()
+            for r in rows:
+                original_name = owner_map.get(r.get('OwnerId', ''), '').strip()
+                name = original_name.lower()
+                if not name:
+                    continue
+                name_case_map[name] = original_name
+                mo = r.get('mo', 0)
+                rev = float(r.get('rev', 0.0) or 0.0)
+                comm = float(r.get('comm', 0.0) or 0.0)
+
+                if name not in out:
+                    out[name] = {m: {'bookings': 0.0, 'commission': 0.0} for m in range(1, 13)}
+                out[name][mo]['bookings'] += rev
+                out[name][mo]['commission'] += comm
+
+        return {'actuals': out, 'names': name_case_map, 'branches': branch_map}
+
+    return cache_module.cached_query(key, fetch, ttl=3600, disk_ttl=86400)
+
+
 @router.get("/api/targets/monthly/{year}")
 def get_monthly_targets(
     year: int,
@@ -161,7 +241,7 @@ def get_monthly_targets(
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Return all advisors' 12-month targets + actuals. Advisors from SF, not uploads."""
+    """Return all advisors' 12-month targets + actuals. Sourced from PBI / SF."""
     from shared import WON_STAGES, line_filter_opp
     from sf_client import sf_query_all
     import cache
@@ -169,170 +249,171 @@ def get_monthly_targets(
     lf = line_filter_opp(line)
     prior_year = year - 1
 
-    # 1. Get current year actuals + prior year for commission rate
-    #    Use prior year's rate — current year is too early (most deals still Invoice with no commission)
-    cur_records = _sf_advisors_with_bookings(line, year, cache, sf_query_all, WON_STAGES, lf)
-
-    # 2. Get prior year data — use its commission rate (most complete data, deal-level accuracy)
-    py_records = _sf_advisors_with_bookings(line, prior_year, cache, sf_query_all, WON_STAGES, lf)
+    # 1. Fetch current year and prior year monthly actual data (PBI for Travel/Insurance, SF fallback)
+    cur_data = _get_advisor_monthly_actuals(line, year, cache, sf_query_all, WON_STAGES, lf)
+    py_data = _get_advisor_monthly_actuals(line, prior_year, cache, sf_query_all, WON_STAGES, lf)
     comm_rate = _get_comm_rate_accurate(line, prior_year, cache, sf_query_all, WON_STAGES, lf)
 
-    # 3. Build advisor list = union of current + prior year names
-    all_names: dict[str, str] = {}  # lower -> display name
-    for r in cur_records + py_records:
-        name = (r.get('Name') or '').strip()
-        if name:
-            all_names[name.lower()] = name
+    # 2. Build complete list of producing advisors (union of current + prior year + database targets)
+    all_names: dict[str, str] = {}
+    all_names.update(cur_data['names'])
+    all_names.update(py_data['names'])
 
-    # 4. Ensure AdvisorTarget rows exist for all SF advisors
-    advisor_ids = _ensure_advisor_targets(db, list(all_names.values()))
+    db_targets = db.query(AdvisorTarget).filter(AdvisorTarget.monthly_target.isnot(None)).all()
+    for dt in db_targets:
+        name_lower = dt.sf_name.strip().lower()
+        if name_lower not in all_names:
+            all_names[name_lower] = dt.sf_name
 
-    # 5. Compute prior year totals — estimated commission (Bookings × rate)
+    # 3. Read existing AdvisorTarget rows only. GET must not mutate target data.
+    advisor_ids = _get_existing_advisor_targets(db, list(all_names.values()))
+
+    # 4. Compute prior year totals for seeding
     prior_earnings: dict[str, float] = {}
     prior_bookings: dict[str, float] = {}
-    for r in py_records:
-        name = (r.get('Name') or '').strip().lower()
-        rev = r.get('rev', 0) or 0
-        if name:
-            prior_bookings[name] = rev
-            prior_earnings[name] = round(rev * comm_rate) if line == 'Travel' else rev
-
-    # 6. Prior year monthly breakdown (for seasonal seeding + display)
-    #    Use raw Earned_Commission_Amount__c to match what Monthly Report shows
-    py_monthly_key = f"targets_py_monthly_v2_{line}_{prior_year}"
-    def fetch_py_monthly():
-        rows = sf_query_all(f"""
-            SELECT OwnerId, CALENDAR_MONTH(CloseDate) mo,
-                   SUM(Amount) rev, SUM(Earned_Commission_Amount__c) comm
-            FROM Opportunity
-            WHERE {WON_STAGES} AND {lf}
-              AND CloseDate >= {prior_year}-01-01 AND CloseDate <= {prior_year}-12-31
-              AND Amount != null
-            GROUP BY OwnerId, CALENDAR_MONTH(CloseDate)
-        """)
-        owner_map = get_owner_map()
-        return [{**r, 'Name': owner_map.get(r.get('OwnerId', ''), '')} for r in rows]
-    py_monthly_records = cache.cached_query(py_monthly_key, fetch_py_monthly, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
-
-    # Estimated commission per month (Bookings × rate) for seasonal shape
     py_monthly_map: dict[str, dict[int, float]] = {}
-    for r in py_monthly_records:
-        name = (r.get('Name') or '').strip().lower()
-        if not name:
-            continue
-        rev = r.get('rev', 0) or 0
-        val = round(rev * comm_rate) if line == 'Travel' else rev
-        py_monthly_map.setdefault(name, {})[r.get('mo', 0)] = val
 
-    # 7. Ensure monthly targets are seeded (seasonal shape)
-    _ensure_monthly_targets(db, year, advisor_ids, prior_earnings, py_monthly=py_monthly_map,
-                            comm_rate=comm_rate)
+    for name_lower, months in py_data['actuals'].items():
+        total_rev = sum(m['bookings'] for m in months.values())
+        total_comm = sum(m['commission'] for m in months.values())
+        prior_bookings[name_lower] = total_rev
+        prior_earnings[name_lower] = total_comm if line in ('Travel', 'Insurance') else (total_rev * comm_rate)
 
-    # 8. Load monthly target rows
+        # Monthly breakdown for seasonal seeding
+        py_monthly_map[name_lower] = {}
+        for m, vals in months.items():
+            py_monthly_map[name_lower][m] = vals['commission'] if line in ('Travel', 'Insurance') else vals['bookings']
+
+    # 5. Load AdvisorTarget objects for metadata. Missing monthly targets render as 0
+    # until an admin explicitly imports/saves/seeds them. Filter out null target rows.
+    advisor_targets = db.query(AdvisorTarget).filter(
+        AdvisorTarget.id.in_(list(advisor_ids.values())),
+        AdvisorTarget.monthly_target.isnot(None)
+    ).all()
+    at_map = {at.id: at for at in advisor_targets}
+
+    # 6. Load monthly target rows
     monthly_rows = db.query(MonthlyAdvisorTarget).filter(
         MonthlyAdvisorTarget.year == year
     ).all()
     monthly_comm_map: dict[int, dict[int, float]] = {}
     monthly_book_map: dict[int, dict[int, float]] = {}
     for mr in monthly_rows:
-        raw_amount = mr.target_amount
-        raw_bookings = mr.target_bookings
+        monthly_comm_map.setdefault(mr.advisor_target_id, {})[mr.month] = mr.target_amount
+        monthly_book_map.setdefault(mr.advisor_target_id, {})[mr.month] = mr.target_bookings or 0.0
 
-        if raw_bookings is not None and raw_bookings > 0:
-            comm_val = raw_amount
-            book_val = raw_bookings
-        elif mr.updated_by_email and mr.updated_by_email != 'system-seed':
-            # Legacy: user-saved without target_bookings → amount is bookings
-            book_val = raw_amount
-            comm_val = round(raw_amount * comm_rate) if comm_rate > 0 else raw_amount
-        else:
-            # System-seeded → amount is commission
-            comm_val = raw_amount
-            book_val = round(raw_amount / comm_rate) if comm_rate > 0 else raw_amount
-
-        monthly_comm_map.setdefault(mr.advisor_target_id, {})[mr.month] = comm_val
-        monthly_book_map.setdefault(mr.advisor_target_id, {})[mr.month] = book_val
-
-    # 8. Current year actuals per advisor per month
-    cur_monthly_key = f"targets_monthly_actuals_{line}_{year}"
-    def fetch_monthly():
-        rows = sf_query_all(f"""
-            SELECT OwnerId, CALENDAR_MONTH(CloseDate) mo,
-                   SUM(Amount) rev, SUM(Earned_Commission_Amount__c) comm
-            FROM Opportunity
-            WHERE {WON_STAGES} AND {lf}
-              AND CloseDate >= {year}-01-01 AND CloseDate <= {year}-12-31
-              AND Amount != null
-            GROUP BY OwnerId, CALENDAR_MONTH(CloseDate)
-        """)
-        owner_map = get_owner_map()
-        return [{**r, 'Name': owner_map.get(r.get('OwnerId', ''), '')} for r in rows]
-    monthly_records = cache.cached_query(cur_monthly_key, fetch_monthly, ttl=CACHE_TTL_MEDIUM, disk_ttl=CACHE_TTL_12H)
-
-    actuals_map: dict[str, dict[int, float]] = {}
-    for r in monthly_records:
-        name = (r.get('Name') or '').strip().lower()
-        if not name:
-            continue
-        rev = r.get('rev', 0) or 0
-        val = round(rev * comm_rate) if line == 'Travel' else rev
-        actuals_map.setdefault(name, {})[r.get('mo', 0)] = val
-
-    # 9. Build response — return both commission and bookings targets
-    company_months = [{'month': m, 'target': 0.0, 'target_bookings': 0.0, 'actual': 0.0, 'achievement_pct': None}
-                      for m in range(1, 13)]
+    # 7. Build response data
+    company_months = [{
+        'month': m,
+        'target': 0.0, 'target_bookings': 0.0,
+        'actual': 0.0, 'bookings_actual': 0.0,
+        'actual_py': 0.0, 'bookings_actual_py': 0.0,
+        'achievement_pct': None, 'bookings_achievement_pct': None
+    } for m in range(1, 13)]
 
     advisors = []
     for name_lower, display_name in all_names.items():
         at_id = advisor_ids.get(name_lower)
-        if not at_id:
+        at = at_map.get(at_id)
+        if not at_id or not at:
             continue
+
         comm_by_month = monthly_comm_map.get(at_id, {})
         book_by_month = monthly_book_map.get(at_id, {})
-        actuals_by_month = actuals_map.get(name_lower, {})
+        actuals_by_month = cur_data['actuals'].get(name_lower, {})
+        actuals_py_by_month = py_data['actuals'].get(name_lower, {})
 
         months = []
         total_target = 0.0
         total_target_book = 0.0
         total_actual = 0.0
+        total_actual_book = 0.0
+        total_actual_py = 0.0
+        total_actual_book_py = 0.0
+
         for m in range(1, 13):
-            t = comm_by_month.get(m, 0)
-            tb = book_by_month.get(m, 0)
-            a = actuals_by_month.get(m, 0)
+            t = comm_by_month.get(m, 0.0)
+            tb = book_by_month.get(m, 0.0)
+            
+            # Current year actuals
+            act_vals = actuals_by_month.get(m) or actuals_by_month.get(str(m)) or {'bookings': 0.0, 'commission': 0.0}
+            a = act_vals['commission']
+            ab = act_vals['bookings']
+            
+            # Prior year actuals
+            act_py_vals = actuals_py_by_month.get(m) or actuals_py_by_month.get(str(m)) or {'bookings': 0.0, 'commission': 0.0}
+            apy = act_py_vals['commission']
+            apb = act_py_vals['bookings']
+
             total_target += t
             total_target_book += tb
             total_actual += a
+            total_actual_book += ab
+            total_actual_py += apy
+            total_actual_book_py += apb
+
             pct = round(a / t * 100, 1) if t > 0 else None
-            months.append({'month': m, 'target': t, 'target_bookings': tb, 'actual': a, 'achievement_pct': pct})
+            pct_b = round(ab / tb * 100, 1) if tb > 0 else None
+
+            months.append({
+                'month': m,
+                'target': t, 'target_bookings': tb,
+                'actual': a, 'bookings_actual': ab,
+                'actual_py': apy, 'bookings_actual_py': apb,
+                'achievement_pct': pct, 'bookings_achievement_pct': pct_b
+            })
+
             company_months[m - 1]['target'] += t
             company_months[m - 1]['target_bookings'] += tb
             company_months[m - 1]['actual'] += a
+            company_months[m - 1]['bookings_actual'] += ab
+            company_months[m - 1]['actual_py'] += apy
+            company_months[m - 1]['bookings_actual_py'] += apb
 
         overall_pct = round(total_actual / total_target * 100, 1) if total_target > 0 else None
-        # Prior year monthly shape for seasonal targets
+        overall_pct_b = round(total_actual_book / total_target_book * 100, 1) if total_target_book > 0 else None
+
+        # Prior year monthly shape for seasonal display
         py_months = py_monthly_map.get(name_lower, {})
-        py_month_list = [py_months.get(m, 0) for m in range(1, 13)]
+        py_month_list = [py_months.get(m, py_months.get(str(m), 0.0)) for m in range(1, 13)]
+
+        monthly_threshold = at.monthly_target if at.monthly_target else 15000.0
+        annual_threshold = monthly_threshold * 12
 
         advisors.append({
             'advisor_target_id': at_id,
-            'name': display_name,
-            'branch': None,
-            'title': None,
+            'name': at.raw_name or display_name,
+            'sf_name': at.sf_name,
+            'branch': at.branch,
+            'title': at.title,
+            'annual_threshold': annual_threshold,
+            'monthly_threshold': monthly_threshold,
+            'annual_stretch': at.annual_stretch,
             'months': months,
             'total_target': total_target,
             'total_target_bookings': total_target_book,
             'total_actual': total_actual,
+            'total_actual_bookings': total_actual_book,
+            'total_actual_py': total_actual_py,
+            'total_actual_bookings_py': total_actual_book_py,
             'achievement_pct': overall_pct,
-            'prior_year_actual': prior_earnings.get(name_lower, 0),
-            'prior_year_revenue': prior_bookings.get(name_lower, 0),
-            'prior_year_months': py_month_list,  # 12 values, seasonal shape
+            'bookings_achievement_pct': overall_pct_b,
+            'prior_year_actual': prior_earnings.get(name_lower, 0.0),
+            'prior_year_revenue': prior_bookings.get(name_lower, 0.0),
+            'prior_year_months': py_month_list,
         })
 
     for cm in company_months:
         cm['achievement_pct'] = round(cm['actual'] / cm['target'] * 100, 1) if cm['target'] > 0 else None
+        cm['bookings_achievement_pct'] = round(cm['bookings_actual'] / cm['target_bookings'] * 100, 1) if cm['target_bookings'] > 0 else None
 
     co_total_target = sum(cm['target'] for cm in company_months)
+    co_total_target_book = sum(cm['target_bookings'] for cm in company_months)
     co_total_actual = sum(cm['actual'] for cm in company_months)
+    co_total_actual_book = sum(cm['bookings_actual'] for cm in company_months)
+    co_total_actual_py = sum(cm['actual_py'] for cm in company_months)
+    co_total_actual_book_py = sum(cm['bookings_actual_py'] for cm in company_months)
+
     advisors.sort(key=lambda a: a['prior_year_actual'], reverse=True)
 
     total_py_bookings = sum(prior_bookings.values())
@@ -344,8 +425,13 @@ def get_monthly_targets(
         'company': {
             'months': company_months,
             'total_target': co_total_target,
+            'total_target_bookings': co_total_target_book,
             'total_actual': co_total_actual,
+            'total_actual_bookings': co_total_actual_book,
+            'total_actual_py': co_total_actual_py,
+            'total_actual_bookings_py': co_total_actual_book_py,
             'achievement_pct': round(co_total_actual / co_total_target * 100, 1) if co_total_target > 0 else None,
+            'bookings_achievement_pct': round(co_total_actual_book / co_total_target_book * 100, 1) if co_total_target_book > 0 else None,
         },
         'methodology': {
             'commission_rate': round(comm_rate * 100, 1),
@@ -355,8 +441,7 @@ def get_monthly_targets(
             'default_seed_growth': int((DEFAULT_SEED_GROWTH - 1) * 100),
             'note': f'Estimated commission = Bookings x {round(comm_rate * 100, 1)}% avg commission rate. '
                     f'Rate from {prior_year} deals with recorded commission. '
-                    f'Initial targets seeded at +{int((DEFAULT_SEED_GROWTH - 1) * 100)}% over prior year (seasonal shape). '
-                    f'Edit cells or use Apply Growth to customize.',
+                    f'Target rows are read-only on load; admins must save/import/reseed to change database values.',
         },
     }
 
@@ -383,10 +468,27 @@ def save_monthly_targets(
 
     count = 0
     for update in body.updates:
+        # Update metadata if present
+        advisor = db.query(AdvisorTarget).filter(AdvisorTarget.id == update.advisor_target_id).first()
+        if advisor:
+            if update.title is not None:
+                advisor.title = update.title
+            if update.branch is not None:
+                advisor.branch = update.branch
+            if update.monthly_target is not None:
+                advisor.monthly_target = update.monthly_target
+            if update.annual_stretch is not None:
+                advisor.annual_stretch = update.annual_stretch
+            db.add(advisor)
+
+        current_year = datetime.utcnow().year
+        current_month = datetime.utcnow().month
+
         for month_str, amount in update.months.items():
             month_int = int(month_str)
             if month_int < 1 or month_int > 12:
                 continue
+
 
             # Compute both units from the submitted value
             if body.base == 'bookings':
@@ -433,7 +535,7 @@ def reseed_monthly_targets(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Delete all system-seeded targets for a year so they get re-seeded with current growth."""
+    """Delete system-seeded targets for a year. Admins must save/import new targets explicitly."""
     from sqlalchemy import or_
     deleted = db.query(MonthlyAdvisorTarget).filter(
         MonthlyAdvisorTarget.year == year,
@@ -446,7 +548,7 @@ def reseed_monthly_targets(
     log_activity(
         db, action='monthly_targets_reseeded', category='targets',
         user=admin,
-        detail=f"Cleared {deleted} system-seeded targets for {year} — will re-seed on next load",
+        detail=f"Cleared {deleted} system-seeded targets for {year}; no read endpoint will auto-reseed",
         metadata={'year': year, 'deleted': deleted},
     )
     return {'status': 'reseeded', 'deleted': deleted}

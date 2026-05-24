@@ -11,6 +11,7 @@ Provides:
 
 import os, sys, pytest
 from collections import defaultdict
+from uuid import uuid4
 from unittest.mock import MagicMock
 
 # ── Python path ───────────────────────────────────────────────────────────────
@@ -18,12 +19,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 # ── Env defaults before any app import ───────────────────────────────────────
 os.environ.setdefault('JWT_SECRET', 'test-secret-not-for-prod')
+os.environ.setdefault('USE_SQLITE', '1')
 os.environ.setdefault('SF_TOKEN_URL',      'https://test.salesforce.com/token')
 os.environ.setdefault('SF_CONSUMER_KEY',   'test-key')
 os.environ.setdefault('SF_CONSUMER_SECRET','test-secret')
 os.environ.setdefault('SF_USERNAME',       'test@example.com')
 os.environ.setdefault('SF_PASSWORD',       'testpass')
 os.environ.setdefault('SF_SECURITY_TOKEN', 'testtoken')
+os.environ.setdefault('SALESINSIGHT_CACHE_DIR', os.path.join(os.path.dirname(__file__), '.test_cache'))
 
 
 # ── bcrypt speed patch (session-wide, autouse) ────────────────────────────────
@@ -129,13 +132,13 @@ def auth_headers(api_client, in_memory_db):
     from models import User
 
     hashed = bcrypt.hashpw(b'testpass123', bcrypt.gensalt()).decode()
-    user = User(email='test@nyaaa.com', name='Test User',
+    email = f'test-{uuid4().hex[:8]}@nyaaa.com'
+    user = User(email=email, name='Test User',
                 password_hash=hashed, role='admin', is_active=True)
     in_memory_db.add(user)
     in_memory_db.commit()
 
     resp = api_client.post('/api/auth/login',
-                           json={'email': 'test@nyaaa.com', 'password': 'testpass123'})
+                           json={'email': email, 'password': 'testpass123'})
     assert resp.status_code == 200, f"Login failed: {resp.text}"
     return {'Authorization': f'Bearer {resp.json()["token"]}'}
-

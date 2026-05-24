@@ -55,31 +55,17 @@ interface MetallicOpts {
 }
 
 /** Linear-gradient color spec for ECharts itemStyle.color */
-export function metallicGradient(baseHex: string, opts: MetallicOpts = {}) {
-  const dir = opts.direction ?? 'horizontal'
-  const a = opts.alpha ?? 0.92
-  const c = hexToRgb(baseHex)
-  return {
-    type: 'linear' as const,
-    x: 0,
-    y: 0,
-    x2: dir === 'horizontal' ? 1 : 0,
-    y2: dir === 'horizontal' ? 0 : 1,
-    colorStops: [
-      { offset: 0,   color: `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.55})` },
-      { offset: 0.5, color: `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.85})` },
-      { offset: 1,   color: `rgba(${c.r}, ${c.g}, ${c.b}, ${a})` },
-    ],
-  }
+export function metallicGradient(baseHex: string, _opts: MetallicOpts = {}) {
+  // Return the raw hex color directly to achieve a clean, modern, flat design
+  return baseHex
 }
 
 /** Soft drop shadow paired with the metallic gradient */
-export function metallicShadow(baseHex: string, strength = 0.22) {
-  const c = hexToRgb(baseHex)
+export function metallicShadow(_baseHex: string, _strength = 0.0) {
   return {
-    shadowBlur: 8,
-    shadowColor: `rgba(${c.r}, ${c.g}, ${c.b}, ${strength})`,
-    shadowOffsetY: 2,
+    shadowBlur: 0,
+    shadowColor: 'transparent',
+    shadowOffsetY: 0,
     shadowOffsetX: 0,
   }
 }
@@ -91,8 +77,7 @@ export function metallicAreaGradient(baseHex: string) {
     type: 'linear' as const,
     x: 0, y: 0, x2: 0, y2: 1,
     colorStops: [
-      { offset: 0,   color: `rgba(${c.r}, ${c.g}, ${c.b}, 0.38)` },
-      { offset: 0.6, color: `rgba(${c.r}, ${c.g}, ${c.b}, 0.12)` },
+      { offset: 0,   color: `rgba(${c.r}, ${c.g}, ${c.b}, 0.16)` },
       { offset: 1,   color: `rgba(${c.r}, ${c.g}, ${c.b}, 0.0)` },
     ],
   }

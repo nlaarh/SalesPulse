@@ -48,7 +48,7 @@ function stageColor(stage: string) {
 function stageDot(stage: string) {
   const s = stage?.toLowerCase() ?? ''
   if (s === 'closed won' || s === 'invoice') return 'bg-emerald-500'
-  if (s === 'closed lost')                   return 'bg-slate-400'
+  if (s === 'closed lost')                   return 'bg-slate-500'
   return 'bg-blue-500'
 }
 

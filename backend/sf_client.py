@@ -11,8 +11,10 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'), override=Fals
 log = logging.getLogger('sf_client')
 
 
-def _log_sf_query(query: str, duration_ms: int, row_count: int | None, bytes_count: int | None, error: str | None, endpoint: str | None = None):
-    """Fire-and-forget logging of SOQL execution to SQLite. Never raises."""
+_query_log_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='sf-query-log')
+
+
+def _write_sf_query_log(query: str, duration_ms: int, row_count: int | None, bytes_count: int | None, error: str | None, endpoint: str | None = None):
     try:
         from database import SessionLocal
         from models import SfQueryLog
@@ -31,8 +33,18 @@ def _log_sf_query(query: str, duration_ms: int, row_count: int | None, bytes_cou
         finally:
             db.close()
     except Exception:
-        # Never let logging kill a real query
-        pass
+        log.debug('SF query profiling write failed', exc_info=True)
+
+
+def _log_sf_query(query: str, duration_ms: int, row_count: int | None, bytes_count: int | None, error: str | None, endpoint: str | None = None):
+    """Fire-and-forget SOQL profiling. Never blocks a Salesforce query."""
+    try:
+        _query_log_executor.submit(
+            _write_sf_query_log,
+            query, duration_ms, row_count, bytes_count, error, endpoint,
+        )
+    except RuntimeError:
+        log.debug('SF query profiling executor unavailable', exc_info=True)
 
 # ── Connection-pooled HTTP session ──────────────────────────────────────────
 
@@ -92,16 +104,21 @@ def sf_instance_url() -> str:
 
 _rate_lock = threading.Lock()
 _call_times = []
-# 150 calls/min — SF Enterprise allows 1,000+ API calls/24h per user.
-# Cold-start dashboard fires ~30 parallel queries; this gives ample headroom.
-_RATE_LIMIT = 150
+# Per worker. Keep conservative because each gunicorn worker has its own limiter.
+_RATE_LIMIT = int(os.getenv('SF_RATE_LIMIT_PER_MIN', '20'))
 _RATE_WINDOW = 60
 # Max seconds to block-wait before giving up (for burst scenarios)
 _RATE_MAX_WAIT = 12
+_PARALLEL_QUERY_LIMIT_PER_REQUEST = int(os.getenv('SF_PARALLEL_QUERY_LIMIT_PER_REQUEST', '2'))
 
 
 class RateLimitExceeded(Exception):
     """Raised when SF API rate limit is exceeded after exhausting retries."""
+    pass
+
+
+class SFQueryError(Exception):
+    """Raised when a Salesforce query fails, to prevent caching bad data."""
     pass
 
 
@@ -124,6 +141,24 @@ def _rate_check():
         time.sleep(min(wait, 2))
 
 
+def sf_rate_limit_state() -> dict:
+    """Return current per-process Salesforce limiter state for admin health."""
+    with _rate_lock:
+        now = time.time()
+        _call_times[:] = [t for t in _call_times if now - t < _RATE_WINDOW]
+        remaining = max(0, _RATE_LIMIT - len(_call_times))
+        retry_after = 0.0
+        if remaining == 0 and _call_times:
+            retry_after = max(0.0, _RATE_WINDOW - (now - _call_times[0]))
+        return {
+            'limit_per_minute': _RATE_LIMIT,
+            'used_in_window': len(_call_times),
+            'remaining_in_window': remaining,
+            'retry_after_seconds': round(retry_after, 1),
+            'parallel_query_limit_per_request': _PARALLEL_QUERY_LIMIT_PER_REQUEST,
+        }
+
+
 # ── Query functions ──────────────────────────────────────────────────────────
 
 DML_RE = re.compile(r'^\s*(INSERT|UPDATE|DELETE|UPSERT|MERGE|UNDELETE)\s', re.IGNORECASE)
@@ -141,11 +176,6 @@ def sf_query(query: str, paginate: bool = True) -> dict:
     """Execute SOQL via REST API with auto-pagination. Returns {totalSize, records}."""
     _validate(query)
     _rate_check()
-    try:
-        from activity_logger import log_sf_query
-        log_sf_query(query)
-    except Exception:
-        pass  # never block queries due to logging
     base = _base()
     url = f"{base}/services/data/v62.0/query/?q={requests.utils.quote(query)}"
     all_recs = []
@@ -184,7 +214,7 @@ def sf_query_all(query: str) -> list:
         if 'error' in result:
             log.error(f"SOQL error: {result['error'][:200]}")
             err = result.get('error', '')[:500]
-            return []
+            raise SFQueryError(f"Salesforce query failed ({result.get('status')}): {err}")
         rows = result.get('records', [])
         return rows
     except Exception as e:
@@ -220,12 +250,7 @@ def sf_sosl(sosl_query: str) -> list:
         return clean
     except Exception as e:
         log.error(f"SOSL error: {e}")
-        return []
-
-
-class SFQueryError(Exception):
-    """Raised when one or more Salesforce queries fail, to prevent caching bad data."""
-    pass
+        raise SFQueryError(f"Salesforce SOSL failed: {e}") from e
 
 
 def sf_parallel(**queries) -> dict:
@@ -233,6 +258,9 @@ def sf_parallel(**queries) -> dict:
     Raises SFQueryError if any query fails so callers (via cached_query) don't cache zeros.
     """
     import json as _json
+    if not queries:
+        return {}
+
     results = {}
     errors = []
 
@@ -259,7 +287,7 @@ def sf_parallel(**queries) -> dict:
                 bytes_count = None
             _log_sf_query(q, duration_ms, len(rows) if rows else 0, bytes_count, err_str, endpoint=name)
 
-    with ThreadPoolExecutor(max_workers=min(len(queries), 8)) as pool:
+    with ThreadPoolExecutor(max_workers=_parallel_worker_count(len(queries))) as pool:
         futures = {pool.submit(_run, name, q): name for name, q in queries.items()}
         for future in futures:
             name = futures[future]
@@ -280,3 +308,10 @@ def sf_parallel(**queries) -> dict:
     if errors:
         raise SFQueryError(f"SF queries failed (not caching): {errors}")
     return results
+
+
+def _parallel_worker_count(query_count: int) -> int:
+    """Bound SOQL fan-out so one user request cannot consume the org quota."""
+    if query_count <= 0:
+        return 0
+    return max(1, min(query_count, _PARALLEL_QUERY_LIMIT_PER_REQUEST))

@@ -59,7 +59,7 @@ export default function RankingsTab({ leaders, slipping, leadSources, c, targetM
 type SortKey = 'commission' | 'bookings' | 'deals' | 'win_rate' | 'avg_deal_size' | 'pipeline_value'
 
 function ShareBar({ pct, rank }: { pct: number; rank: number }) {
-  const color = rank === 1 ? 'bg-amber-500' : rank === 2 ? 'bg-slate-400' : rank === 3 ? 'bg-amber-700/70' : 'bg-primary/40'
+  const color = rank === 1 ? 'bg-amber-500' : rank === 2 ? 'bg-slate-500' : rank === 3 ? 'bg-amber-700/70' : 'bg-primary/40'
   return (
     <div className="flex items-center justify-end gap-1.5">
       <span className="tabular-nums text-[11px] font-semibold w-9 text-right">{pct.toFixed(1)}%</span>
@@ -189,7 +189,7 @@ function LeaderboardFull({ leaders, onSelect, targetMap, showBranch }: {
                     <span className={cn(
                       'inline-flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold',
                       a.rank === 1 && 'bg-amber-500/15 text-amber-500',
-                      a.rank === 2 && 'bg-slate-400/15 text-slate-400',
+                      a.rank === 2 && 'bg-slate-500/15 text-slate-500',
                       a.rank === 3 && 'bg-orange-600/15 text-orange-500',
                       a.rank > 3 && 'text-muted-foreground',
                     )}>
@@ -262,17 +262,17 @@ function LeadSourcesChart({ sources, c }: {
       {top8.length > 0 ? (
         <ResponsiveContainer width="100%" height={140}>
           <BarChart data={top8} layout="vertical" margin={{ left: 0, right: 10 }}>
-            <CartesianGrid strokeDasharray="none" stroke={c.grid} horizontal={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={c.grid} horizontal={false} />
             <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 10 }} />
             <YAxis type="category" dataKey="name" width={130} axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 9 }} />
             <Tooltip
-              contentStyle={tooltipStyle(c)}
+              contentStyle={tooltipStyle(c as any)}
               formatter={(v: unknown) => [formatNumber(v as number), 'Leads']}
               labelFormatter={(name: unknown) => {
                 const item = top8.find(d => d.name === (name as string))
                 return item ? item.fullName : (name as string)
               }}
-              cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+              cursor={{ fill: c.cursor }}
             />
             <Bar dataKey="count" fill={c.cyan} radius={[0, 4, 4, 0]} barSize={14} fillOpacity={0.75} />
           </BarChart>

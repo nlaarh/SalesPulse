@@ -114,7 +114,7 @@ class ActivityLog(Base):
     detail = Column(Text, nullable=True)
     metadata_json = Column(Text, nullable=True)
     ip_address = Column(String(64), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     def to_dict(self):
         return {
@@ -167,6 +167,7 @@ class AdvisorTarget(Base):
     branch = Column(String(128), nullable=True)
     title = Column(String(128), nullable=True)
     monthly_target = Column(Float, nullable=True)
+    annual_stretch = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -178,6 +179,7 @@ class AdvisorTarget(Base):
             'branch': self.branch,
             'title': self.title,
             'monthly_target': self.monthly_target,
+            'annual_stretch': self.annual_stretch,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -328,7 +330,7 @@ class ApiRequestMetric(Base):
     user_id = Column(Integer, nullable=True, index=True)
     user_email = Column(String(255), nullable=True, index=True)
     source = Column(String(32), nullable=False, default='middleware')
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class ClientRenderMetric(Base):
@@ -346,7 +348,7 @@ class ClientRenderMetric(Base):
     metadata_json = Column(Text, nullable=True)
     user_id = Column(Integer, nullable=True, index=True)
     user_email = Column(String(255), nullable=True, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class CacheWarmRun(Base):

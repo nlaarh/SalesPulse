@@ -113,11 +113,25 @@ def advisor_summary(
     def fetch():
         if line in _PBI_LINES:
             p_sd, p_ed = _prev_dates(sd, ed)
-            with ThreadPoolExecutor(max_workers=2) as ex:
+            lf = _line_filter(line)
+            df = _date_filter(sd, ed)
+
+            # Run PBI (curr + prev) and SF pipeline/win-rate queries in parallel
+            with ThreadPoolExecutor(max_workers=3) as ex:
                 curr_f = ex.submit(_pbi_by_day, line, sd, ed)
                 prev_f = ex.submit(_pbi_by_day, line, p_sd, p_ed)
+                sf_f   = ex.submit(sf_parallel,
+                    won=f"SELECT COUNT(Id) cnt FROM Opportunity"
+                        f" WHERE {WON_STAGES} AND {lf} AND {df}",
+                    lost=f"SELECT COUNT(Id) cnt FROM Opportunity"
+                         f" WHERE StageName = 'Closed Lost' AND {lf} AND {df}",
+                    pipeline=f"SELECT COUNT(Id) cnt, SUM(Amount) rev FROM Opportunity"
+                             f" WHERE IsClosed = false AND {lf} AND Amount != null"
+                             f" AND CloseDate >= TODAY AND CloseDate <= NEXT_N_MONTHS:12",
+                )
                 rows  = curr_f.result()
                 prows = prev_f.result()
+                sf    = sf_f.result()
 
             comm    = sum(r['commission'] for r in rows)
             sales   = sum(r['sales']      for r in rows)
@@ -125,6 +139,14 @@ def advisor_summary(
             p_comm  = sum(r['commission'] for r in prows)
             p_sales = sum(r['sales']      for r in prows)
             p_txns  = sum(r['txns']       for r in prows)
+
+            won_cnt  = (sf['won'][0]  if sf.get('won')  else {}).get('cnt', 0) or 0
+            lost_cnt = (sf['lost'][0] if sf.get('lost') else {}).get('cnt', 0) or 0
+            pipe     = sf['pipeline'][0] if sf.get('pipeline') else {}
+            pipe_cnt = pipe.get('cnt', 0) or 0
+            pipe_rev = pipe.get('rev', 0) or 0
+            total_closed = won_cnt + lost_cnt
+            win_rate = round(won_cnt / total_closed * 100, 1) if total_closed > 0 else 0
 
             def _pct(a, b): return round((a - b) / b * 100, 1) if b > 0 else 0
 
@@ -141,10 +163,10 @@ def advisor_summary(
                 "deals":              txns,
                 "deals_prev":         p_txns,
                 "deals_yoy_pct":      _pct(txns, p_txns),
-                "win_rate":           0,
+                "win_rate":           win_rate,
                 "avg_deal_size":      round(sales / txns, 0) if txns > 0 else 0,
-                "pipeline_value":     0,
-                "pipeline_count":     0,
+                "pipeline_value":     pipe_rev,
+                "pipeline_count":     pipe_cnt,
                 "period_months":      period,
                 "line":               line,
             }
@@ -235,12 +257,47 @@ def advisor_leaderboard(
     if line not in VALID_LINES:
         line = 'Travel'
     sd, ed = _resolve_dates(start_date, end_date, period)
-    key = f"advisor_leaderboard_{line}_{sd}_{ed}"
+    key = f"advisor_leaderboard_v2_{line}_{sd}_{ed}"
 
     def fetch():
         if line in _PBI_LINES:
-            adv_rows = _pbi_by_advisor(line, sd, ed)
+            lf = _line_filter(line)
+            df = _date_filter(sd, ed)
+            with ThreadPoolExecutor(max_workers=2) as ex:
+                adv_f = ex.submit(_pbi_by_advisor, line, sd, ed)
+                sf_f  = ex.submit(sf_parallel,
+                    won=f"SELECT OwnerId, COUNT(Id) cnt FROM Opportunity"
+                        f" WHERE {WON_STAGES} AND {lf} AND {df} GROUP BY OwnerId",
+                    closed=f"SELECT OwnerId, COUNT(Id) cnt FROM Opportunity"
+                           f" WHERE StageName IN ('Closed Won','Invoice','Closed Lost')"
+                           f" AND {lf} AND {df} GROUP BY OwnerId",
+                    pipeline=f"SELECT OwnerId, COUNT(Id) cnt, SUM(Amount) rev"
+                             f" FROM Opportunity WHERE IsClosed = false AND {lf}"
+                             f" AND Amount != null AND CloseDate >= TODAY"
+                             f" AND CloseDate <= NEXT_N_MONTHS:12 GROUP BY OwnerId",
+                )
+                adv_rows = adv_f.result()
+                sf       = sf_f.result()
+
+            owner_map  = get_owner_map()
+            won_map    = {owner_map[r['OwnerId']]: r.get('cnt', 0) or 0
+                          for r in sf.get('won', []) if r.get('OwnerId') in owner_map}
+            closed_map = {owner_map[r['OwnerId']]: r.get('cnt', 0) or 0
+                          for r in sf.get('closed', []) if r.get('OwnerId') in owner_map}
+            pipe_map   = {owner_map[r['OwnerId']]: {'cnt': r.get('cnt', 0) or 0,
+                                                     'rev': r.get('rev', 0) or 0}
+                          for r in sf.get('pipeline', []) if r.get('OwnerId') in owner_map}
+
             advisors = _build_leaderboard(adv_rows)
+            for a in advisors:
+                name = a['name']
+                won  = won_map.get(name, 0)
+                total_closed = closed_map.get(name, won)
+                a['win_rate']       = round(won / total_closed * 100, 1) if total_closed > 0 else 0
+                pipe = pipe_map.get(name, {})
+                a['pipeline_value'] = pipe.get('rev', 0)
+                a['pipeline_count'] = pipe.get('cnt', 0)
+
             return {"advisors": advisors, "total": len(advisors), "line": line, "period": period}
 
         # ── Salesforce ────────────────────────────────────────────────────

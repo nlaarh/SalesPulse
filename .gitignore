@@ -80,3 +80,6 @@ DMV_*.csv
 # Python virtual envs (alt naming)
 .venv/
 
+# Scratch scripts
+/scratch/
+

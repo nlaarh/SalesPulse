@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
 import {
   AlertCircle, Check, ScrollText, Target, Zap, Database, Gauge,
-  HelpCircle, Bug, Users,
+  HelpCircle, Bug, Users, Server,
 } from 'lucide-react'
 import ActivityLogsTable from '@/components/ActivityLogsTable'
 import TargetsTab from '@/pages/settings/TargetsTab'
@@ -15,11 +15,12 @@ import PerformanceTab from '@/pages/settings/PerformanceTab'
 const HelpPage = lazy(() => import('@/pages/Help'))
 const IssuesPage = lazy(() => import('@/pages/Issues'))
 const CacheStatusTab = lazy(() => import('@/pages/settings/CacheStatusTab'))
+const SystemHealthTab = lazy(() => import('@/pages/settings/SystemHealthTab'))
 const UserManagement = lazy(() => import('@/pages/admin/UserManagement'))
 
 // Settings = the admin home. Superadmin sees every tab; the 'admin' role sees
 // only the Users tab (user management is the one feature it owns).
-type SettingsTab = 'users' | 'logs' | 'targets' | 'ai' | 'performance' | 'help' | 'issues' | 'cache'
+type SettingsTab = 'users' | 'logs' | 'targets' | 'ai' | 'performance' | 'help' | 'issues' | 'cache' | 'system'
 
 export default function Settings() {
   const { isAdmin, isAdminOrSuperadmin } = useAuth()
@@ -51,6 +52,7 @@ export default function Settings() {
     { key: 'performance', label: 'Performance', icon: Gauge },
     { key: 'ai', label: 'AI & Integrations', icon: Zap },
     { key: 'cache', label: 'Cache', icon: Database },
+    { key: 'system', label: 'System Health', icon: Server },
     { key: 'issues', label: 'Issues', icon: Bug },
     { key: 'help', label: 'Help & Guide', icon: HelpCircle },
   ]
@@ -110,6 +112,7 @@ export default function Settings() {
       {tab === 'issues' && <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading...</div>}><IssuesPage /></Suspense>}
       {tab === 'help' && <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading...</div>}><HelpPage /></Suspense>}
       {tab === 'performance' && <PerformanceTab />}
+      {tab === 'system' && <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading...</div>}><SystemHealthTab /></Suspense>}
 
       {/* Global toasts */}
       {success && (

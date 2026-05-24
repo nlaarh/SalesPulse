@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { fmtMonth } from '@/lib/formatters'
@@ -12,7 +13,6 @@ interface DetailsTabProps {
   sorted: AgentReport[]
   showAll: boolean
   setShowAll: (v: boolean) => void
-  agents: AgentReport[]
   monthColumns: string[]
   monthTotals: Map<string, Record<Metric, number>>
   divTotals: Record<string, number>
@@ -21,28 +21,32 @@ interface DetailsTabProps {
   sortAsc: boolean
   toggleSort: (f: SortField) => void
   targetMap?: Map<string, number>
+  viewType: 'advisor' | 'branch'
 }
 
 /* ── Component ────────────────────────────────────────────────────────────── */
 
 export default function DetailsTab({
-  sorted, showAll, setShowAll, agents, monthColumns, monthTotals,
-  divTotals, metric, sortField, sortAsc, toggleSort, targetMap,
+  sorted, showAll, setShowAll, monthColumns, monthTotals,
+  divTotals, metric, sortField, sortAsc, toggleSort, targetMap, viewType,
 }: DetailsTabProps) {
   const hasTargets = targetMap && targetMap.size > 0
   const isRevenueMetric = metric === 'commission' || metric === 'sales'
-  const displayed = showAll ? sorted : sorted.slice(0, 25)
+  const [searchTerm, setSearchTerm] = useState('')
+
+  const filtered = sorted.filter(agent => agent.name.toLowerCase().includes(searchTerm.toLowerCase()))
+  const displayed = showAll ? filtered : filtered.slice(0, 25)
 
   const handleExport = () => {
     const rows = sorted.map(agent => {
       const monthMap = new Map(agent.months.map(m => [m.month, m]))
-      const row: Record<string, unknown> = { Advisor: agent.name }
+      const row: Record<string, unknown> = { [viewType === 'advisor' ? 'Advisor' : 'Branch']: agent.name }
       monthColumns.forEach(m => {
         const cell = monthMap.get(m)
         row[fmtMonth(m)] = cell ? (cell[metric] ?? 0) : 0
       })
       row['Total'] = agent.totals?.[metric] ?? 0
-      if (hasTargets) row['Target'] = targetMap!.get(agent.name) ?? 0
+      if (hasTargets) row['Target'] = targetMap!.get(agent.name.toLowerCase()) ?? 0
       return row
     })
     exportToExcel(rows, `Monthly_Report_${metric}_${new Date().toISOString().slice(0,10)}`)
@@ -50,7 +54,14 @@ export default function DetailsTab({
 
   return (
     <div className="card-premium animate-enter overflow-hidden">
-      <div className="flex items-center justify-end px-4 py-2 border-b border-border">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border gap-3">
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          placeholder={viewType === 'advisor' ? "Filter advisors..." : "Filter branches..."}
+          className="rounded-lg border border-border bg-secondary/30 px-3 py-1 text-[11px] font-medium outline-none focus:border-primary/45 focus:ring-1 focus:ring-primary/20 w-44"
+        />
         <button onClick={handleExport}
           className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition">
           <Download className="h-3.5 w-3.5" />
@@ -66,7 +77,7 @@ export default function DetailsTab({
                 onClick={() => toggleSort('name')}
                 className="sticky left-10 z-10 cursor-pointer bg-card px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60 hover:text-foreground"
               >
-                <div className="flex items-center gap-1">Advisor<ArrowUpDown className="h-3 w-3" /></div>
+                <div className="flex items-center gap-1">{viewType === 'advisor' ? 'Advisor' : 'Branch'}<ArrowUpDown className="h-3 w-3" /></div>
               </th>
               {monthColumns.map((m) => (
                 <th
@@ -94,7 +105,7 @@ export default function DetailsTab({
               {hasTargets && isRevenueMetric && (
                 <>
                   <th className="whitespace-nowrap px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">
-                    Mo Target
+                    Target
                   </th>
                   <th className="whitespace-nowrap px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">
                     vs Target
@@ -119,25 +130,31 @@ export default function DetailsTab({
                   <td className="sticky left-0 z-10 bg-inherit px-3 py-2 text-center text-[11px] text-muted-foreground/50">{idx + 1}</td>
                   <td className="sticky left-10 z-10 bg-inherit px-3 py-2 text-[12px] font-medium">
                     <div className="flex items-center gap-1.5">
-                      <Link to={`/agent/${encodeURIComponent(agent.name)}`} className="text-primary transition-colors hover:text-primary/80 hover:underline">
-                        {agent.name}
-                      </Link>
-                      {agent.inactive && (
-                        <span className="rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                          inactive
-                        </span>
-                      )}
-                      {agent.sf_id && (
-                        <a
-                          href={`https://aaawcny.my.salesforce.com/${agent.sf_id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="View in Salesforce"
-                          className="text-muted-foreground/40 hover:text-[#00A1E0] transition-colors"
-                          onClick={e => e.stopPropagation()}
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
+                      {viewType === 'advisor' ? (
+                        <>
+                          <Link to={`/agent/${encodeURIComponent(agent.name)}`} className="text-primary transition-colors hover:text-primary/80 hover:underline">
+                            {agent.name}
+                          </Link>
+                          {agent.inactive && (
+                            <span className="rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                              inactive
+                            </span>
+                          )}
+                          {agent.sf_id && (
+                            <a
+                              href={`https://aaawcny.my.salesforce.com/${agent.sf_id}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="View in Salesforce"
+                              className="text-muted-foreground/40 hover:text-[#00A1E0] transition-colors"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-foreground font-semibold">{agent.name}</span>
                       )}
                     </div>
                   </td>
@@ -179,19 +196,25 @@ export default function DetailsTab({
               <td className="whitespace-nowrap border-l border-border px-3 py-2.5 text-right">
                 <span className="tabular-nums text-[12px] font-bold text-primary">{fmtCell(divTotals[metric] || 0, metric)}</span>
               </td>
+              {hasTargets && isRevenueMetric && (
+                <>
+                  <td className="px-3 py-2.5" />
+                  <td className="px-3 py-2.5" />
+                </>
+              )}
             </tr>
           </tbody>
         </table>
       </div>
 
-      {agents.length > 25 && (
+      {filtered.length > 25 && (
         <button
           onClick={() => setShowAll(!showAll)}
           className="flex w-full items-center justify-center gap-1.5 border-t border-border px-4 py-2.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
         >
           {showAll
             ? <><ChevronUp className="h-3.5 w-3.5" /> Show top 25</>
-            : <><ChevronDown className="h-3.5 w-3.5" /> Show all {agents.length} advisors</>}
+            : <><ChevronDown className="h-3.5 w-3.5" /> Show all {filtered.length} {viewType === 'advisor' ? 'advisors' : 'branches'}</>}
         </button>
       )}
     </div>
@@ -211,18 +234,18 @@ function TargetCells({ name, totalVal, targetMap, metric, nMonths }: {
     </>
   )
   const periodTarget = t * nMonths
-  const pct = periodTarget > 0 ? (totalVal / periodTarget) * 100 : 0
+  const diff = totalVal - periodTarget
   return (
     <>
       <td className="whitespace-nowrap px-3 py-2 text-right">
-        <span className="tabular-nums text-[11px] text-muted-foreground">{fmtCell(t, metric)}</span>
+        <span className="tabular-nums text-[11px] text-muted-foreground">{fmtCell(periodTarget, metric)}</span>
       </td>
       <td className="whitespace-nowrap px-3 py-2 text-right">
         <span className={cn(
           'tabular-nums text-[11px] font-semibold',
-          pct >= 100 ? 'text-emerald-500' : pct >= 80 ? 'text-amber-500' : 'text-rose-500',
+          diff >= 0 ? 'text-emerald-500' : 'text-rose-500',
         )}>
-          {pct.toFixed(0)}%
+          {diff >= 0 ? '+' : ''}{fmtCell(diff, metric)}
         </span>
       </td>
     </>

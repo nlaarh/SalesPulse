@@ -174,10 +174,10 @@ function ChartsTab({ opps }: { opps: Opportunity[] }) {
           <div className="p-5">
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={scoreBuckets}>
-                <CartesianGrid strokeDasharray="none" stroke={c.grid} vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
                 <XAxis dataKey="range" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} />
-                <Tooltip contentStyle={tooltipStyle(c)} />
+                <Tooltip contentStyle={tooltipStyle(c)} cursor={{ fill: c.cursor }} />
                 <Bar dataKey="count" fill={c.primary} radius={[4, 4, 0, 0]} barSize={28} name="Deals" />
               </BarChart>
             </ResponsiveContainer>
@@ -192,12 +192,12 @@ function ChartsTab({ opps }: { opps: Opportunity[] }) {
           <div className="p-5">
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={stageData} layout="vertical">
-                <CartesianGrid strokeDasharray="none" stroke={c.grid} horizontal={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={c.grid} horizontal={false} />
                 <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }}
                   tickFormatter={(v: number) => v >= 1e6 ? `$${(v/1e6).toFixed(1)}M` : `$${(v/1e3).toFixed(0)}K`} />
                 <YAxis type="category" dataKey="stage" width={110} axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} />
-                <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [formatCurrency(Number(v), true), 'Value']} />
-                <Bar dataKey="amount" fill={c.secondary} radius={[0, 6, 6, 0]} barSize={18} />
+                <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [formatCurrency(Number(v), true), 'Value']} cursor={{ fill: c.cursor }} />
+                <Bar dataKey="amount" fill={c.secondary} radius={[0, 4, 4, 0]} barSize={18} />
               </BarChart>
             </ResponsiveContainer>
           </div>

@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSales } from '@/contexts/SalesContext'
 import { fetchTopCustomers, type TopCustomer } from '@/lib/api'
-import { useChartColors, tooltipStyle } from '@/lib/chart-theme'
+import { useChartColors, tooltipStyle, ChartGradients } from '@/lib/chart-theme'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Cell,
@@ -93,13 +93,19 @@ export function CustomersTab() {
         </h2>
         <ResponsiveContainer width="100%" height={Math.max(300, chartData.length * 32)}>
           <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 60, left: 10, bottom: 0 }}>
-            <CartesianGrid horizontal={false} stroke={c.grid} />
+            <ChartGradients colors={c} idPrefix="customers" />
+            <CartesianGrid horizontal={false} stroke={c.grid} strokeDasharray="3 3" />
             <XAxis type="number" tickFormatter={fmt} tick={{ fill: c.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
             <YAxis type="category" dataKey="name" width={140} tick={{ fill: c.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
             <Tooltip content={<CustomTooltip />} cursor={{ fill: c.cursor }} />
             <Bar dataKey="value" radius={[0, 4, 4, 0]} onClick={(d: any) => navigate(`/customer/${d.account_id}`)} style={{ cursor: 'pointer' }}
               label={{ position: 'right', formatter: (v: any) => fmt(Number(v)), fill: c.tick, fontSize: 11 }}>
-              {chartData.map((_, i) => <Cell key={i} fill={i === 0 ? c.primary : i < 3 ? c.secondary : c.cyan} />)}
+              {chartData.map((_, i) => (
+                <Cell 
+                  key={i} 
+                  fill={i === 0 ? c.primary : i < 3 ? c.secondary : c.cyan} 
+                />
+              ))}
             </Bar>
           </BarChart>
         </ResponsiveContainer>

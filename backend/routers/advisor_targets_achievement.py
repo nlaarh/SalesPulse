@@ -13,7 +13,7 @@ from models import MonthlyAdvisorTarget, User
 from auth import get_current_user
 from shared import get_owner_map
 
-from routers.advisor_targets_monthly import (
+from routers.advisor_targets_helpers import (
     _get_comm_rate_accurate,
     _sf_advisors_with_bookings,
     _ensure_advisor_targets,

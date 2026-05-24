@@ -1,6 +1,6 @@
 /**
  * AdvisorDashboard — Branch Tab
- * Monthly commission + gross sales by branch (Travel / PBI source).
+ * Monthly commission + gross sales by branch (Travel and Insurance, PBI source).
  */
 import { useState } from 'react'
 import { formatCurrency, cn } from '@/lib/utils'
@@ -26,11 +26,6 @@ import type { BranchMonthlyData } from '@/lib/api'
 import type { ChartColors } from './types'
 import { Building2 } from 'lucide-react'
 
-const BRANCH_COLORS = [
-  '#6366f1', '#06b6d4', '#10b981', '#f59e0b',
-  '#ef4444', '#8b5cf6', '#f97316', '#14b8a6',
-]
-
 export default function BranchTab({ data, c }: { data: BranchMonthlyData | null; c: ChartColors }) {
   const [metric, setMetric] = useState<'commission' | 'sales'>('commission')
 
@@ -41,6 +36,11 @@ export default function BranchTab({ data, c }: { data: BranchMonthlyData | null;
       </div>
     )
   }
+
+  const BRANCH_COLORS = [
+    c.primary, c.cyan, c.secondary, c.tertiary,
+    c.pink, c.purple, '#f97316', '#14b8a6',
+  ]
 
   const top8 = data.branches.slice(0, 8)
 
@@ -113,9 +113,9 @@ export default function BranchTab({ data, c }: { data: BranchMonthlyData | null;
               }
             />
             <Tooltip
-              contentStyle={tooltipStyle(c)}
+              contentStyle={tooltipStyle(c as any)}
               formatter={(v: unknown, name: unknown) => [formatCurrency(v as number, true), name as string]}
-              cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+              cursor={{ fill: c.cursor }}
             />
             <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} />
             {top8.map((b, i) => (

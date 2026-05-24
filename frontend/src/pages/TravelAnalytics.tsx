@@ -6,7 +6,7 @@ import {
   fetchNarrative,
 } from '@/lib/api'
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
-import { useChartColors, tooltipStyle } from '@/lib/chart-theme'
+import { useChartColors, tooltipStyle, ChartGradients } from '@/lib/chart-theme'
 import KPICard from '@/components/KPICard'
 import RichNarrative from '@/components/RichNarrative'
 import {
@@ -164,12 +164,12 @@ function ChartsTab({ dests, topDest, fastestGrowing, totalRev, totalVol, growthV
           <div className="p-5">
             <ResponsiveContainer width="100%" height={Math.max(300, chartDests.length * 30)}>
               <BarChart data={chartDests} layout="vertical">
-                <CartesianGrid strokeDasharray="none" stroke={c.grid} horizontal={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={c.grid} horizontal={false} />
                 <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }}
                   tickFormatter={(v: number) => v >= 1e6 ? `$${(v/1e6).toFixed(1)}M` : `$${(v/1e3).toFixed(0)}K`} />
                 <YAxis type="category" dataKey="name" width={100} axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} />
                 <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [formatCurrency(Number(v), true), 'Bookings']} />
-                <Bar dataKey="revenue" fill={c.primary} radius={[0, 6, 6, 0]} barSize={18}
+                <Bar dataKey="revenue" fill={c.primary} radius={[0, 4, 4, 0]} barSize={18}
                   onClick={(_: any, idx: number) => { if (chartDests[idx]) setSelectedDest(chartDests[idx].name) }} cursor="pointer" />
               </BarChart>
             </ResponsiveContainer>
@@ -185,19 +185,14 @@ function ChartsTab({ dests, topDest, fastestGrowing, totalRev, totalVol, growthV
             {destTrend?.months?.length ? (
               <ResponsiveContainer width="100%" height={300}>
                 <AreaChart data={destTrend.months}>
-                  <defs>
-                    <linearGradient id="destGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={c.primary} stopOpacity={0.2} />
-                      <stop offset="100%" stopColor={c.primary} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="none" stroke={c.grid} vertical={false} />
+                  <ChartGradients colors={c} idPrefix="travelTrend1" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
                   <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }}
                     tickFormatter={(v: string) => { const p = v.split('-'); return `${p[1]}/${p[0]?.slice(2)}` }} interval="preserveStartEnd" />
                   <YAxis axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }}
                     tickFormatter={(v: number) => `$${(v / 1_000).toFixed(0)}K`} width={50} />
                   <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [formatCurrency(Number(v), true), 'Bookings']} />
-                  <Area type="monotone" dataKey="revenue" stroke={c.primary} strokeWidth={2} fill="url(#destGrad)" dot={false} />
+                  <Area type="monotone" dataKey="revenue" stroke={c.primary} strokeWidth={2} fill="url(#grad_travelTrend1_primaryArea)" dot={false} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">Select a destination</div>}
@@ -214,7 +209,7 @@ function ChartsTab({ dests, topDest, fastestGrowing, totalRev, totalVol, growthV
           <div className="p-5">
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={partySize.buckets}>
-                <CartesianGrid strokeDasharray="none" stroke={c.grid} vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
                 <XAxis dataKey="size" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} />
                 <Tooltip contentStyle={tooltipStyle(c)} />
@@ -297,19 +292,14 @@ function DetailsTab({ dests, selectedDest, setSelectedDest, destTrend, c }: {
           {destTrend?.months?.length ? (
             <ResponsiveContainer width="100%" height={400}>
               <AreaChart data={destTrend.months}>
-                <defs>
-                  <linearGradient id="destGrad2" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={c.primary} stopOpacity={0.2} />
-                    <stop offset="100%" stopColor={c.primary} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="none" stroke={c.grid} vertical={false} />
+                <ChartGradients colors={c} idPrefix="travelTrend2" />
+                <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
                 <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }}
                   tickFormatter={(v: string) => { const p = v.split('-'); return `${p[1]}/${p[0]?.slice(2)}` }} interval="preserveStartEnd" />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }}
                   tickFormatter={(v: number) => `$${(v / 1_000).toFixed(0)}K`} width={50} />
                 <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [formatCurrency(Number(v), true), 'Bookings']} />
-                <Area type="monotone" dataKey="revenue" stroke={c.primary} strokeWidth={2} fill="url(#destGrad2)" dot={false} />
+                <Area type="monotone" dataKey="revenue" stroke={c.primary} strokeWidth={2} fill="url(#grad_travelTrend2_primaryArea)" dot={false} />
               </AreaChart>
             </ResponsiveContainer>
           ) : <div className="flex h-[400px] items-center justify-center text-sm text-muted-foreground">Select a destination to view trend</div>}

@@ -175,14 +175,86 @@ export async function reportClientRenderMetric(
   return data as { ok: boolean }
 }
 
-export async function downloadDbBackup() {
-  const resp = await api.get('/api/admin/db/backup', { responseType: 'blob' })
-  const url = URL.createObjectURL(resp.data)
+export type SystemServiceStatus = 'online' | 'degraded' | 'offline'
+
+export interface SystemServiceHealth {
+  name: string
+  status: SystemServiceStatus
+  host?: string
+  host_link?: string
+  api_key_valid?: boolean | null
+  api_key_error?: string | null
+  logs?: string[]
+  live_ping?: boolean
+  quota_safe?: boolean
+  latency_ms?: number | null
+  pid?: number
+  repo?: string
+  branch?: string
+  region?: string
+  resource_group?: string
+  database?: string
+  username?: string
+  client_id?: string
+  remaining_in_window?: number | null
+  [key: string]: unknown
+}
+
+export interface SystemHealthResponse {
+  status: SystemServiceStatus
+  timestamp: string
+  quota_safe: boolean
+  services: Record<string, SystemServiceHealth>
+  logs: string[]
+  env_variables: Record<string, string>
+  environment: {
+    files: Array<{ path: string; exists: boolean; keys_count: number; keys: string[] }>
+    variables: Array<{ name: string; masked: string; configured: boolean }>
+  }
+  infrastructure: Record<string, string>
+}
+
+export async function fetchSystemHealth(): Promise<SystemHealthResponse> {
+  const { data } = await api.get('/api/admin/system/health')
+  return data as SystemHealthResponse
+}
+
+export async function pingSystemHealthService(serviceKey: string) {
+  const { data } = await api.post(`/api/admin/system/health/ping/${serviceKey}`)
+  return data as {
+    service: string
+    status: SystemServiceStatus
+    live_ping: boolean
+    message: string
+    checked_by?: string
+  }
+}
+
+export type DbBackupEntry = {
+  filename: string
+  created_at: string
+  size_bytes: number
+}
+
+export async function fetchDbBackupList(): Promise<DbBackupEntry[]> {
+  const { data } = await api.get('/api/admin/db/backups')
+  return (data as { backups: DbBackupEntry[] }).backups ?? []
+}
+
+export async function createDbBackup(): Promise<DbBackupEntry> {
+  const { data } = await api.post('/api/admin/db/backup')
+  return data as DbBackupEntry
+}
+
+export async function downloadDbBackup(filename?: string) {
+  const url = filename ? `/api/admin/db/backup/${encodeURIComponent(filename)}` : '/api/admin/db/backup'
+  const resp = await api.get(url, { responseType: 'blob' })
+  const blobUrl = URL.createObjectURL(resp.data)
   const a = document.createElement('a')
-  a.href = url
-  a.download = `salesinsight_backup_${Date.now()}.db`
+  a.href = blobUrl
+  a.download = filename ?? `salesinsight_backup_${Date.now()}.json`
   a.click()
-  URL.revokeObjectURL(url)
+  URL.revokeObjectURL(blobUrl)
 }
 
 // ── Admin: Sessions, Users, Impersonation ─────────────────────────────────

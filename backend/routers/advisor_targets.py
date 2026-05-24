@@ -23,13 +23,48 @@ log = logging.getLogger('salesinsight.targets')
 
 def _normalize_name(raw: str) -> str:
     """Convert 'Last, First MI' → 'First Last'. Drop middle initials."""
-    if ',' not in raw:
-        return raw.strip()
-    parts = raw.split(',', 1)
-    last = parts[0].strip()
-    first_parts = parts[1].strip().split()
-    first = first_parts[0] if first_parts else ''
-    return f"{first} {last}"
+    raw_clean = raw.strip()
+    raw_lower = raw_clean.lower()
+    
+    # Map spelling variations and nicknames to canonical Salesforce User Names
+    NAME_ALIASES = {
+        "kevin fairbanks-bloom": "Kevin Bloom",
+        "bloom, kevin": "Kevin Bloom",
+        "fairbanks-bloom, kevin": "Kevin Bloom",
+        "michelle szalapak": "Michelle Szlapak",
+        "michelle a szlapak": "Michelle Szlapak",
+        "szalapak, michelle": "Michelle Szlapak",
+        "joanna voight": "Joanna Voigt",
+        "voight, joanna": "Joanna Voigt",
+        "joy kellner": "Joyce Foglia Kellner",
+        "kellner, joy": "Joyce Foglia Kellner",
+        "jacki nieman": "Jacqueline Nieman",
+        "nieman, jacki": "Jacqueline Nieman",
+        "beth steves": "Bethany Steves",
+        "steves, beth": "Bethany Steves",
+        "kelly harrienger": "Kelly Gonseth-Harrienger",
+        "harrienger, kelly": "Kelly Gonseth-Harrienger",
+        "cat mccarthy": "Catherine McCarthy",
+        "mccarthy, cat": "Catherine McCarthy",
+    }
+    
+    if raw_lower in NAME_ALIASES:
+        return NAME_ALIASES[raw_lower]
+        
+    if ',' not in raw_clean:
+        normalized = raw_clean
+    else:
+        parts = raw_clean.split(',', 1)
+        last = parts[0].strip()
+        first_parts = parts[1].strip().split()
+        first = first_parts[0] if first_parts else ''
+        normalized = f"{first} {last}"
+        
+    norm_lower = normalized.lower()
+    if norm_lower in NAME_ALIASES:
+        return NAME_ALIASES[norm_lower]
+    return normalized
+
 
 
 def _parse_target(val) -> float | None:
@@ -210,6 +245,7 @@ def confirm_targets(
             branch=a.branch,
             title=a.title,
             monthly_target=a.monthly_target,
+            annual_stretch=a.annual_stretch,
         )
         db.add(at)
         db.flush()  # get at.id
@@ -282,10 +318,12 @@ def targets_with_actuals(
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Join targets with Salesforce actuals — per-advisor and per-branch."""
+    """Join targets with actuals (Power BI for Travel/Insurance, Salesforce fallback) — per-advisor and per-branch."""
     from shared import resolve_dates, WON_STAGES, line_filter_opp
     from sf_client import sf_query_all
     import cache
+    from routers.advisor_targets_monthly import _get_advisor_monthly_actuals
+    from datetime import date as dt_date
 
     upload = db.query(TargetUpload).order_by(TargetUpload.id.desc()).first()
     if not upload:
@@ -296,52 +334,48 @@ def targets_with_actuals(
         .filter(AdvisorTarget.upload_id == upload.id)
         .all()
     )
-    target_map = {t.sf_name.strip().lower(): t for t in targets}
 
     # Resolve dates
     sd, ed = resolve_dates(start_date, end_date, 12)
     lf = line_filter_opp(line)
-    cache_key = f"targets_actuals_comm_{line}_{sd}_{ed}"
 
-    def fetch_actuals():
-        return sf_query_all(f"""
-            SELECT OwnerId, CALENDAR_YEAR(CloseDate) yr,
-                   CALENDAR_MONTH(CloseDate) mo,
-                   COUNT(Id) cnt, SUM(Amount) rev
-            FROM Opportunity
-            WHERE {WON_STAGES} AND {lf}
-              AND CloseDate >= {sd} AND CloseDate <= {ed}
-              AND Amount != null
-            GROUP BY OwnerId, CALENDAR_YEAR(CloseDate), CALENDAR_MONTH(CloseDate)
-        """)
-
-    records = cache.cached_query(cache_key, fetch_actuals, ttl=CACHE_TTL_MEDIUM, disk_ttl=CACHE_TTL_12H)
-
-    from shared import get_owner_map
-    owner_map = get_owner_map()
-
-    # Build actual revenue per agent per month
-    agent_months: dict[str, dict[str, float]] = {}
-    for r in records:
-        name = owner_map.get(r.get('OwnerId', ''), '')
-        if not name:
-            continue
-        ym = f"{r.get('yr')}-{str(r.get('mo', 0)).zfill(2)}"
-        agent_months.setdefault(name.strip().lower(), {})
-        agent_months[name.strip().lower()][ym] = r.get('rev', 0) or 0
-
-    # Build month list from date range
-    from datetime import date as dt_date
     sd_dt = dt_date.fromisoformat(sd)
     ed_dt = dt_date.fromisoformat(ed)
+    
+    # Get all (year, month) pairs
+    year_months = []
     month_labels = []
     cur = sd_dt.replace(day=1)
     while cur <= ed_dt:
+        year_months.append((cur.year, cur.month))
         month_labels.append(f"{cur.year}-{str(cur.month).zfill(2)}")
         if cur.month == 12:
             cur = cur.replace(year=cur.year + 1, month=1)
         else:
             cur = cur.replace(month=cur.month + 1)
+
+    unique_years = sorted(list(set(y for y, m in year_months)))
+
+    # Fetch actuals from PBI (or SF fallback) for each year in the range
+    consolidated_actuals = {}
+    for year in unique_years:
+        act_data = _get_advisor_monthly_actuals(line, year, cache, sf_query_all, WON_STAGES, lf)
+        for name_lower, months_dict in act_data['actuals'].items():
+            consolidated_actuals.setdefault(name_lower, {})
+            for mo, vals in months_dict.items():
+                ym = f"{year}-{str(mo).zfill(2)}"
+                consolidated_actuals[name_lower][ym] = vals
+
+    # Load monthly targets for all advisors in the years covered
+    advisor_ids = [t.id for t in targets]
+    monthly_rows = db.query(MonthlyAdvisorTarget).filter(
+        MonthlyAdvisorTarget.advisor_target_id.in_(advisor_ids),
+        MonthlyAdvisorTarget.year.in_(unique_years)
+    ).all()
+    
+    monthly_target_map = {}
+    for mr in monthly_rows:
+        monthly_target_map[(mr.advisor_target_id, mr.year, mr.month)] = mr.target_amount
 
     # Build advisor results
     advisors = []
@@ -349,33 +383,43 @@ def targets_with_actuals(
 
     for t in targets:
         key = t.sf_name.strip().lower()
-        actuals = agent_months.get(key, {})
+        actuals = consolidated_actuals.get(key, {})
         mt = t.monthly_target
 
         months = []
-        total_actual = 0
-        total_target = 0
-        for ym in month_labels:
-            actual = actuals.get(ym, 0)
+        total_actual = 0.0
+        total_target = 0.0
+        for y, m in year_months:
+            ym = f"{y}-{str(m).zfill(2)}"
+            
+            # Fetch target from MonthlyAdvisorTarget
+            month_target = monthly_target_map.get((t.id, y, m))
+            if month_target is None:
+                # Fallback to advisor's flat target
+                month_target = mt or 0.0
+                
+            # Fetch actual from consolidated actuals (commission)
+            actual_vals = actuals.get(ym) or {}
+            actual = actual_vals.get('commission', 0.0) or 0.0
+            
             total_actual += actual
-            month_target = mt or 0
             total_target += month_target
-            pct = round(actual / mt * 100, 1) if mt and mt > 0 else None
+            pct = round(actual / month_target * 100, 1) if month_target > 0 else None
             months.append({
                 'month': ym,
-                'target': mt,
+                'target': month_target,
                 'actual': actual,
                 'achievement_pct': pct,
             })
 
-        n_months = len(month_labels)
         overall_pct = round(total_actual / total_target * 100, 1) if total_target > 0 else None
 
         advisors.append({
             'name': t.sf_name,
             'branch': t.branch,
             'title': t.title,
-            'monthly_target': mt,
+            'monthly_target': mt or (total_target / len(year_months) if year_months else 0.0),
+            'annual_stretch': t.annual_stretch,
             'total_target': total_target,
             'total_actual': total_actual,
             'achievement_pct': overall_pct,
@@ -385,12 +429,12 @@ def targets_with_actuals(
         # Branch aggregation
         if t.branch:
             b = branch_agg.setdefault(t.branch, {
-                'branch': t.branch, 'target_sum': 0, 'actual_sum': 0,
+                'branch': t.branch, 'target_sum': 0.0, 'actual_sum': 0.0,
                 'advisor_count': 0, 'with_target': 0,
             })
             b['advisor_count'] += 1
-            if mt:
-                b['target_sum'] += mt * n_months
+            if total_target > 0:
+                b['target_sum'] += total_target
                 b['with_target'] += 1
             b['actual_sum'] += total_actual
 
