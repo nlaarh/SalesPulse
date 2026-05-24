@@ -79,9 +79,13 @@ top 5 destinations by revenue, YoY trends, booking volume patterns,
 and one strategic recommendation.""",
 
     'monthly': """
-Focus on: Cross-metric trends (leads→opps→invoiced→sales conversion),
-top and bottom performing agents by name with numbers, conversion rate health,
-month-over-month trajectory, and coaching recommendations for underperformers.""",
+Focus on:
+1. OVERALL TEAM HEALTH: How is the team tracking vs target this period? Give a clear verdict.
+2. WHO IS KILLING IT: Name top performers with exact numbers and % above target.
+3. WHO TO WATCH: Name advisors significantly below target with specific gaps.
+4. FINISH THE MONTH STRONG: List specific open opportunities (by name, amount, owner) that if closed would help the team meet or exceed the monthly target. Frame these as "if we close X, Y, and Z we add $N which puts us at N% of target."
+5. COACHING ACTIONS: 1-2 specific actions managers should take this week.
+Be direct, name names, cite exact dollar amounts. This is an action briefing, not a report.""",
 }
 
 
@@ -217,6 +221,10 @@ def _gather_travel(line: str, period: int, **kw) -> str:
 def _gather_monthly(line: str, period: int, **kw) -> str:
     from routers.sales_performance import performance_monthly
     from routers.sales_advisor import advisor_summary
+    from routers.sales_pipeline import pipeline_stages
+    from sf_client import sf_query_all
+    from shared import line_filter_opp, WON_STAGES
+    from datetime import date as dt_date
 
     start_date = kw.get('start_date')
     end_date = kw.get('end_date')
@@ -237,12 +245,129 @@ def _gather_monthly(line: str, period: int, **kw) -> str:
         total_opps = sum(m.get('opps', 0) for m in months)
         total_invoiced = sum(m.get('invoiced', 0) for m in months)
         total_sales = sum(m.get('sales', 0) for m in months)
+        total_comm = sum(m.get('commission', 0) for m in months)
         conv = (total_invoiced / total_opps * 100) if total_opps else 0
-        ctx += f"- {name}: {total_leads} leads → {total_opps} opps → {total_invoiced} invoiced ({conv:.0f}%) → ${total_sales:,.0f} sales\n"
+        ctx += f"- {name}: {total_leads} leads → {total_opps} opps → {total_invoiced} invoiced ({conv:.0f}%) → ${total_sales:,.0f} sales, ${total_comm:,.0f} commission\n"
 
     div = perf.get('division_totals', {})
     if div:
-        ctx += f"\nDIVISION TOTALS: {div.get('leads',0)} leads → {div.get('opps',0)} opps → {div.get('invoiced',0)} invoiced → ${div.get('sales',0):,.0f} sales\n"
+        ctx += f"\nDIVISION TOTALS: {div.get('leads',0)} leads → {div.get('opps',0)} opps → {div.get('invoiced',0)} invoiced → ${div.get('sales',0):,.0f} sales, ${div.get('commission',0):,.0f} commission\n"
+
+    # ── Target vs Actual data ──────────────────────────────────────────────
+    try:
+        from data.connection import get_db
+        from data.models import AdvisorTarget, MonthlyAdvisorTarget, TargetUpload
+        db = next(get_db())
+        upload = db.query(TargetUpload).order_by(TargetUpload.id.desc()).first()
+        if upload:
+            targets = db.query(AdvisorTarget).filter(
+                AdvisorTarget.upload_id == upload.id,
+                AdvisorTarget.monthly_target.isnot(None)
+            ).all()
+            if targets:
+                # Sum targets for the period
+                advisor_ids = [t.id for t in targets]
+                # Determine months in period
+                sd_str, ed_str = start_date, end_date
+                if not sd_str or not ed_str:
+                    from shared import resolve_dates
+                    sd_str, ed_str = resolve_dates(start_date, end_date, period)
+                sd_dt = dt_date.fromisoformat(sd_str)
+                ed_dt = dt_date.fromisoformat(ed_str)
+                year_months = []
+                cur = sd_dt.replace(day=1)
+                while cur <= ed_dt:
+                    year_months.append((cur.year, cur.month))
+                    if cur.month == 12:
+                        cur = cur.replace(year=cur.year + 1, month=1)
+                    else:
+                        cur = cur.replace(month=cur.month + 1)
+
+                # Load monthly target rows
+                unique_years = list(set(y for y, m in year_months))
+                monthly_rows = db.query(MonthlyAdvisorTarget).filter(
+                    MonthlyAdvisorTarget.advisor_target_id.in_(advisor_ids),
+                    MonthlyAdvisorTarget.year.in_(unique_years)
+                ).all()
+                monthly_map = {}
+                for mr in monthly_rows:
+                    monthly_map[(mr.advisor_target_id, mr.year, mr.month)] = mr.target_amount
+
+                # Build per-advisor target totals
+                ctx += f"\n\nTARGET VS ACTUAL ({len(year_months)} months in period):\n"
+                team_target_total = 0.0
+                team_actual_total = div.get('commission', 0) or div.get('sales', 0) or 0
+                target_details = []
+                for t in targets:
+                    period_target = 0.0
+                    for y, m in year_months:
+                        mt = monthly_map.get((t.id, y, m))
+                        if mt is None:
+                            mt = t.monthly_target or 0.0
+                        period_target += mt
+                    team_target_total += period_target
+                    # Find this advisor's actual from perf data
+                    advisor_actual = 0.0
+                    for agent in agents:
+                        if agent.get('name', '').lower() == t.sf_name.lower():
+                            advisor_actual = sum(m.get('commission', 0) for m in agent.get('months', []))
+                            break
+                    pct = round(advisor_actual / period_target * 100) if period_target > 0 else 0
+                    target_details.append((t.sf_name, period_target, advisor_actual, pct))
+
+                # Sort by achievement
+                target_details.sort(key=lambda x: x[3], reverse=True)
+                team_pct = round(team_actual_total / team_target_total * 100) if team_target_total > 0 else 0
+                ctx += f"TEAM: ${team_actual_total:,.0f} actual vs ${team_target_total:,.0f} target = {team_pct}% achievement\n"
+                ctx += f"GAP TO TARGET: ${max(0, team_target_total - team_actual_total):,.0f}\n\n"
+
+                # Top performers (above target)
+                above = [d for d in target_details if d[3] >= 100]
+                if above:
+                    ctx += "KILLING IT (above target):\n"
+                    for name, tgt, act, pct in above[:5]:
+                        ctx += f"- {name}: ${act:,.0f} vs ${tgt:,.0f} target ({pct}%)\n"
+
+                # Below target
+                below = [d for d in target_details if 0 < d[3] < 80]
+                if below:
+                    ctx += "\nBELOW TARGET (watch list):\n"
+                    for name, tgt, act, pct in reversed(below[-5:]):
+                        gap = tgt - act
+                        ctx += f"- {name}: ${act:,.0f} vs ${tgt:,.0f} target ({pct}%), gap ${gap:,.0f}\n"
+        db.close()
+    except Exception as e:
+        log.warning(f"Target data gathering failed: {e}")
+
+    # ── Open opportunities closing this month (finish strong) ──────────────
+    try:
+        today = dt_date.today()
+        month_end = today.replace(day=28)  # safe last day approximation
+        if today.month == 12:
+            month_end = today.replace(year=today.year + 1, month=1, day=1)
+        else:
+            month_end = today.replace(month=today.month + 1, day=1)
+        # month_end is first of next month, use for < comparison
+        lf = line_filter_opp(line)
+        opps = sf_query_all(f"""
+            SELECT Name, Amount, StageName, Owner.Name, CloseDate
+            FROM Opportunity
+            WHERE IsClosed = false AND {lf}
+              AND Amount != null
+              AND CloseDate >= {today.isoformat()}
+              AND CloseDate < {month_end.isoformat()}
+            ORDER BY Amount DESC
+            LIMIT 20
+        """)
+        if opps:
+            total_opp_val = sum(o.get('Amount', 0) or 0 for o in opps)
+            ctx += f"\n\nOPPORTUNITIES TO CLOSE THIS MONTH ({len(opps)} deals, ${total_opp_val:,.0f} total):\n"
+            ctx += "If closed, these would help meet/exceed target:\n"
+            for o in opps[:10]:
+                owner = o.get('Owner', {}).get('Name', '?') if isinstance(o.get('Owner'), dict) else '?'
+                ctx += f"- {o.get('Name','?')}: ${o.get('Amount',0):,.0f}, Stage: {o.get('StageName','?')}, Owner: {owner}, Close: {o.get('CloseDate','?')}\n"
+    except Exception as e:
+        log.warning(f"Pipeline opportunity gathering failed: {e}")
 
     return ctx
 
@@ -289,7 +414,7 @@ def _generate(page: str, line: str, period: int, **kw) -> str | None:
                 {"role": "user", "content": data_context},
             ],
             temperature=0.3,
-            max_tokens=600,
+            max_tokens=900,
         )
         text = (resp.choices[0].message.content or '').strip()
         log.info(f"AI narrative for {page}/{line}/{period}: {len(text)} chars in {time.time()-t0:.1f}s")

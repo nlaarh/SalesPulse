@@ -202,7 +202,7 @@ init_db()
 
 # ── Register routers ─────────────────────────────────────────────────────────
 
-from routers import sales_advisor, sales_advisor_search, sales_dashboard, sales_pipeline, sales_travel, sales_leads, sales_performance, sales_opportunities, sales_agent_profile, sales_narrative, users, admin_users, activity_logs, advisor_targets, advisor_targets_monthly, advisor_targets_excel, advisor_targets_achievement, email_report, issues, ai_config, customer_profile, cross_sell, market_pulse, territory_map, territory_customers, territory_census, territory_insights, census_data, ai_queries, performance_metrics, cache_admin, query_profile, permissions, growth, growth_admin, product_report, system_health, db_admin
+from routers import sales_advisor, sales_advisor_search, sales_dashboard, sales_pipeline, sales_travel, sales_leads, sales_performance, sales_opportunities, sales_goal_focus, sales_agent_profile, sales_narrative, users, admin_users, activity_logs, advisor_targets, advisor_targets_monthly, advisor_targets_excel, advisor_targets_achievement, email_report, issues, ai_config, customer_profile, cross_sell, market_pulse, territory_map, territory_customers, territory_census, territory_insights, census_data, ai_queries, performance_metrics, cache_admin, query_profile, permissions, growth, growth_admin, product_report, system_health, db_admin
 
 app.include_router(sales_advisor.router)
 app.include_router(sales_advisor_search.router)
@@ -211,6 +211,7 @@ app.include_router(sales_pipeline.router)
 app.include_router(sales_travel.router)
 app.include_router(sales_leads.router)
 app.include_router(sales_performance.router)
+app.include_router(sales_goal_focus.router)
 app.include_router(sales_opportunities.router)
 app.include_router(sales_agent_profile.router)
 app.include_router(sales_narrative.router)

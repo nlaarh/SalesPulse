@@ -34,6 +34,7 @@ import { emailAdvisorDashboard } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { printFromDom } from '@/lib/printWindow'
 import TargetProgressBar from '@/components/TargetProgressBar'
+import GoalGapFocus from '@/components/GoalGapFocus'
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
 
@@ -293,6 +294,10 @@ export default function AdvisorDashboard() {
             />
           </div>
         </div>
+      )}
+
+      {achievement?.current_month && (
+        <GoalGapFocus line={line} metric={achBase} />
       )}
 
       {/* TAB CONTENT */}

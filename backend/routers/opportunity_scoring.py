@@ -18,6 +18,10 @@ from constants import (
 )
 
 
+def _goal_value(opp: dict) -> float:
+    return float(opp.get('GoalValue') or opp.get('Amount') or 0)
+
+
 def _days_between(d1: str | None, d2: date) -> int | None:
     """Days between an ISO date string and a date object."""
     if not d1:
@@ -167,3 +171,101 @@ def _template_writeup(_opp: dict, scoring: dict) -> str:
 
     bullets = ' '.join(reasons[:4])
     return f"{verdict} {bullets}"
+
+
+def _goal_next_action(opp: dict, reasons: list[str], today: date) -> str:
+    """Short manager-facing action for the monthly gap card."""
+    stage = opp.get('StageName') or ''
+    days_to_close = None
+    close_date = opp.get('CloseDate')
+    if close_date:
+        days_from_close = _days_between(close_date, today)
+        if days_from_close is not None:
+            days_to_close = -days_from_close
+
+    if days_to_close is not None and days_to_close < 0:
+        return "Close this month: overdue close date, confirm decision status or reset the forecast today."
+    if stage == 'Quote':
+        return "Close this month: quote is live, confirm objections and ask for the decision date."
+    if stage in ('Qualifying/Research', 'Qualifying'):
+        return "Close this month: qualify blockers and move to quote with a dated next step."
+    if (opp.get('PushCount') or 0) >= 3:
+        return "Close this month: pushed multiple times, manager should validate if this is real pipeline."
+    if reasons:
+        return f"Close this month: {reasons[0].rstrip('.') }."
+    return "Close this month: assign a clear next step and owner follow-up."
+
+
+def build_goal_gap_focus(
+    opportunities: list[dict],
+    monthly_gap: float,
+    today: date,
+    owner_map: dict[str, str] | None = None,
+    limit: int = 8,
+) -> dict:
+    """Rank open opportunities by their ability to close the current monthly gap."""
+    gap = max(float(monthly_gap or 0), 0)
+    owner_map = owner_map or {}
+    ranked = []
+
+    for opp in opportunities:
+        amount = float(opp.get('Amount') or 0)
+        goal_value = _goal_value(opp)
+        if goal_value <= 0:
+            continue
+
+        scoring = _score_opportunity(opp, today)
+        probability = float(opp.get('Probability') or 0)
+        expected_value = round(goal_value * probability / 100)
+        gap_fit = min(goal_value, gap) / gap if gap > 0 else 0
+        priority = round(scoring['score'] + (gap_fit * 20) + min(expected_value / max(gap, 1) * 10, 10), 1)
+        if probability < 30:
+            priority -= 25
+        elif probability < 50:
+            priority -= 10
+
+        ranked.append({
+            'id': opp.get('Id', ''),
+            'name': opp.get('Name', ''),
+            'amount': round(amount),
+            'goal_value': round(goal_value),
+            'expected_value': expected_value,
+            'stage': opp.get('StageName', ''),
+            'probability': probability,
+            'forecast_category': opp.get('ForecastCategory') or opp.get('ForecastCategoryName') or '',
+            'close_date': opp.get('CloseDate', ''),
+            'last_activity': opp.get('LastActivityDate', ''),
+            'push_count': opp.get('PushCount') or 0,
+            'owner': owner_map.get(opp.get('OwnerId', ''), ''),
+            'score': scoring['score'],
+            'priority_score': priority,
+            'reasons': scoring['reasons'],
+            'next_action': _goal_next_action(opp, scoring['reasons'], today),
+        })
+
+    ranked.sort(key=lambda x: (-x['priority_score'], -x['expected_value'], -x['goal_value']))
+
+    selected = []
+    coverage = 0.0
+    for opp in ranked:
+        if len(selected) >= limit:
+            break
+        selected.append(opp)
+        coverage += opp['goal_value']
+        if gap > 0 and coverage >= gap and len(selected) >= 3:
+            break
+
+    for idx, opp in enumerate(selected, start=1):
+        opp['rank'] = idx
+
+    coverage_pct = round(coverage / gap * 100, 1) if gap > 0 else 100
+    expected_total = sum(o['expected_value'] for o in selected)
+
+    return {
+        'gap': round(gap),
+        'coverage_amount': round(coverage),
+        'coverage_pct': min(coverage_pct, 999.9),
+        'expected_value': round(expected_total),
+        'opportunities': selected,
+        'available_count': len(ranked),
+    }
