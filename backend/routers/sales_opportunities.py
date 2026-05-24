@@ -342,7 +342,38 @@ def opportunity_detail(opp_id: str):
         result['timeline'] = timeline
 
         # AI analysis
-        result['ai_analysis'] = _ai_deal_analysis(result)
+        # Cache AI analysis separately with a long TTL (e.g. 1 hour L1, 24 hours L2/disk)
+        # using a state signature to guarantee correctness and immediate updates.
+        state_parts = [
+            result.get('stage', ''),
+            str(result.get('amount', 0)),
+            result.get('close_date', ''),
+            str(result.get('probability', 0)),
+            str(result.get('push_count', 0)),
+            result.get('last_activity', ''),
+            result.get('last_stage_change', ''),
+            str(len(task_records)),
+            str(len(event_records))
+        ]
+        state_sig = "_".join(state_parts).replace(" ", "_")
+        ai_key = f"opp_ai_analysis_{opp_id}_{state_sig}"
+
+        def fetch_ai_analysis():
+            res = _ai_deal_analysis(result)
+            if not res:
+                raise ValueError("AI analysis returned empty or failed")
+            return res
+
+        try:
+            result['ai_analysis'] = cache.cached_query(
+                ai_key, fetch_ai_analysis,
+                ttl=3600,
+                disk_ttl=86400
+            )
+        except Exception as e:
+            log.warning(f"Failed to fetch/generate cached AI deal analysis: {e}")
+            result['ai_analysis'] = ''
+
         return result
 
     return cache.cached_query(f"opp_detail_{opp_id}", fetch, ttl=CACHE_TTL_SHORT, disk_ttl=CACHE_TTL_HOUR)
