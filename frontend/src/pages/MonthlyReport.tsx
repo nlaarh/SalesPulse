@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSales } from '@/contexts/SalesContext'
-import { fetchPerformanceMonthly, fetchTargets } from '@/lib/api'
+import { fetchPerformanceMonthly, fetchTargetsWithActuals } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { Tip } from '@/components/MetricTip'
 import { Loader2, BarChart3, Table2, Sparkles, RefreshCw } from 'lucide-react'
@@ -70,14 +70,16 @@ export default function MonthlyReport() {
       })
       .catch(console.error)
       .finally(() => { if (!cancelled) { setLoading(false); setRefreshing(false) } })
-    fetchTargets()
+    fetchTargetsWithActuals(line, startDate, endDate)
       .then((td) => {
         if (cancelled) return
         const map = new Map<string, number>()
         const branchMap = new Map<string, string>()
-        for (const t of td.targets) {
-          if (t.monthly_target != null) map.set(t.sf_name.toLowerCase(), t.monthly_target)
-          if (t.branch) branchMap.set(t.sf_name.toLowerCase(), t.branch)
+        for (const a of td.advisors) {
+          const key = a.name.toLowerCase()
+          // Use monthly_target from with-actuals (already accounts for MonthlyAdvisorTarget per-month values)
+          if (a.monthly_target != null) map.set(key, a.monthly_target)
+          if (a.branch) branchMap.set(key, a.branch)
         }
         setTargetMap(map)
         setAdvisorBranchMap(branchMap)

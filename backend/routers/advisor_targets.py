@@ -22,9 +22,10 @@ log = logging.getLogger('salesinsight.targets')
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 def _normalize_name(raw: str) -> str:
-    """Convert 'Last, First MI' → 'First Last'. Drop middle initials."""
+    """Convert name to 'First Last' format, ignoring middle names/initials and resolving aliases."""
+    if not raw:
+        return ""
     raw_clean = raw.strip()
-    raw_lower = raw_clean.lower()
     
     # Map spelling variations and nicknames to canonical Salesforce User Names
     NAME_ALIASES = {
@@ -46,24 +47,70 @@ def _normalize_name(raw: str) -> str:
         "harrienger, kelly": "Kelly Gonseth-Harrienger",
         "cat mccarthy": "Catherine McCarthy",
         "mccarthy, cat": "Catherine McCarthy",
+        "kim greene": "Kimberly Greene",
+        "greene, kim": "Kimberly Greene",
     }
-    
+
+    # 1. Check direct raw_lower match in aliases
+    raw_lower = raw_clean.lower()
     if raw_lower in NAME_ALIASES:
         return NAME_ALIASES[raw_lower]
-        
-    if ',' not in raw_clean:
-        normalized = raw_clean
-    else:
+
+    # 2. Check for comma (Last, First Middle...)
+    if ',' in raw_clean:
         parts = raw_clean.split(',', 1)
         last = parts[0].strip()
         first_parts = parts[1].strip().split()
-        first = first_parts[0] if first_parts else ''
-        normalized = f"{first} {last}"
+        if first_parts:
+            # If there's a middle name, e.g. First Middle, first_parts[0] is First
+            first = first_parts[0]
+            name_clean = f"{first} {last}"
+        else:
+            name_clean = last
+    else:
+        name_clean = raw_clean
+
+    # 3. Split into words
+    words = name_clean.lower().split()
+    if not words:
+        return ""
+
+    # Check normalized lower rejoined in aliases
+    rejoined = " ".join(words)
+    if rejoined in NAME_ALIASES:
+        return NAME_ALIASES[rejoined]
+
+    # 4. Remove middle names/initials
+    last_name_prefixes = {'van', 'del', 'de', 'la', 'du', 'di', 'le', 'von', 'der', 'o\'malley'}
+    suffixes = {'jr', 'sr', 'iii', 'ii', 'iv'}
+    
+    if len(words) == 3:
+        if words[2] in suffixes:
+            pass
+        elif words[1] in last_name_prefixes:
+            pass
+        else:
+            words = [words[0], words[2]]
+    elif len(words) > 3:
+        new_words = []
+        for w in words:
+            # Drop single letters or single letters with dot
+            if len(w) == 1 or (len(w) == 2 and w.endswith('.')):
+                continue
+            new_words.append(w)
+        words = new_words
         
-    norm_lower = normalized.lower()
-    if norm_lower in NAME_ALIASES:
-        return NAME_ALIASES[norm_lower]
-    return normalized
+        # If still >= 3 words and last word is suffix, drop middle word
+        if len(words) >= 3 and words[-1] in suffixes:
+            if words[1] not in last_name_prefixes:
+                words.pop(1)
+        elif len(words) == 3:
+            if words[1] not in last_name_prefixes:
+                words = [words[0], words[2]]
+
+    # Rejoin with standard title casing
+    return " ".join(w.capitalize() for w in words)
+
 
 
 
@@ -418,7 +465,7 @@ def targets_with_actuals(
             'name': t.sf_name,
             'branch': t.branch,
             'title': t.title,
-            'monthly_target': mt or (total_target / len(year_months) if year_months else 0.0),
+            'monthly_target': (total_target / len(year_months)) if year_months and total_target > 0 else (mt or 0.0),
             'annual_stretch': t.annual_stretch,
             'total_target': total_target,
             'total_actual': total_actual,

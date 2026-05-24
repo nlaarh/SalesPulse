@@ -389,7 +389,7 @@ async def import_monthly_targets_excel(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Import monthly targets from the 6-row spreadsheet back into PostgreSQL."""
+    """Import monthly targets from spreadsheet (supports 6-row block template and flat 1-row format)."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file uploaded")
 
@@ -410,13 +410,6 @@ async def import_monthly_targets_excel(
     if len(rows) < 2:
         raise HTTPException(status_code=400, detail="Spreadsheet has no data rows")
 
-    # Map month indices to sheet columns:
-    # G (col 7, index 6), H (col 8, index 7), I (col 9, index 8)
-    # L (col 12, index 11), M (col 13, index 12), N (col 14, index 13)
-    # P (col 16, index 15), Q (col 17, index 16), R (col 18, index 17)
-    # T (col 20, index 19), U (col 21, index 20), V (col 22, index 21)
-    month_columns = [6, 7, 8, 11, 12, 13, 15, 16, 17, 19, 20, 21]
-
     # Fetch commission rate
     lf = line_filter_opp(line)
     from sf_client import sf_query_all
@@ -429,74 +422,205 @@ async def import_monthly_targets_excel(
     upload = db.query(TargetUpload).filter(TargetUpload.filename == '__sf_auto__').first()
     upload_id = upload.id if upload else 1
 
+    # Load all existing advisor targets to perform fuzzy name matching in Python
+    all_advisors = db.query(AdvisorTarget).all()
+    advisor_map = {}
+    for adv in all_advisors:
+        if adv.sf_name:
+            advisor_map[_normalize_name(adv.sf_name).lower()] = adv
+        if adv.raw_name:
+            advisor_map[_normalize_name(adv.raw_name).lower()] = adv
+
     advisor_updates = 0
     targets_updated = 0
 
-    # Process in blocks of 6 rows starting at row index 1 (Sheet Row 2)
-    R = 1
-    total_rows = len(rows)
-    
-    while R < total_rows:
-        row_data = rows[R]
+    # Auto-detect format: check if column E (index 4) has block labels like ACTUALS/Variance/Stretch
+    is_six_row_format = False
+    if len(rows) >= 7:
+        for r_idx in range(2, min(7, len(rows))):
+            row_cells = rows[r_idx]
+            if len(row_cells) > 4:
+                val = str(row_cells[4] or '').strip().upper()
+                if 'ACTUAL' in val or 'VAR' in val or 'STRETCH' in val:
+                    is_six_row_format = True
+                    break
+
+    if is_six_row_format:
+        # Format A: 6-row block per advisor
+        month_columns = [6, 7, 8, 11, 12, 13, 15, 16, 17, 19, 20, 21]
+        R = 1
+        total_rows = len(rows)
         
-        # Column 0 (A) is raw name
-        raw_name = str(row_data[0] or '').strip()
-        if not raw_name:
-            # Skip empty rows or blank names
+        while R < total_rows:
+            row_data = rows[R]
+            raw_name = str(row_data[0] or '').strip()
+            if not raw_name:
+                R += 6
+                continue
+
+            title_val = str(row_data[1] or '').strip() or None
+            branch_val = str(row_data[2] or '').strip() or None
+            
+            annual_threshold_val = _parse_target_value(row_data[3])
+            annual_stretch_val = _parse_target_value(row_data[5])
+
+            sf_name = _normalize_name(raw_name)
+            advisor = advisor_map.get(sf_name.lower()) or advisor_map.get(raw_name.lower())
+
+            if not advisor:
+                advisor = AdvisorTarget(
+                    upload_id=upload_id,
+                    raw_name=raw_name,
+                    sf_name=sf_name,
+                    branch=branch_val,
+                    title=title_val,
+                    monthly_target=round(annual_threshold_val / 12) if annual_threshold_val > 0 else None,
+                    annual_stretch=annual_stretch_val if annual_stretch_val > 0 else None,
+                )
+                db.add(advisor)
+                db.flush()
+                # Update map to prevent future duplicates
+                advisor_map[sf_name.lower()] = advisor
+                advisor_map[raw_name.lower()] = advisor
+            else:
+                advisor.title = title_val or advisor.title
+                advisor.branch = branch_val or advisor.branch
+                if annual_threshold_val > 0:
+                    advisor.monthly_target = round(annual_threshold_val / 12)
+                if annual_stretch_val > 0:
+                    advisor.annual_stretch = annual_stretch_val
+                db.add(advisor)
+
+            advisor_updates += 1
+
+            for month_idx, col_idx in enumerate(month_columns, 1):
+                if col_idx < len(row_data):
+                    val = _parse_target_value(row_data[col_idx])
+                    
+                    if base == 'bookings':
+                        bookings_val = round(val)
+                        commission_val = round(val * comm_rate)
+                    else:
+                        commission_val = round(val)
+                        bookings_val = round(val / comm_rate) if comm_rate > 0 else round(val)
+
+                    existing = db.query(MonthlyAdvisorTarget).filter(
+                        MonthlyAdvisorTarget.advisor_target_id == advisor.id,
+                        MonthlyAdvisorTarget.year == year,
+                        MonthlyAdvisorTarget.month == month_idx,
+                    ).first()
+
+                    if existing:
+                        existing.target_amount = commission_val
+                        existing.target_bookings = bookings_val
+                        existing.updated_by_email = admin.email
+                        existing.updated_at = datetime.utcnow()
+                    else:
+                        db.add(MonthlyAdvisorTarget(
+                            advisor_target_id=advisor.id,
+                            year=year,
+                            month=month_idx,
+                            target_amount=commission_val,
+                            target_bookings=bookings_val,
+                            updated_by_email=admin.email,
+                        ))
+                    targets_updated += 1
+
             R += 6
-            continue
-
-        # Extract title and branch
-        title_val = str(row_data[1] or '').strip() or None
-        branch_val = str(row_data[2] or '').strip() or None
+    else:
+        # Format B: Flat 1-row per advisor with January to December columns
+        from routers.advisor_targets import MONTH_PATTERNS
+        headers = [str(h or '').strip() for h in rows[0]]
+        mapping = {}
         
-        # Annual/Monthly Thresholds
-        annual_threshold_val = _parse_target_value(row_data[3])
-        annual_stretch_val = _parse_target_value(row_data[5])
+        for idx, h in enumerate(headers):
+            hl = h.lower().strip()
+            if not mapping.get('name') and any(k in hl for k in ('name', 'employee', 'advisor', 'agent', 'associate')):
+                mapping['name'] = idx
+            elif not mapping.get('branch') and any(k in hl for k in ('branch', 'office', 'location')):
+                mapping['branch'] = idx
+            elif not mapping.get('title') and any(k in hl for k in ('title', 'position', 'role')):
+                mapping['title'] = idx
+            elif not mapping.get('annual_threshold') and any(k in hl for k in ('annual threshold', 'performance threshold', 'annual performance')):
+                mapping['annual_threshold'] = idx
+            elif not mapping.get('annual_stretch') and any(k in hl for k in ('stretch', 'budget', 'annual stretch')):
+                mapping['annual_stretch'] = idx
+            else:
+                for pattern, month_num in MONTH_PATTERNS.items():
+                    if hl.startswith(pattern):
+                        key = f"m{month_num}"
+                        if key not in mapping:
+                            mapping[key] = idx
+                        break
 
-        # Normalize and match advisor target
-        sf_name = _normalize_name(raw_name)
-        advisor = db.query(AdvisorTarget).filter(
-            (AdvisorTarget.sf_name.ilike(sf_name)) |
-            (AdvisorTarget.raw_name.ilike(raw_name))
-        ).first()
-
-        if not advisor:
-            # Create new AdvisorTarget
-            advisor = AdvisorTarget(
-                upload_id=upload_id,
-                raw_name=raw_name,
-                sf_name=sf_name,
-                branch=branch_val,
-                title=title_val,
-                monthly_target=round(annual_threshold_val / 12) if annual_threshold_val > 0 else None,
-                annual_stretch=annual_stretch_val if annual_stretch_val > 0 else None,
+        if 'name' not in mapping:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not identify name/associate column. Found columns: {headers}",
             )
-            db.add(advisor)
-            db.flush()
-        else:
-            # Update existing
-            advisor.title = title_val or advisor.title
-            advisor.branch = branch_val or advisor.branch
-            if annual_threshold_val > 0:
-                advisor.monthly_target = round(annual_threshold_val / 12)
-            if annual_stretch_val > 0:
-                advisor.annual_stretch = annual_stretch_val
-            db.add(advisor)
 
-        advisor_updates += 1
+        R = 1
+        total_rows = len(rows)
+        while R < total_rows:
+            row_data = rows[R]
+            if not any(row_data):
+                R += 1
+                continue
 
-        current_year = datetime.utcnow().year
-        current_month = datetime.utcnow().month
+            raw_name = str(row_data[mapping['name']] or '').strip() if mapping['name'] < len(row_data) else ''
+            if not raw_name:
+                R += 1
+                continue
 
-        # Extract monthly targets (there are 12 columns mapped)
-        for month_idx, col_idx in enumerate(month_columns, 1):
+            branch_val = str(row_data[mapping['branch']] or '').strip() if mapping.get('branch') is not None and mapping['branch'] < len(row_data) else None
+            title_val = str(row_data[mapping['title']] or '').strip() if mapping.get('title') is not None and mapping['title'] < len(row_data) else None
+            
+            annual_threshold_val = _parse_target_value(row_data[mapping['annual_threshold']]) if mapping.get('annual_threshold') is not None and mapping['annual_threshold'] < len(row_data) else 0.0
+            annual_stretch_val = _parse_target_value(row_data[mapping['annual_stretch']]) if mapping.get('annual_stretch') is not None and mapping['annual_stretch'] < len(row_data) else 0.0
 
+            sf_name = _normalize_name(raw_name)
+            advisor = advisor_map.get(sf_name.lower()) or advisor_map.get(raw_name.lower())
 
-            if col_idx < len(row_data):
-                val = _parse_target_value(row_data[col_idx])
+            monthly_values = []
+            for m in range(1, 13):
+                col_idx = mapping.get(f"m{m}")
+                if col_idx is not None and col_idx < len(row_data):
+                    val = _parse_target_value(row_data[col_idx])
+                    monthly_values.append(val)
+                else:
+                    monthly_values.append(0.0)
+
+            if annual_stretch_val == 0.0 and sum(monthly_values) > 0:
+                annual_stretch_val = sum(monthly_values)
+
+            if not advisor:
+                advisor = AdvisorTarget(
+                    upload_id=upload_id,
+                    raw_name=raw_name,
+                    sf_name=sf_name,
+                    branch=branch_val,
+                    title=title_val,
+                    monthly_target=round(annual_threshold_val / 12) if annual_threshold_val > 0 else None,
+                    annual_stretch=annual_stretch_val if annual_stretch_val > 0 else None,
+                )
+                db.add(advisor)
+                db.flush()
+                advisor_map[sf_name.lower()] = advisor
+                advisor_map[raw_name.lower()] = advisor
+            else:
+                advisor.title = title_val or advisor.title
+                advisor.branch = branch_val or advisor.branch
+                if annual_threshold_val > 0:
+                    advisor.monthly_target = round(annual_threshold_val / 12)
+                if annual_stretch_val > 0:
+                    advisor.annual_stretch = annual_stretch_val
+                db.add(advisor)
+
+            advisor_updates += 1
+
+            for month_idx in range(1, 13):
+                val = monthly_values[month_idx - 1]
                 
-                # Convert depending on base (bookings or commission)
                 if base == 'bookings':
                     bookings_val = round(val)
                     commission_val = round(val * comm_rate)
@@ -504,7 +628,6 @@ async def import_monthly_targets_excel(
                     commission_val = round(val)
                     bookings_val = round(val / comm_rate) if comm_rate > 0 else round(val)
 
-                # Upsert into MonthlyAdvisorTarget
                 existing = db.query(MonthlyAdvisorTarget).filter(
                     MonthlyAdvisorTarget.advisor_target_id == advisor.id,
                     MonthlyAdvisorTarget.year == year,
@@ -527,8 +650,7 @@ async def import_monthly_targets_excel(
                     ))
                 targets_updated += 1
 
-        # Advance to the next advisor block (which is 6 rows down)
-        R += 6
+            R += 1
 
     db.commit()
 
