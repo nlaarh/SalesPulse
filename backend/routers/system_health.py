@@ -169,18 +169,15 @@ def _dr_postgres_service(file_values: dict[str, str]) -> dict[str, Any]:
             error="PG_DR_HOST not configured — DR not set up",
             logs=[f"{_stamp()} DR CONFIG - PG_DR_HOST missing | dr_ready=false"],
         )
-    import time as _time, subprocess as _sub
+    import time as _time
     started = _time.perf_counter()
     try:
         import psycopg2
-        token_result = _sub.run(
-            ["az", "account", "get-access-token",
-             "--resource", "https://ossrdbms-aad.database.windows.net",
-             "--query", "accessToken", "--output", "tsv"],
-            capture_output=True, text=True, timeout=10
-        )
-        token = token_result.stdout.strip()
-        pg_user = _config_value("PG_USER", file_values) or "salespulse-nyaaa-dr"
+        from azure.identity import DefaultAzureCredential
+        credential = DefaultAzureCredential()
+        token_obj = credential.get_token("https://ossrdbms-aad.database.windows.net/.default")
+        token = token_obj.token
+        pg_user = _config_value("PG_USER", file_values) or "salespulse-nyaaa"
         pg_db = _config_value("PG_DATABASE", file_values) or "fslapp"
         conn = psycopg2.connect(
             host=dr_host, dbname=pg_db,
