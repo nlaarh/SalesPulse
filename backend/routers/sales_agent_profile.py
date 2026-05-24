@@ -99,6 +99,182 @@ def agent_profile(
         )
         data = sf_parallel(**queries)
 
+        # Reconstruct opportunity subsets in Python from consolidated agent_opportunities list
+        from dateutil.relativedelta import relativedelta
+        agent_opportunities = data.get('agent_opportunities') or []
+        next_12_months_date = (today + relativedelta(months=12)).isoformat()
+        thirty_days_ago = (today - relativedelta(days=30)).isoformat()
+
+        # 1. won_cur
+        won_cur_opps = [
+            o for o in agent_opportunities
+            if o.get('StageName') in ('Closed Won', 'Invoice')
+            and o.get('CloseDate') and sd <= o['CloseDate'] <= ed
+            and o.get('Amount') is not None
+        ]
+        data['won_cur'] = [{
+            'cnt': len(won_cur_opps),
+            'rev': sum(o['Amount'] for o in won_cur_opps),
+            'comm': sum(o.get('Earned_Commission_Amount__c') or 0 for o in won_cur_opps)
+        }]
+
+        # 2. won_pri
+        won_pri_opps = [
+            o for o in agent_opportunities
+            if o.get('StageName') in ('Closed Won', 'Invoice')
+            and o.get('CloseDate') and p_sd <= o['CloseDate'] <= p_ed
+            and o.get('Amount') is not None
+        ]
+        data['won_pri'] = [{
+            'cnt': len(won_pri_opps),
+            'rev': sum(o['Amount'] for o in won_pri_opps),
+            'comm': sum(o.get('Earned_Commission_Amount__c') or 0 for o in won_pri_opps)
+        }]
+
+        # 3. mo_rev_cur
+        mo_rev_cur_map = {}
+        for o in agent_opportunities:
+            if (o.get('StageName') in ('Closed Won', 'Invoice')
+                and o.get('CloseDate')
+                and o.get('Amount') is not None):
+                try:
+                    dt_parts = o['CloseDate'].split('-')
+                    y = int(dt_parts[0])
+                    m = int(dt_parts[1])
+                    if y == cy:
+                        if m not in mo_rev_cur_map:
+                            mo_rev_cur_map[m] = {'mo': m, 'cnt': 0, 'rev': 0.0, 'comm': 0.0}
+                        mo_rev_cur_map[m]['cnt'] += 1
+                        mo_rev_cur_map[m]['rev'] += o['Amount']
+                        mo_rev_cur_map[m]['comm'] += o.get('Earned_Commission_Amount__c') or 0
+                except Exception:
+                    pass
+        data['mo_rev_cur'] = sorted(mo_rev_cur_map.values(), key=lambda x: x['mo'])
+
+        # 4. mo_rev_pri
+        mo_rev_pri_map = {}
+        for o in agent_opportunities:
+            if (o.get('StageName') in ('Closed Won', 'Invoice')
+                and o.get('CloseDate')
+                and o.get('Amount') is not None):
+                try:
+                    dt_parts = o['CloseDate'].split('-')
+                    y = int(dt_parts[0])
+                    m = int(dt_parts[1])
+                    if y == py:
+                        if m not in mo_rev_pri_map:
+                            mo_rev_pri_map[m] = {'mo': m, 'cnt': 0, 'rev': 0.0, 'comm': 0.0}
+                        mo_rev_pri_map[m]['cnt'] += 1
+                        mo_rev_pri_map[m]['rev'] += o['Amount']
+                        mo_rev_pri_map[m]['comm'] += o.get('Earned_Commission_Amount__c') or 0
+                except Exception:
+                    pass
+        data['mo_rev_pri'] = sorted(mo_rev_pri_map.values(), key=lambda x: x['mo'])
+
+        # 5. closed_cur
+        closed_cur_map = {}
+        for o in agent_opportunities:
+            stage = o.get('StageName')
+            if (stage in ('Closed Won', 'Invoice', 'Closed Lost')
+                and o.get('CloseDate')
+                and sd <= o['CloseDate'] <= ed):
+                closed_cur_map[stage] = closed_cur_map.get(stage, 0) + 1
+        data['closed_cur'] = [{'StageName': k, 'cnt': v} for k, v in closed_cur_map.items()]
+
+        # 6. closed_pri
+        closed_pri_map = {}
+        for o in agent_opportunities:
+            stage = o.get('StageName')
+            if (stage in ('Closed Won', 'Invoice', 'Closed Lost')
+                and o.get('CloseDate')
+                and p_sd <= o['CloseDate'] <= p_ed):
+                closed_pri_map[stage] = closed_pri_map.get(stage, 0) + 1
+        data['closed_pri'] = [{'StageName': k, 'cnt': v} for k, v in closed_pri_map.items()]
+
+        # 7. pipeline
+        pipeline_opps = [
+            o for o in agent_opportunities
+            if o.get('IsClosed') is False
+            and o.get('Amount') is not None
+            and o.get('CloseDate')
+            and sma <= o['CloseDate'] <= next_12_months_date
+        ]
+        data['pipeline'] = [{
+            'cnt': len(pipeline_opps),
+            'rev': sum(o['Amount'] for o in pipeline_opps)
+        }]
+
+        # 8. mo_opps
+        mo_opps_map = {}
+        for o in agent_opportunities:
+            cdate = o.get('CreatedDate')
+            if cdate:
+                try:
+                    dt_str = cdate.split('T')[0]
+                    dt_parts = dt_str.split('-')
+                    y = int(dt_parts[0])
+                    m = int(dt_parts[1])
+                    if y == cy:
+                        mo_opps_map[m] = mo_opps_map.get(m, 0) + 1
+                except Exception:
+                    pass
+        data['mo_opps'] = [{'mo': k, 'cnt': v} for k, v in mo_opps_map.items()]
+
+        # 9. early_opps
+        early_opps_list = [
+            o for o in agent_opportunities
+            if o.get('IsClosed') is False
+            and o.get('StageName') not in ('Invoice', 'Booked', 'Closed Won')
+            and o.get('CloseDate') and o['CloseDate'] >= sma
+        ]
+        early_opps_list.sort(key=lambda x: x.get('Amount') or 0, reverse=True)
+        data['early_opps'] = early_opps_list[:100]
+
+        # 10. top_opps
+        top_opps_list = [
+            o for o in agent_opportunities
+            if o.get('IsClosed') is False
+            and o.get('StageName') in ('Invoice', 'Booked')
+            and o.get('CloseDate') and o['CloseDate'] >= sma
+        ]
+        top_opps_list.sort(key=lambda x: x.get('Amount') or 0, reverse=True)
+        data['top_opps'] = top_opps_list[:50]
+
+        # 11. recent_won
+        recent_won_list = [
+            o for o in agent_opportunities
+            if o.get('StageName') in ('Closed Won', 'Invoice')
+            and o.get('CloseDate') and sd <= o['CloseDate'] <= ed
+            and o.get('Amount') is not None
+        ]
+        recent_won_list.sort(key=lambda x: x.get('CloseDate') or '', reverse=True)
+        data['recent_won'] = recent_won_list[:20]
+
+        # 12. pushed
+        pushed_opps = [
+            o for o in agent_opportunities
+            if o.get('IsClosed') is False
+            and o.get('PushCount') is not None and o['PushCount'] >= 2
+            and o.get('Amount') is not None
+            and o.get('CloseDate') and o['CloseDate'] >= sma
+        ]
+        data['pushed'] = [{
+            'cnt': len(pushed_opps),
+            'rev': sum(o['Amount'] for o in pushed_opps)
+        }]
+
+        # 13. stale
+        stale_opps = [
+            o for o in agent_opportunities
+            if o.get('IsClosed') is False
+            and o.get('LastActivityDate') is not None
+            and o['LastActivityDate'] < thirty_days_ago
+            and o.get('CloseDate') and o['CloseDate'] >= sma
+        ]
+        data['stale'] = [{
+            'cnt': len(stale_opps)
+        }]
+
         # ── Parse agent metrics ──────────────────────────────────────────
         # Insurance: Amount IS the commission (Earned_Commission_Amount__c is $0)
         # Travel: Amount = gross bookings, Earned_Commission_Amount__c = commission
@@ -193,18 +369,30 @@ def agent_profile(
 
     profile = cache.cached_query(key, fetch, ttl=1800, disk_ttl=43200)
 
-    # AI brief (outside cache — generated fresh)
+    # AI brief (cached to prevent redundant OpenAI calls and speed up loads)
     ai_powered = False
     writeup = template_brief(profile)
     if ai:
-        ai_result = ai_brief(profile)
-        if ai_result:
-            writeup = ai_result
-            ai_powered = True
+        brief_key = f"agent_ai_brief_{name}_{line}_{sd}_{ed}"
+        def fetch_brief():
+            res = ai_brief(profile)
+            if not res:
+                raise ValueError("AI brief generation failed")
+            return res
+        try:
+            ai_result = cache.cached_query(brief_key, fetch_brief, ttl=1800, disk_ttl=43200)
+            if ai_result:
+                writeup = ai_result
+                ai_powered = True
+        except Exception as e:
+            log.warning(f"Failed to fetch/generate cached AI brief: {e}")
 
+    # Ensure profile is copied or mutated safely without leaking cache issues
+    profile = dict(profile)
     profile['writeup'] = writeup
     profile['ai_powered'] = ai_powered
     return profile
+
 
 
 @router.get("/api/sales/agent/top-customers")

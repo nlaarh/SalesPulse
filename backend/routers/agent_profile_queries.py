@@ -50,6 +50,7 @@ def build_profile_queries(*, safe, lf, lf_lead, ow, sd, ed, p_sd, p_ed,
     _month_start = f"{cy}-{_today.month:02d}-01"
     _ytd_start   = f"{cy}-01-01"
     _today_iso   = _today.isoformat()
+    min_close = min(p_sd, f"{py}-01-01", sma)
     return dict(
         # Agent: email lookup
         agent_user=f"""
@@ -57,115 +58,19 @@ def build_profile_queries(*, safe, lf, lf_lead, ow, sd, ed, p_sd, p_ed,
             WHERE Name = '{safe}' AND IsActive = true
             LIMIT 1
         """,
-        # Agent: current period won
-        won_cur=f"""
-            SELECT COUNT(Id) cnt, SUM(Amount) rev,
-                   SUM(Earned_Commission_Amount__c) comm
+        # Agent: consolidated opportunities query (replaces 13 individual queries!)
+        agent_opportunities=f"""
+            SELECT Id, Name, Amount, CloseDate, StageName, Earned_Commission_Amount__c,
+                   IsClosed, Probability, ForecastCategory, LastActivityDate, PushCount, CreatedDate
             FROM Opportunity
-            WHERE {ow} AND {WON_STAGES} AND {lf}
-              AND CloseDate >= {sd} AND CloseDate <= {ed} AND Amount != null
-        """,
-        # Agent: prior year won (same date range shifted back 1 year)
-        won_pri=f"""
-            SELECT COUNT(Id) cnt, SUM(Amount) rev,
-                   SUM(Earned_Commission_Amount__c) comm
-            FROM Opportunity
-            WHERE {ow} AND {WON_STAGES} AND {lf}
-              AND CloseDate >= {p_sd} AND CloseDate <= {p_ed} AND Amount != null
-        """,
-        # Agent: monthly revenue current year
-        mo_rev_cur=f"""
-            SELECT CALENDAR_MONTH(CloseDate) mo, COUNT(Id) cnt, SUM(Amount) rev,
-                   SUM(Earned_Commission_Amount__c) comm
-            FROM Opportunity
-            WHERE {ow} AND {WON_STAGES} AND {lf}
-              AND CALENDAR_YEAR(CloseDate) = {cy} AND Amount != null
-            GROUP BY CALENDAR_MONTH(CloseDate) ORDER BY CALENDAR_MONTH(CloseDate)
-        """,
-        # Agent: monthly revenue prior year
-        mo_rev_pri=f"""
-            SELECT CALENDAR_MONTH(CloseDate) mo, COUNT(Id) cnt, SUM(Amount) rev,
-                   SUM(Earned_Commission_Amount__c) comm
-            FROM Opportunity
-            WHERE {ow} AND {WON_STAGES} AND {lf}
-              AND CALENDAR_YEAR(CloseDate) = {py} AND Amount != null
-            GROUP BY CALENDAR_MONTH(CloseDate) ORDER BY CALENDAR_MONTH(CloseDate)
-        """,
-        # Agent: win rate current period
-        closed_cur=f"""
-            SELECT StageName, COUNT(Id) cnt FROM Opportunity
-            WHERE {ow} AND StageName IN ('Closed Won','Invoice','Closed Lost') AND {lf}
-              AND CloseDate >= {sd} AND CloseDate <= {ed}
-            GROUP BY StageName
-        """,
-        # Agent: win rate prior year (same date range shifted back 1 year)
-        closed_pri=f"""
-            SELECT StageName, COUNT(Id) cnt FROM Opportunity
-            WHERE {ow} AND StageName IN ('Closed Won','Invoice','Closed Lost') AND {lf}
-              AND CloseDate >= {p_sd} AND CloseDate <= {p_ed}
-            GROUP BY StageName
-        """,
-        # Agent: pipeline
-        pipeline=f"""
-            SELECT COUNT(Id) cnt, SUM(Amount) rev FROM Opportunity
-            WHERE {ow} AND IsClosed = false AND {lf} AND Amount != null
-              AND CloseDate >= {sma}
-              AND CloseDate <= NEXT_N_MONTHS:12
+            WHERE {ow} AND {lf}
+              AND (CloseDate >= {min_close} OR CreatedDate >= {cy}-01-01T00:00:00Z)
         """,
         # Agent: monthly leads current year
         mo_leads=f"""
             SELECT CALENDAR_MONTH(CreatedDate) mo, COUNT(Id) cnt FROM Lead
             WHERE {ow} AND {lf_lead} AND CALENDAR_YEAR(CreatedDate) = {cy}
             GROUP BY CALENDAR_MONTH(CreatedDate)
-        """,
-        # Agent: monthly opps created current year
-        mo_opps=f"""
-            SELECT CALENDAR_MONTH(CreatedDate) mo, COUNT(Id) cnt FROM Opportunity
-            WHERE {ow} AND {lf} AND CALENDAR_YEAR(CreatedDate) = {cy}
-            GROUP BY CALENDAR_MONTH(CreatedDate)
-        """,
-        # Agent: early-stage open opportunities (Qualifying, Quote, New, etc.) — within 6 months
-        early_opps=f"""
-            SELECT Id, Name, Amount, StageName, Probability, ForecastCategory,
-                   CloseDate, LastActivityDate, PushCount
-            FROM Opportunity
-            WHERE {ow} AND IsClosed = false AND {lf}
-              AND StageName NOT IN ('Invoice','Booked','Closed Won')
-              AND CloseDate >= {sma}
-            ORDER BY Amount DESC NULLS LAST LIMIT 100
-        """,
-        # Agent: Invoice/Booked open opportunities — within 6 months
-        top_opps=f"""
-            SELECT Id, Name, Amount, StageName, Probability, ForecastCategory,
-                   CloseDate, LastActivityDate, PushCount
-            FROM Opportunity
-            WHERE {ow} AND IsClosed = false AND {lf}
-              AND StageName IN ('Invoice','Booked')
-              AND CloseDate >= {sma}
-            ORDER BY Amount DESC NULLS LAST LIMIT 50
-        """,
-        # Agent: recently won opportunities
-        recent_won=f"""
-            SELECT Id, Name, Amount, StageName, CloseDate, Probability,
-                   Earned_Commission_Amount__c
-            FROM Opportunity
-            WHERE {ow} AND {WON_STAGES} AND {lf}
-              AND CloseDate >= {sd} AND CloseDate <= {ed} AND Amount != null
-            ORDER BY CloseDate DESC LIMIT 20
-        """,
-        # Agent: risk — pushed deals (within 6 months)
-        pushed=f"""
-            SELECT COUNT(Id) cnt, SUM(Amount) rev FROM Opportunity
-            WHERE {ow} AND IsClosed = false AND {lf}
-              AND PushCount >= 2 AND Amount != null
-              AND CloseDate >= {sma}
-        """,
-        # Agent: risk — stale deals (within 6 months)
-        stale=f"""
-            SELECT COUNT(Id) cnt FROM Opportunity
-            WHERE {ow} AND IsClosed = false AND {lf}
-              AND LastActivityDate < LAST_N_DAYS:30
-              AND CloseDate >= {sma}
         """,
         # Team: total won (for comparison)
         t_won=f"""
@@ -226,6 +131,7 @@ def build_profile_queries(*, safe, lf, lf_lead, ow, sd, ed, p_sd, p_ed,
               AND CloseDate >= {_ytd_start} AND CloseDate <= {_today_iso} AND Amount != null
         """,
     )
+
 
 
 # ── Monthly Breakdown Builder ────────────────────────────────────────────────
