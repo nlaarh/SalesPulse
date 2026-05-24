@@ -70,7 +70,7 @@ export function TargetSpreadsheetTable(props: TargetSpreadsheetTableProps) {
                 No advisors found matching the filter.
               </td>
             </tr>
-          ) : advisors.map((advisor) => <AdvisorRows key={advisor.advisor_target_id} advisor={advisor} {...props} />)}
+          ) : advisors.map((advisor, index) => <AdvisorRows key={advisor.advisor_target_id} advisor={advisor} index={index} {...props} />)}
         </tbody>
       </table>
     </div>
@@ -135,10 +135,11 @@ function AdvisorRows({
   advisor,
   base,
   year,
+  index,
   isMonthEditable,
   onMetadataChange,
   onTargetCellChange,
-}: TargetSpreadsheetTableProps & { advisor: AdvisorState }) {
+}: TargetSpreadsheetTableProps & { advisor: AdvisorState; index: number }) {
   const metrics = getAdvisorMetrics(advisor, base)
   const annualStretch = advisor.annual_stretch !== null ? advisor.annual_stretch : metrics.totalTarget
 
@@ -148,6 +149,7 @@ function AdvisorRows({
         advisor={advisor}
         metrics={metrics}
         annualStretch={annualStretch}
+        index={index}
         isMonthEditable={isMonthEditable}
         onMetadataChange={onMetadataChange}
         onTargetCellChange={onTargetCellChange}
@@ -165,6 +167,7 @@ function TargetRow({
   advisor,
   metrics,
   annualStretch,
+  index,
   isMonthEditable,
   onMetadataChange,
   onTargetCellChange,
@@ -172,6 +175,7 @@ function TargetRow({
   return (
     <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors border-t border-border/80">
       <td rowSpan={6} className="sticky left-0 z-10 bg-background px-3 py-2 text-left border-r border-b-2 border-slate-300 dark:border-slate-700 font-bold text-[12px] min-w-[160px] align-top shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+        <span className="text-muted-foreground/60 font-mono text-[10px] mr-1.5">{(index + 1).toString().padStart(2, '0')}.</span>
         {advisor.name}
       </td>
       <MetaInput value={advisor.title} onChange={(value) => onMetadataChange(advisor.advisor_target_id, 'title', value)} rowSpan />
