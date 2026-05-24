@@ -7,16 +7,13 @@
 
 import { useState } from 'react'
 import { formatCurrency, formatNumber, formatPct, cn } from '@/lib/utils'
-import { tooltipStyle } from '@/lib/chart-theme'
+import { useChartColors, getEChartTooltip } from '@/lib/chart-theme'
 import { Tip, TIPS } from '@/components/MetricTip'
 import AtRiskDeals from './AtRiskDeals'
 import type { Advisor, ChartColors } from './types'
 import type { SlippingDeal } from '@/lib/types'
 import { Users, ArrowUpDown, ChevronRight, Download } from 'lucide-react'
-import {
-  ResponsiveContainer, BarChart, Bar,
-  XAxis, YAxis, CartesianGrid, Tooltip,
-} from 'recharts'
+import ReactECharts from 'echarts-for-react'
 import { exportToExcel } from '@/lib/exportExcel'
 
 /* ── Props ────────────────────────────────────────────────────────────────── */
@@ -243,15 +240,60 @@ function LeaderboardFull({ leaders, onSelect, targetMap, showBranch }: {
 
 /* ── LeadSourcesChart ─────────────────────────────────────────────────────── */
 
-function LeadSourcesChart({ sources, c }: {
+function LeadSourcesChart({ sources }: {
   sources: { source: string; count: number }[]
-  c: ChartColors
+  c?: ChartColors
 }) {
+  const colors = useChartColors()
   const top8 = sources.slice(0, 8).map(s => ({
-    name: s.source.length > 22 ? s.source.slice(0, 21) + '\u2026' : s.source,
+    name: s.source.length > 22 ? s.source.slice(0, 21) + '…' : s.source,
     fullName: s.source,
     count: s.count,
   })).reverse()
+
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'axis' as const,
+      axisPointer: { type: 'shadow' as const },
+      ...getEChartTooltip(colors.isDark),
+      formatter: (params: { name: string; value: number }[]) => {
+        const p = params[0]
+        const full = top8.find(d => d.name === p.name)?.fullName ?? p.name
+        return `<b>${full}</b><br/>${formatNumber(p.value)} leads`
+      },
+    },
+    grid: { top: 4, right: 16, bottom: 4, left: 4, containLabel: true },
+    xAxis: {
+      type: 'value' as const,
+      axisLine: { show: false }, axisTick: { show: false },
+      axisLabel: { color: colors.tick, fontSize: 10 },
+      splitLine: { lineStyle: { color: colors.grid, type: 'dashed' } },
+    },
+    yAxis: {
+      type: 'category' as const,
+      data: top8.map(d => d.name),
+      axisLine: { show: false }, axisTick: { show: false },
+      axisLabel: { color: colors.tick, fontSize: 9 },
+    },
+    series: [{
+      type: 'bar' as const,
+      data: top8.map(d => d.count),
+      barMaxWidth: 14,
+      itemStyle: {
+        color: {
+          type: 'linear' as const, x: 0, y: 0, x2: 1, y2: 0,
+          colorStops: [
+            { offset: 0, color: colors.cyan + 'C0' },
+            { offset: 1, color: colors.cyan },
+          ],
+        },
+        borderRadius: [0, 4, 4, 0],
+        shadowColor: colors.cyan + '40',
+        shadowBlur: 8,
+      },
+    }],
+  }
 
   return (
     <div>
@@ -260,23 +302,7 @@ function LeadSourcesChart({ sources, c }: {
         <span className="text-[11px] text-muted-foreground">Volume by source</span>
       </div>
       {top8.length > 0 ? (
-        <ResponsiveContainer width="100%" height={140}>
-          <BarChart data={top8} layout="vertical" margin={{ left: 0, right: 10 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={c.grid} horizontal={false} />
-            <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 10 }} />
-            <YAxis type="category" dataKey="name" width={130} axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 9 }} />
-            <Tooltip
-              contentStyle={tooltipStyle(c as any)}
-              formatter={(v: unknown) => [formatNumber(v as number), 'Leads']}
-              labelFormatter={(name: unknown) => {
-                const item = top8.find(d => d.name === (name as string))
-                return item ? item.fullName : (name as string)
-              }}
-              cursor={{ fill: c.cursor }}
-            />
-            <Bar dataKey="count" fill={c.cyan} radius={[0, 4, 4, 0]} barSize={14} fillOpacity={0.75} />
-          </BarChart>
-        </ResponsiveContainer>
+        <ReactECharts option={option} style={{ height: 140 }} />
       ) : (
         <div className="flex h-[100px] items-center justify-center text-[11px] text-muted-foreground">
           No lead source data

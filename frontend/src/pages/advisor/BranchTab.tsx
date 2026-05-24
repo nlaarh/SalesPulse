@@ -1,33 +1,33 @@
 /**
  * AdvisorDashboard — Branch Tab
  * Monthly commission + gross sales by branch (Travel and Insurance, PBI source).
+ * Charts powered by ECharts with gradient fills and glassmorphic tooltips.
  */
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import { formatCurrency, cn } from '@/lib/utils'
+import { useChartColors, getEChartTooltip, CHART_PALETTE_DARK, CHART_PALETTE_LIGHT } from '@/lib/chart-theme'
+import ReactECharts from 'echarts-for-react'
+import type { BranchMonthlyData } from '@/lib/api'
+import { Building2 } from 'lucide-react'
 
 function BranchShareBar({ pct, colorIdx }: { pct: number; colorIdx: number }) {
-  const colors = ['bg-indigo-500', 'bg-cyan-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-violet-500', 'bg-orange-500', 'bg-teal-500']
-  const barColor = colors[colorIdx % colors.length]
+  const palette = ['#818CF8','#22D3EE','#34D399','#FCD34D','#A78BFA','#F472B6','#FB923C','#2DD4BF']
+  const color = palette[colorIdx % palette.length]
   return (
     <div className="flex items-center justify-end gap-1.5">
       <span className="tabular-nums text-[11px] font-semibold w-9 text-right">{pct.toFixed(1)}%</span>
       <div className="w-16 h-1.5 rounded-full bg-secondary overflow-hidden">
-        <div className={cn('h-full rounded-full', barColor)} style={{ width: `${Math.min(pct * 2.5, 100)}%` }} />
+        <div className="h-full rounded-full" style={{ width: `${Math.min(pct * 2.5, 100)}%`, background: color }} />
       </div>
     </div>
   )
 }
-import { tooltipStyle } from '@/lib/chart-theme'
-import {
-  ResponsiveContainer, BarChart, Bar,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-} from 'recharts'
-import type { BranchMonthlyData } from '@/lib/api'
-import type { ChartColors } from './types'
-import { Building2 } from 'lucide-react'
 
-export default function BranchTab({ data, c }: { data: BranchMonthlyData | null; c: ChartColors }) {
+export default function BranchTab({ data }: { data: BranchMonthlyData | null }) {
   const [metric, setMetric] = useState<'commission' | 'sales'>('commission')
+  const c = useChartColors()
+  const palette = c.isDark ? CHART_PALETTE_DARK : CHART_PALETTE_LIGHT
 
   if (!data || data.branches.length === 0) {
     return (
@@ -37,22 +37,89 @@ export default function BranchTab({ data, c }: { data: BranchMonthlyData | null;
     )
   }
 
-  const BRANCH_COLORS = [
-    c.primary, c.cyan, c.secondary, c.tertiary,
-    c.pink, c.purple, '#f97316', '#14b8a6',
-  ]
-
   const top8 = data.branches.slice(0, 8)
 
   // One object per month — keys are branch names, values are the chosen metric
-  const chartData = data.period_months.map((ym) => {
-    const obj: Record<string, unknown> = { label: ym.slice(0, 7) }
-    for (const b of top8) {
-      const mo = b.months.find((m) => m.label === ym)
-      obj[b.branch] = mo ? Math.round(mo[metric]) : 0
+  const months = data.period_months.map(ym => ym.slice(0, 7))
+  const series = top8.map((b, i) => {
+    const color = palette[i % palette.length]
+    const vals  = data.period_months.map(ym => {
+      const mo = b.months.find(m => m.label === ym)
+      return mo ? Math.round(mo[metric]) : 0
+    })
+    return {
+      name:    b.branch,
+      type:    'bar' as const,
+      stack:   'total',
+      data:    vals,
+      itemStyle: {
+        color: {
+          type: 'linear' as const, x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0,   color },
+            { offset: 1,   color: color + 'A0' },
+          ],
+        },
+        borderRadius: i === top8.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0],
+      },
+      emphasis: { itemStyle: { opacity: 1 } },
     }
-    return obj
   })
+
+  const barOption = {
+    backgroundColor: 'transparent',
+    animation: true,
+    animationDuration: 700,
+    animationEasing: 'cubicOut' as const,
+    tooltip: {
+      trigger: 'axis' as const,
+      axisPointer: { type: 'shadow' as const },
+      ...getEChartTooltip(c.isDark),
+      formatter: (params: { seriesName: string; value: number; color: string }[]) => {
+        const lines = params
+          .filter(p => p.value > 0)
+          .map(p => `
+            <div style="display:flex;justify-content:space-between;gap:20px;padding:2px 0">
+              <span style="display:flex;align-items:center;gap:6px">
+                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
+                ${p.seriesName}
+              </span>
+              <b>${formatCurrency(p.value, true)}</b>
+            </div>`)
+          .join('')
+        return `<div style="font-size:12px">${params[0]?.name ?? ''}<br/>${lines}</div>`
+      },
+    },
+    legend: {
+      data:      top8.map(b => b.branch),
+      bottom:    0,
+      textStyle: { color: c.tick, fontSize: 10, fontFamily: "'Inter', sans-serif" },
+      icon:      'circle',
+      itemWidth:  8,
+      itemHeight: 8,
+    },
+    grid: { top: 8, right: 8, bottom: 40, left: 8, containLabel: true },
+    xAxis: {
+      type: 'category' as const,
+      data: months,
+      axisLine:  { show: false },
+      axisTick:  { show: false },
+      axisLabel: { color: c.tick, fontSize: 10 },
+    },
+    yAxis: {
+      axisLine:  { show: false },
+      axisTick:  { show: false },
+      axisLabel: {
+        color: c.tick, fontSize: 10,
+        formatter: (v: number) =>
+          v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1)}M`
+          : v >= 1_000   ? `$${(v / 1_000).toFixed(0)}k`
+          : `$${v}`,
+      },
+      splitLine: { lineStyle: { color: c.grid, type: 'dashed' } },
+    },
+    series,
+  }
 
   const totalComm  = data.branches.reduce((s, b) => s + b.total_commission, 0)
   const totalSales = data.branches.reduce((s, b) => s + b.total_sales, 0)
@@ -60,7 +127,12 @@ export default function BranchTab({ data, c }: { data: BranchMonthlyData | null;
   return (
     <>
       {/* Stacked bar chart */}
-      <div className="animate-enter card-premium p-5">
+      <motion.div
+        className="card-premium p-5"
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      >
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Building2 className="h-4 w-4 text-primary" />
@@ -70,70 +142,33 @@ export default function BranchTab({ data, c }: { data: BranchMonthlyData | null;
             )}
           </div>
           <div className="flex gap-1 rounded-lg border border-border bg-secondary/30 p-0.5">
-            <button
-              onClick={() => setMetric('commission')}
-              className={cn(
-                'rounded-md px-3 py-1 text-[11px] font-semibold transition-all',
-                metric === 'commission'
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              Commission
-            </button>
-            <button
-              onClick={() => setMetric('sales')}
-              className={cn(
-                'rounded-md px-3 py-1 text-[11px] font-semibold transition-all',
-                metric === 'sales'
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              Gross Sales
-            </button>
+            {(['commission', 'sales'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setMetric(m)}
+                className={cn(
+                  'rounded-md px-3 py-1 text-[11px] font-semibold transition-all',
+                  metric === m
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {m === 'commission' ? 'Commission' : 'Gross Sales'}
+              </button>
+            ))}
           </div>
         </div>
 
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={chartData} margin={{ top: 0, right: 8, bottom: 0, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
-            <XAxis
-              dataKey="label"
-              axisLine={false} tickLine={false}
-              tick={{ fill: c.tick, fontSize: 10 }}
-            />
-            <YAxis
-              axisLine={false} tickLine={false}
-              tick={{ fill: c.tick, fontSize: 10 }}
-              tickFormatter={(v: number) =>
-                v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1)}M`
-                : v >= 1_000 ? `$${(v / 1_000).toFixed(0)}k`
-                : `$${v}`
-              }
-            />
-            <Tooltip
-              contentStyle={tooltipStyle(c as any)}
-              formatter={(v: unknown, name: unknown) => [formatCurrency(v as number, true), name as string]}
-              cursor={{ fill: c.cursor }}
-            />
-            <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} />
-            {top8.map((b, i) => (
-              <Bar
-                key={b.branch}
-                dataKey={b.branch}
-                stackId="a"
-                fill={BRANCH_COLORS[i % BRANCH_COLORS.length]}
-                fillOpacity={0.85}
-                radius={i === top8.length - 1 ? [3, 3, 0, 0] : undefined}
-              />
-            ))}
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+        <ReactECharts option={barOption} style={{ height: 300 }} />
+      </motion.div>
 
       {/* Summary table */}
-      <div className="animate-enter stagger-1 card-premium overflow-hidden">
+      <motion.div
+        className="card-premium overflow-hidden"
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.08, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      >
         <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
           <h3 className="text-sm font-semibold">Branch Totals</h3>
           <span className="text-[12px] text-muted-foreground">{data.branches.length} branches</span>
@@ -142,11 +177,12 @@ export default function BranchTab({ data, c }: { data: BranchMonthlyData | null;
           <table className="w-full">
             <thead>
               <tr className="border-b border-border bg-secondary/20">
-                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Branch</th>
-                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Commission</th>
-                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Gross Sales</th>
-                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Comm %</th>
-                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Share</th>
+                {['Branch','Commission','Gross Sales','Comm %','Share'].map(h => (
+                  <th key={h} className={cn(
+                    'px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground',
+                    h === 'Branch' ? 'text-left' : 'text-right',
+                  )}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -160,7 +196,7 @@ export default function BranchTab({ data, c }: { data: BranchMonthlyData | null;
                         {i < 8 && (
                           <span
                             className="inline-block h-2 w-2 shrink-0 rounded-full"
-                            style={{ background: BRANCH_COLORS[i % BRANCH_COLORS.length] }}
+                            style={{ background: palette[i % palette.length] }}
                           />
                         )}
                         {b.branch}
@@ -176,7 +212,9 @@ export default function BranchTab({ data, c }: { data: BranchMonthlyData | null;
                       {commPct > 0 ? `${commPct.toFixed(1)}%` : '—'}
                     </td>
                     <td className="px-4 py-2.5">
-                      {sharePct > 0 ? <BranchShareBar pct={sharePct} colorIdx={i} /> : <span className="text-right block text-[12px] text-muted-foreground">—</span>}
+                      {sharePct > 0
+                        ? <BranchShareBar pct={sharePct} colorIdx={i} />
+                        : <span className="text-right block text-[12px] text-muted-foreground">—</span>}
                     </td>
                   </tr>
                 )
@@ -193,7 +231,7 @@ export default function BranchTab({ data, c }: { data: BranchMonthlyData | null;
             </tbody>
           </table>
         </div>
-      </div>
+      </motion.div>
     </>
   )
 }
