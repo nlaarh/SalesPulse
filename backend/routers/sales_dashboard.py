@@ -34,13 +34,13 @@ def _dashboard_cache_key(line: str, period: int, sd: str, ed: str, yoy_year: int
 def _component_cache_keys(line: str, sd: str, ed: str, yoy_year: int) -> list[str]:
     today = date.today().isoformat()
     return [
-        f"advisor_summary_{line}_{sd}_{ed}",
-        f"advisor_leaderboard_{line}_{sd}_{ed}",
-        f"perf_insights_{line}_{sd}_{ed}",
+        f"advisor_summary_v2_{line}_{sd}_{ed}",
+        f"advisor_leaderboard_v3_{line}_{sd}_{ed}",
+        f"perf_insights_v2_{line}_{sd}_{ed}",
         f"perf_funnel_{line}_{sd}_{ed}",
         f"leads_volume_{line}_{sd}_{ed}",
         f"agent_close_speed_{line}_{sd}_{ed}",
-        f"advisor_branch_monthly_{line}_{sd}_{ed}",
+        f"advisor_branch_monthly_v2_{line}_{sd}_{ed}",
         f"advisor_yoy_{line}_{yoy_year}_{today}",
         f"pipeline_slipping_v2_{line}_{today}",
     ]

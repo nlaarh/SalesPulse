@@ -49,7 +49,24 @@ def _sf_advisors_with_bookings(line: str, year: int, cache_module, sf_query_all,
 
 
 def _get_comm_rate_accurate(line: str, year: int, cache_module, sf_query_all, WON_STAGES, lf) -> float:
-    """Get true commission rate from deals that have commission recorded (non-grouped query)."""
+    """Get true commission rate. Uses PBI for Travel/Insurance (authoritative); SF for other lines."""
+    from pbi_utils import PBI_COMMISSION_LINES
+    if line in PBI_COMMISSION_LINES:
+        key = f"comm_rate_pbi_{line}_{year}"
+        def fetch_pbi():
+            from pbi_utils import pbi_by_day
+            rows = pbi_by_day(line, f"{year}-01-01", f"{year}-12-31")
+            total_sales = sum(r.get('sales', 0) for r in rows)
+            total_comm  = sum(r.get('commission', 0) for r in rows)
+            return [{'rev': total_sales, 'comm': total_comm}]
+        records = cache_module.cached_query(key, fetch_pbi, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
+        if records:
+            rev  = records[0].get('rev', 0) or 0
+            comm = records[0].get('comm', 0) or 0
+            if rev > 0:
+                return comm / rev
+        return 0.187
+
     key = f"comm_rate_{line}_{year}"
     def fetch():
         return sf_query_all(f"""
@@ -133,6 +150,32 @@ def _ensure_monthly_targets(db: Session, year: int, advisor_ids: dict[str, int],
                             comm_rate: float = 0):
     """Seed missing MonthlyAdvisorTarget rows using prior year's seasonal shape + default growth.
     Stores both commission (target_amount) and bookings (target_bookings)."""
+    # Backfill monthly_target on AdvisorTarget rows created with monthly_target=None
+    # (e.g. auto-created by _ensure_advisor_targets for PBI advisors).
+    # Runs before early-exit so subsequent calls still pick up stragglers.
+    _at_ids = [id for id in advisor_ids.values() if id]
+    if _at_ids:
+        _no_mt = db.query(AdvisorTarget).filter(
+            AdvisorTarget.id.in_(_at_ids),
+            AdvisorTarget.monthly_target.is_(None)
+        ).all()
+        if _no_mt:
+            _mr = db.query(MonthlyAdvisorTarget).filter(
+                MonthlyAdvisorTarget.advisor_target_id.in_([a.id for a in _no_mt]),
+                MonthlyAdvisorTarget.year == year
+            ).all()
+            _rows_by = {}
+            for r in _mr:
+                _rows_by.setdefault(r.advisor_target_id, []).append(r.target_amount)
+            _changed = False
+            for at in _no_mt:
+                vals = _rows_by.get(at.id)
+                if vals:
+                    at.monthly_target = round(sum(vals) / 12)
+                    _changed = True
+            if _changed:
+                db.commit()
+
     # Check which advisor+month combos already exist (user-edited or previously seeded)
     existing_keys: set[tuple[int, int]] = set()
     existing_rows = db.query(

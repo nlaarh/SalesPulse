@@ -65,12 +65,12 @@ def agent_profile(
 
     safe = _escape(name)
     sd, ed = _resolve_dates(start_date, end_date, period)
-    today = date.today()
+    sd_dt = date.fromisoformat(str(sd))
+    ed_dt = date.fromisoformat(str(ed))
+    today = ed_dt
     cy, py = today.year, today.year - 1
 
     # Prior-year equivalent date range for apples-to-apples YoY comparison.
-    sd_dt = date.fromisoformat(str(sd))
-    ed_dt = date.fromisoformat(str(ed))
     try:
         p_sd = sd_dt.replace(year=sd_dt.year - 1).isoformat()
     except ValueError:  # Feb 29 leap year
@@ -80,7 +80,7 @@ def agent_profile(
     except ValueError:
         p_ed = ed_dt.replace(year=ed_dt.year - 1, day=28).isoformat()
 
-    key = f"agent_profile_{name}_{line}_{sd}_{ed}"
+    key = f"agent_profile_v3_{name}_{line}_{sd}_{ed}"
 
     def fetch():
         sma = six_months_ago()
@@ -170,6 +170,71 @@ def agent_profile(
                 except Exception:
                     pass
         data['mo_rev_pri'] = sorted(mo_rev_pri_map.values(), key=lambda x: x['mo'])
+
+        # ── PBI overlay: replace commission+sales with authoritative PBI data ──
+        from pbi_utils import PBI_COMMISSION_LINES, pbi_monthly_map, norm_name, overlay_pbi_on_month_map, pbi_period_totals, pbi_by_day, pbi_by_advisor
+        n_agents = None
+        if line in PBI_COMMISSION_LINES:
+            nk = norm_name(name)
+            pbi_cur = pbi_monthly_map(line, f"{cy}-01-01", f"{cy}-12-31")
+            pbi_pri = pbi_monthly_map(line, f"{py}-01-01", f"{py}-12-31")
+            overlay_pbi_on_month_map(mo_rev_cur_map, pbi_cur, nk, cy)
+            overlay_pbi_on_month_map(mo_rev_pri_map, pbi_pri, nk, py)
+            data['mo_rev_cur'] = sorted(mo_rev_cur_map.values(), key=lambda x: x['mo'])
+            data['mo_rev_pri'] = sorted(mo_rev_pri_map.values(), key=lambda x: x['mo'])
+            # Recompute period totals from PBI using exact day ranges
+            curr_advs = pbi_by_advisor(line, str(sd), str(ed))
+            pri_advs = pbi_by_advisor(line, str(p_sd), str(p_ed))
+            p_comm_pbi = sum(a['commission'] for a in curr_advs if norm_name(a['name']) == nk)
+            p_rev_pbi = sum(a['sales'] for a in curr_advs if norm_name(a['name']) == nk)
+            pp_comm_pbi = sum(a['commission'] for a in pri_advs if norm_name(a['name']) == nk)
+            pp_rev_pbi = sum(a['sales'] for a in pri_advs if norm_name(a['name']) == nk)
+
+            data['won_cur'] = [{'cnt': data['won_cur'][0]['cnt'] if data.get('won_cur') else 0,
+                                 'rev': p_rev_pbi, 'comm': p_comm_pbi}]
+            data['won_pri'] = [{'cnt': data['won_pri'][0]['cnt'] if data.get('won_pri') else 0,
+                                 'rev': pp_rev_pbi, 'comm': pp_comm_pbi}]
+
+            # Count of agents in PBI with commission > 0
+            pbi_agent_comm = {}
+            for a in curr_advs:
+                if a['name']:
+                    pbi_agent_comm[a['name'].strip().lower()] = pbi_agent_comm.get(a['name'].strip().lower(), 0.0) + a['commission']
+            n_agents = sum(1 for comm in pbi_agent_comm.values() if comm > 0)
+
+            # ── PBI override for division-level team comparison bars ──
+            # t_won / t_won_month / t_won_ytd came from SF; replace rev+comm with PBI totals.
+            _today_iso = today.isoformat()
+            _month_start_div = f"{cy}-{today.month:02d}-01"
+            _ytd_start_div   = f"{cy}-01-01"
+
+            def _sum_pbi_day(rows: list) -> dict:
+                return {
+                    'rev':  round(sum(r.get('sales', 0)      for r in rows)),
+                    'comm': round(sum(r.get('commission', 0)  for r in rows)),
+                }
+
+            div_period = _sum_pbi_day(pbi_by_day(line, str(sd), str(ed)))
+            div_month  = _sum_pbi_day(pbi_by_day(line, _month_start_div, _today_iso))
+            div_ytd    = _sum_pbi_day(pbi_by_day(line, _ytd_start_div,   _today_iso))
+
+            period_cnt = (data['t_won'][0].get('cnt') or 0) if data.get('t_won') else 0
+            data['t_won']       = [{**div_period, 'cnt': period_cnt}]
+            data['t_won_month'] = [{**div_month}]
+            data['t_won_ytd']   = [{**div_ytd}]
+
+        # YoY Date Capping: if cy is current calendar year, blank out prior year months that are current/future
+        current_year_sys = today.year
+        current_month_sys = today.month
+        if cy == current_year_sys:
+            capped_mo_rev_pri = []
+            for r in data.get('mo_rev_pri', []):
+                m = r.get('mo')
+                if m and m >= current_month_sys:
+                    capped_mo_rev_pri.append({**r, 'rev': 0.0, 'comm': 0.0, 'cnt': 0})
+                else:
+                    capped_mo_rev_pri.append(r)
+            data['mo_rev_pri'] = capped_mo_rev_pri
 
         # 5. closed_cur
         closed_cur_map = {}
@@ -276,17 +341,17 @@ def agent_profile(
         }]
 
         # ── Parse agent metrics ──────────────────────────────────────────
-        # Insurance: Amount IS the commission (Earned_Commission_Amount__c is $0)
-        # Travel: Amount = gross bookings, Earned_Commission_Amount__c = commission
         is_insurance = line and line.lower() == 'insurance'
 
         revenue = _val(data['won_cur'], 'rev')
-        commission = revenue if is_insurance else _val(data['won_cur'], 'comm')
+        # PBI overlay sets comm correctly for both Travel and Insurance.
+        # Never override comm with rev: for Insurance, rev=transaction_amount, comm=commission_amount.
+        commission = _val(data['won_cur'], 'comm')
         deals = _val(data['won_cur'], 'cnt')
         avg_deal = round(revenue / deals) if deals else 0
 
         p_rev = _val(data['won_pri'], 'rev')
-        p_comm = p_rev if is_insurance else _val(data['won_pri'], 'comm')
+        p_comm = _val(data['won_pri'], 'comm')
         p_deals = _val(data['won_pri'], 'cnt')
         p_avg = round(p_rev / p_deals) if p_deals else 0
 
@@ -308,7 +373,7 @@ def agent_profile(
         pushed_val = _val(data['pushed'], 'rev')
         stale_cnt = _val(data['stale'], 'cnt')
 
-        team = compute_team_averages(data, line, is_insurance)
+        team = compute_team_averages(data, line, is_insurance, n_agents=n_agents)
 
         # Coverage
         ann_rev = revenue * (12 / max(period, 1))
@@ -330,7 +395,7 @@ def agent_profile(
             agent_email = (data['agent_user'][0] or {}).get('Email', '') or ''
 
         return {
-            'name': name, 'line': line, 'email': agent_email,
+            'name': name, 'line': line, 'email': agent_email, 'sf_id': _owner_id or '',
             'current_year': cy, 'prior_year': py,
             'period_start': str(sd), 'period_end': str(ed),
             'prior_start': p_sd, 'prior_end': p_ed,
@@ -373,7 +438,7 @@ def agent_profile(
     ai_powered = False
     writeup = template_brief(profile)
     if ai:
-        brief_key = f"agent_ai_brief_{name}_{line}_{sd}_{ed}"
+        brief_key = f"agent_ai_brief_v3_{name}_{line}_{sd}_{ed}"
         def fetch_brief():
             res = ai_brief(profile)
             if not res:
@@ -450,7 +515,7 @@ def agent_top_customers(
         WHERE Account__c IN ({ids_csv})
     """)
     deal_rows = sf_query_all(f"""
-        SELECT Id, Name, AccountId, Amount, CloseDate, StageName, Earned_Commission_Amount__c
+        SELECT Id, Name, AccountId, Amount, CloseDate, StageName
         FROM Opportunity
         WHERE AccountId IN ({ids_csv}) AND {ow} AND StageName IN ('Closed Won','Invoice') AND {lf}
           AND CloseDate >= {sd} AND CloseDate <= {ed}
@@ -473,7 +538,6 @@ def agent_top_customers(
                 'id': d.get('Id', ''),
                 'name': d.get('Name', '') or '',
                 'amount': round(d.get('Amount') or 0, 2),
-                'commission': round(d.get('Earned_Commission_Amount__c') or 0, 2),
                 'close_date': d.get('CloseDate', '') or '',
                 'stage': d.get('StageName', '') or '',
                 'sf_link': f"{sf_base}/{d.get('Id', '')}",

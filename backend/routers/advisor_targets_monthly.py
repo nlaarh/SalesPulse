@@ -162,8 +162,6 @@ def _get_advisor_monthly_actuals(line: str, year: int, cache_module, sf_query_al
         'branches': {name_lower: branch_name}
     }
     """
-    from pbi_client import travel_by_advisor_day, insurance_by_advisor_day
-
     key = f"advisor_monthly_actuals_v5_{line}_{year}"
 
     def fetch():
@@ -175,33 +173,28 @@ def _get_advisor_monthly_actuals(line: str, year: int, cache_module, sf_query_al
             sd = f"{year}-01-01"
             ed = f"{year}-12-31"
             try:
-                if line == 'Travel':
-                    rows = travel_by_advisor_day(sd, ed)
-                else:
-                    rows = insurance_by_advisor_day(sd, ed)
+                from pbi_utils import pbi_monthly_map as _pbi_map
+                pbi_data = _pbi_map(line, sd, ed)
             except Exception as e:
                 log.error(f"Failed to fetch PBI actuals for {line} {year}: {e}")
-                rows = []
+                pbi_data = {}
 
-            for r in rows:
-                original_name = (r.get('name') or '').strip()
-                name = original_name.lower()
-                if not name:
-                    continue
-                name_case_map[name] = original_name
-                if r.get('branch'):
-                    branch_map[name] = r.get('branch')
-                date_str = r.get('date', '')
-                if not date_str or len(date_str) < 7:
-                    continue
-                mo = int(date_str[5:7])
-                comm = float(r.get('commission', 0.0) or 0.0)
-                sales = float(r.get('sales', 0.0) or 0.0)
-
+            for nk, month_data in pbi_data.items():
+                raw_name = next(iter(month_data.values()))['_raw_name']
+                name = raw_name.strip().lower()
+                name_case_map[name] = raw_name.strip()
                 if name not in out:
                     out[name] = {m: {'bookings': 0.0, 'commission': 0.0} for m in range(1, 13)}
-                out[name][mo]['bookings'] += sales
-                out[name][mo]['commission'] += comm
+                for ym, pd in month_data.items():
+                    try:
+                        yr_str, mo_str = ym.split('-')
+                        if int(yr_str) != year:
+                            continue
+                        m = int(mo_str)
+                        out[name][m]['bookings'] += pd['sales']
+                        out[name][m]['commission'] += pd['commission']
+                    except Exception:
+                        pass
         else:
             # Salesforce Fallback
             rows = sf_query_all(f"""
@@ -234,6 +227,7 @@ def _get_advisor_monthly_actuals(line: str, year: int, cache_module, sf_query_al
     return cache_module.cached_query(key, fetch, ttl=3600, disk_ttl=86400)
 
 
+
 @router.get("/api/targets/monthly/{year}")
 def get_monthly_targets(
     year: int,
@@ -248,6 +242,8 @@ def get_monthly_targets(
 
     lf = line_filter_opp(line)
     prior_year = year - 1
+    current_year_sys = datetime.utcnow().year
+    current_month_sys = datetime.utcnow().month
 
     # 1. Fetch current year and prior year monthly actual data (PBI for Travel/Insurance, SF fallback)
     cur_data = _get_advisor_monthly_actuals(line, year, cache, sf_query_all, WON_STAGES, lf)
@@ -259,7 +255,19 @@ def get_monthly_targets(
     all_names.update(cur_data['names'])
     all_names.update(py_data['names'])
 
-    db_targets = db.query(AdvisorTarget).filter(AdvisorTarget.monthly_target.isnot(None)).all()
+    # Filter DB targets by line (via TargetUpload) to prevent cross-line bleeding.
+    # __sf_auto__ records are line='Travel' for all lines; skip them here since
+    # PBI advisors are already captured via cur_data/py_data above.
+    db_targets = (
+        db.query(AdvisorTarget)
+        .join(TargetUpload, AdvisorTarget.upload_id == TargetUpload.id)
+        .filter(
+            AdvisorTarget.monthly_target.isnot(None),
+            TargetUpload.line == line,
+            TargetUpload.filename != '__sf_auto__',
+        )
+        .all()
+    )
     for dt in db_targets:
         name_lower = dt.sf_name.strip().lower()
         if name_lower not in all_names:
@@ -342,8 +350,14 @@ def get_monthly_targets(
             
             # Prior year actuals
             act_py_vals = actuals_py_by_month.get(m) or actuals_py_by_month.get(str(m)) or {'bookings': 0.0, 'commission': 0.0}
-            apy = act_py_vals['commission']
-            apb = act_py_vals['bookings']
+            
+            # YoY Date Capping: if query year is current calendar year, blank out prior year months that are current/future
+            if year == current_year_sys and m >= current_month_sys:
+                apy = 0.0
+                apb = 0.0
+            else:
+                apy = act_py_vals['commission']
+                apb = act_py_vals['bookings']
 
             total_target += t
             total_target_book += tb

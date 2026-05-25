@@ -25,48 +25,11 @@ from shared import (
 )
 from constants import WIN_RATE_COACHING_THRESHOLD, MIN_CLOSED_DEALS_FOR_EVAL, PIPELINE_COVERAGE_HEALTHY, CACHE_TTL_HOUR, CACHE_TTL_MEDIUM, CACHE_TTL_DAY, CACHE_TTL_12H
 
-# Lines whose commission+sales come from PBI (authoritative) rather than Salesforce
-_PBI_COMMISSION_LINES = frozenset({'Travel', 'Insurance'})
-
-# PBI noise entries that are aggregator buckets, not real advisors
-_PBI_NOISE_FRAGMENTS = ('misc', 'aaa.com', 'dept agent', 'group dept')
-
-
-def _norm_name(n: str) -> str:
-    """Normalize for matching: lowercase, strip single-letter middle names."""
-    return ' '.join(p for p in n.lower().split() if len(p) > 1)
-
-
-def _is_pbi_noise(name: str) -> bool:
-    nl = name.lower()
-    return any(f in nl for f in _PBI_NOISE_FRAGMENTS)
-
-
-def _pbi_monthly_map(line: str, sd: str, ed: str) -> dict:
-    """Pull PBI data (Travel or Insurance) grouped by advisor+day, collapsed to YYYY-MM.
-
-    Returns: {norm_name: {YYYY-MM: {commission, sales, _raw_name}}}
-    """
-    if line == 'Travel':
-        from pbi_client import travel_by_advisor_day as pbi_fn
-    else:
-        from pbi_client import insurance_by_advisor_day as pbi_fn
-    result: dict = {}
-    for r in pbi_fn(sd, ed):
-        name = r['name']
-        if not name or _is_pbi_noise(name):
-            continue
-        nk = _norm_name(name)
-        month = r['date'][:7]
-        if not nk or len(month) != 7:
-            continue
-        if nk not in result:
-            result[nk] = {}
-        if month not in result[nk]:
-            result[nk][month] = {'commission': 0.0, 'sales': 0.0, '_raw_name': name}
-        result[nk][month]['commission'] += r['commission']
-        result[nk][month]['sales']      += r['sales']
-    return result
+from pbi_utils import (
+    PBI_COMMISSION_LINES as _PBI_COMMISSION_LINES,
+    norm_name as _norm_name,
+    pbi_monthly_map as _pbi_monthly_map,
+)
 
 router = APIRouter()
 log = logging.getLogger('sales.performance')
@@ -381,7 +344,7 @@ def performance_insights(
     if line not in VALID_LINES:
         line = 'Travel'
     sd, ed = _resolve_dates(start_date, end_date, period)
-    key = f"perf_insights_{line}_{sd}_{ed}"
+    key = f"perf_insights_v2_{line}_{sd}_{ed}"
 
     def fetch():
         lf_opp = _line_filter_opp(line)
@@ -432,6 +395,22 @@ def performance_insights(
         data['top5'] = [r for r in enrich(data['top5']) if is_sales_agent(r['Name'], line)]
         data['closed_by_agent'] = [r for r in enrich(data['closed_by_agent']) if is_sales_agent(r['Name'], line)]
 
+        # ── PBI override: replace top5 + totals with authoritative PBI data for Travel/Insurance
+        pbi_total_comm = None
+        if line in _PBI_COMMISSION_LINES:
+            from pbi_utils import pbi_by_advisor as _pbi_by_advisor_fn, pbi_by_day as _pbi_by_day_fn
+            pbi_adv = _pbi_by_advisor_fn(line, sd, ed)
+            pbi_top = sorted(
+                [r for r in pbi_adv if (r.get('commission') or 0) > 0],
+                key=lambda r: r['commission'], reverse=True,
+            )[:5]
+            data['top5'] = [
+                {'Name': r['name'], 'rev': round(r['commission']), 'cnt': r.get('txns', 0)}
+                for r in pbi_top
+            ]
+            pbi_day = _pbi_by_day_fn(line, sd, ed)
+            pbi_total_comm = sum(r.get('commission', 0) for r in pbi_day)
+
         insights = []
         current = data['current'][0] if data['current'] else {}
         total_rev = current.get('rev', 0) or 0
@@ -442,11 +421,14 @@ def performance_insights(
             top = data['top5'][0]
             top_rev = top.get('rev', 0) or 0
             top_name = top.get('Name', '?')
-            share = round(top_rev / total_rev * 100) if total_rev > 0 else 0
+            # Use PBI division total for share when available; SF bookings total otherwise
+            share_base = pbi_total_comm if pbi_total_comm is not None else total_rev
+            share = round(top_rev / share_base * 100) if share_base > 0 else 0
+            metric_label = 'commission' if line in _PBI_COMMISSION_LINES else 'bookings'
             insights.append({
                 'type': 'success',
                 'title': 'Top Performer',
-                'text': f"{top_name} leads {line} with ${top_rev:,.0f} in bookings "
+                'text': f"{top_name} leads {line} with ${top_rev:,.0f} in {metric_label} "
                         f"({share}% of total, {top.get('cnt', 0)} deals).",
             })
 

@@ -48,10 +48,10 @@ def get_target_achievement(
     # Parse optional period dates; default to current month
     try:
         p_start = date.fromisoformat(start_date) if start_date else date(year, month, 1)
-        p_end   = date.fromisoformat(end_date)   if end_date   else today
+        p_end   = date.fromisoformat(end_date)   if end_date   else date(year, month, days_in_month)
     except ValueError:
         p_start = date(year, month, 1)
-        p_end   = today
+        p_end   = date(year, month, days_in_month)
 
     # Clamp period to the current year for target look-ups
     p_year = p_end.year  # use the year the period ends in
@@ -78,25 +78,29 @@ def get_target_achievement(
 
 
     # Get current + prior year data. Use prior year's commission rate (most complete)
-    cur_records = _sf_advisors_with_bookings(line, p_year, cache, sf_query_all, WON_STAGES, lf)
-    py_records = _sf_advisors_with_bookings(line, p_year - 1, cache, sf_query_all, WON_STAGES, lf)
+    from routers.advisor_targets_monthly import _get_advisor_monthly_actuals
+    cur_actuals = _get_advisor_monthly_actuals(line, p_year, cache, sf_query_all, WON_STAGES, lf)
+    py_actuals = _get_advisor_monthly_actuals(line, p_year - 1, cache, sf_query_all, WON_STAGES, lf)
     comm_rate = _get_comm_rate_accurate(line, p_year - 1, cache, sf_query_all, WON_STAGES, lf)
 
     all_names: dict[str, str] = {}
-    for r in cur_records + py_records:
-        name = (r.get('Name') or '').strip()
-        if name:
-            all_names[name.lower()] = name
+    all_names.update(cur_actuals['names'])
+    all_names.update(py_actuals['names'])
 
     advisor_ids = _ensure_advisor_targets(db, list(all_names.values()))
+    
     prior_earnings: dict[str, float] = {}
-    for r in py_records:
-        name = (r.get('Name') or '').strip().lower()
-        rev = r.get('rev', 0) or 0
-        if name:
-            prior_earnings[name] = round(rev * comm_rate) if line == 'Travel' else rev
+    py_monthly_map: dict[str, dict[int, float]] = {}
+    for name_lower, months in py_actuals['actuals'].items():
+        total_rev = sum(m['bookings'] for m in months.values())
+        total_comm = sum(m['commission'] for m in months.values())
+        prior_earnings[name_lower] = total_comm if line in ('Travel', 'Insurance') else (total_rev * comm_rate)
+        
+        py_monthly_map[name_lower] = {}
+        for m, vals in months.items():
+            py_monthly_map[name_lower][m] = vals['commission'] if line in ('Travel', 'Insurance') else vals['bookings']
 
-    _ensure_monthly_targets(db, p_year, advisor_ids, prior_earnings, comm_rate=comm_rate)
+    _ensure_monthly_targets(db, p_year, advisor_ids, prior_earnings, py_monthly=py_monthly_map, comm_rate=comm_rate)
 
     # Load targets — use stored target_bookings when available, fall back to detection
     monthly_rows = db.query(MonthlyAdvisorTarget).filter(
@@ -124,40 +128,11 @@ def get_target_achievement(
         monthly_comm_map.setdefault(mr.advisor_target_id, {})[mr.month] = commission_val
         monthly_book_map.setdefault(mr.advisor_target_id, {})[mr.month] = bookings_val
 
-    # Fetch actuals for the full year (Jan 1 → today) so both bars can be computed
-    ytd_key = f"achievement_ytd_{line}_{p_year}_{month}_{day}"
-    def fetch_ytd():
-        rows = sf_query_all(f"""
-            SELECT OwnerId, CALENDAR_MONTH(CloseDate) mo,
-                   SUM(Amount) rev, SUM(Earned_Commission_Amount__c) comm
-            FROM Opportunity
-            WHERE {WON_STAGES} AND {lf}
-              AND CloseDate >= {p_year}-01-01 AND CloseDate <= {today.isoformat()}
-              AND Amount != null
-            GROUP BY OwnerId, CALENDAR_MONTH(CloseDate)
-        """)
-        owner_map = get_owner_map()
-        return [{**r, 'Name': owner_map.get(r.get('OwnerId', ''), '')} for r in rows]
-    ytd_records = cache.cached_query(ytd_key, fetch_ytd, ttl=900, disk_ttl=21600)
-
     # Store both bookings and commission actuals per advisor per month
-    actuals_map: dict[str, dict[int, dict]] = {}
-    for r in ytd_records:
-        name = (r.get('Name') or '').strip().lower()
-        if not name:
-            continue
-        rev = r.get('rev', 0) or 0
-        sf_comm = r.get('comm', 0) or 0
-        # Derive commission from bookings if SF field is missing
-        derived_comm = round(rev * comm_rate) if line == 'Travel' else rev
-        final_comm = round(sf_comm) if sf_comm and sf_comm > 100 else derived_comm
-        actuals_map.setdefault(name, {})[r.get('mo', 0)] = {
-            'bookings': round(rev),
-            'commission': final_comm,
-        }
+    actuals_map: dict[str, dict[int, dict]] = cur_actuals['actuals']
 
     def _sum_actual(abm: dict, months, key: str) -> float:
-        return sum((abm.get(m) or {}).get(key, 0) for m in months)
+        return sum((abm.get(m) or abm.get(str(m)) or {}).get(key, 0) for m in months)
 
     # Build results — "period" bar uses period_months; "yearly" bar uses YTD (Jan → today)
     ytd_months = range(1, month + 1)

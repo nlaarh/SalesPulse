@@ -9,13 +9,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSales } from '@/contexts/SalesContext'
 import {
-  fetchAdvisorSummary, fetchAdvisorLeaderboard,
-  fetchPerformanceInsights, fetchAdvisorYoY,
-  fetchPerformanceFunnel,
-  fetchPipelineSlipping, fetchLeadsVolume,
-  fetchAgentCloseSpeed,
-  fetchTargets, fetchTargetAchievement,
-  fetchBranchMonthly, fetchMonthlyTargets,
+  fetchAdvisorDashboard,
+  fetchTargetAchievement,
+  fetchMonthlyTargets,
   type BranchMonthlyData, type MonthlyTargetsResponse,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -97,60 +93,39 @@ export default function AdvisorDashboard() {
     let cancelled = false
     setLoading(true)
     setLoadError(false)
-    // Use allSettled so a single slow/rate-limited query doesn't kill the whole dashboard.
-    // summary is the only critical one — if it fails, show error.
-    Promise.allSettled([
-      fetchAdvisorSummary(line, period, startDate, endDate),
-      fetchAdvisorLeaderboard(line, period, startDate, endDate),
-      fetchPerformanceInsights(line, period, startDate, endDate),
-      fetchAdvisorYoY(line, viewMode === 'last-year' ? new Date().getFullYear() - 1 : undefined),
-      fetchPerformanceFunnel(line, period, startDate, endDate),
-      fetchPipelineSlipping(line),
-      fetchLeadsVolume(line, period, startDate, endDate),
-      fetchAgentCloseSpeed(line, period, startDate, endDate),
-    ]).then((results) => {
-      if (cancelled) return
-      const [s, l, i, y, fn, sl, lv, cs] = results
-      // summary is required — if it fails, show error screen
-      if (s.status === 'rejected') {
-        setLoadError(true)
-        return
-      }
-      setSummary(s.value)
-      if (l.status === 'fulfilled') setLeaders(l.value.advisors ?? [])
-      if (i.status === 'fulfilled') setInsights(i.value.insights ?? [])
-      if (y.status === 'fulfilled') setYoY(y.value)
-      if (fn.status === 'fulfilled') setFunnel(fn.value)
-      if (sl.status === 'fulfilled') setSlipping(sl.value.deals ?? [])
-      if (lv.status === 'fulfilled') setLeadSources(lv.value.by_source ?? [])
-      if (cs.status === 'fulfilled') setCloseSpeed(cs.value)
-    }).catch((err) => {
-      console.error(err)
-      if (!cancelled) setLoadError(true)
-    }).finally(() => { if (!cancelled) setLoading(false) })
-    // Load targets in parallel (non-blocking)
-    fetchTargets()
-      .then((td) => {
+    const yoyYear = viewMode === 'last-year' ? new Date().getFullYear() - 1 : undefined
+
+    // Single dashboard bundle (11 calls → 1 HTTP request)
+    fetchAdvisorDashboard(line, period, startDate, endDate, yoyYear)
+      .then((dash) => {
         if (cancelled) return
-        const map = new Map<string, number>()
-        for (const t of td.targets) {
-          if (t.monthly_target != null) map.set(t.sf_name.toLowerCase(), t.monthly_target)
+        if (!dash?.summary) { setLoadError(true); return }
+        setSummary(dash.summary)
+        setLeaders(dash.leaderboard?.advisors ?? [])
+        setInsights(dash.insights?.insights ?? [])
+        setYoY(dash.yoy ?? null)
+        setFunnel(dash.funnel ?? null)
+        setSlipping(dash.slipping?.deals ?? [])
+        setLeadSources(dash.leads_volume?.by_source ?? [])
+        setCloseSpeed(dash.close_speed ?? null)
+        setBranchData(dash.branch_monthly ?? null)
+        if (dash.achievement) setAchievement(dash.achievement)
+        if (dash.targets?.targets) {
+          const map = new Map<string, number>()
+          for (const t of dash.targets.targets) {
+            if (t.monthly_target != null) map.set(t.sf_name.toLowerCase(), t.monthly_target)
+          }
+          setTargetMap(map)
         }
-        setTargetMap(map)
       })
-      .catch(() => {})
-    // Load achievement data for progress bars (respects selected date range)
-    fetchTargetAchievement(line, undefined, startDate, endDate)
-      .then((data) => { if (cancelled) return; setAchievement(data) })
-      .catch(() => {})
-    // Branch monthly data (all lines — used in Overview branch chart + BranchTab)
-    fetchBranchMonthly(line, period, startDate, endDate)
-      .then((data) => { if (cancelled) return; setBranchData(data) })
-      .catch(() => { if (!cancelled) setBranchData(null) })
-    // Monthly targets for the Overview bullet chart
+      .catch((err) => { console.error(err); if (!cancelled) setLoadError(true) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+
+    // Monthly targets — not in dashboard bundle (separate endpoint)
     fetchMonthlyTargets(new Date().getFullYear(), line)
       .then((data) => { if (cancelled) return; setMonthlyTargets(data) })
       .catch(() => {})
+
     return () => { cancelled = true }
   }, [line, period, startDate, endDate, retryCount, viewMode])
 
@@ -271,10 +246,11 @@ export default function AdvisorDashboard() {
             {/* Current CALENDAR month only — never aggregates multi-month period */}
             <TargetProgressBar
               label={`${_curMonthLabel} Target (${achBase})`}
-              actual={_curMonthEntry?.actual
-                ?? (achievement.current_month?.company?.commission_actual ?? achievement.current_month?.company?.actual ?? 0)}
+              actual={achBase === 'bookings'
+                ? (_curMonthEntry?.bookings_actual ?? achievement.current_month?.company?.bookings_actual ?? achievement.current_month?.company?.actual ?? 0)
+                : (_curMonthEntry?.actual ?? achievement.current_month?.company?.commission_actual ?? achievement.current_month?.company?.actual ?? 0)}
               target={achBase === 'bookings'
-                ? (_curMonthEntry?.target_bookings ?? _curMonthEntry?.target ?? achievement.current_month?.company?.bookings_target ?? achievement.current_month?.company?.target ?? 0)
+                ? (_curMonthEntry?.target_bookings ?? achievement.current_month?.company?.bookings_target ?? achievement.current_month?.company?.target ?? 0)
                 : (_curMonthEntry?.target ?? achievement.current_month?.company?.target ?? 0)}
               pacePct={_curMonthPacePct}
               paceLabel={`Day ${_dayOfMonth}/${_daysInMonth}`}
@@ -294,10 +270,6 @@ export default function AdvisorDashboard() {
             />
           </div>
         </div>
-      )}
-
-      {achievement?.current_month && (
-        <GoalGapFocus line={line} metric={achBase} />
       )}
 
       {/* TAB CONTENT */}
@@ -330,7 +302,7 @@ export default function AdvisorDashboard() {
       )}
 
       {tab === 'branch' && (
-        <BranchTab data={branchData} c={c} />
+        <BranchTab data={branchData} />
       )}
 
       {tab === 'summary' && summary && (
@@ -342,6 +314,10 @@ export default function AdvisorDashboard() {
           closeSpeed={closeSpeed}
           onSelectAdvisor={(name) => navigate(`/agent/${encodeURIComponent(name)}`)}
         />
+      )}
+
+      {achievement?.current_month && (
+        <GoalGapFocus line={line} metric={achBase} />
       )}
     </div>
   )

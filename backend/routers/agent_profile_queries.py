@@ -5,6 +5,7 @@ Keeps the main endpoint file focused on orchestration and response assembly.
 
 import logging, re
 from datetime import date
+from typing import Optional
 
 from shared import (
     WON_STAGES, MONTHS,
@@ -139,10 +140,11 @@ def build_profile_queries(*, safe, lf, lf_lead, ow, sd, ed, p_sd, p_ed,
 def build_monthly_breakdown(data, is_insurance):
     """Parse monthly revenue/leads/opps from SOQL results into 12-month list."""
     c_rev = {r['mo']: (r.get('rev', 0) or 0) for r in data['mo_rev_cur']}
-    c_comm = c_rev if is_insurance else {r['mo']: (r.get('comm', 0) or 0) for r in data['mo_rev_cur']}
+    # PBI overlay sets comm correctly for both Travel and Insurance (comm != rev for Insurance).
+    c_comm = {r['mo']: (r.get('comm', 0) or 0) for r in data['mo_rev_cur']}
     c_dls = {r['mo']: (r.get('cnt', 0) or 0) for r in data['mo_rev_cur']}
     p_mrev = {r['mo']: (r.get('rev', 0) or 0) for r in data['mo_rev_pri']}
-    p_mcomm = p_mrev if is_insurance else {r['mo']: (r.get('comm', 0) or 0) for r in data['mo_rev_pri']}
+    p_mcomm = {r['mo']: (r.get('comm', 0) or 0) for r in data['mo_rev_pri']}
     c_lds = {r['mo']: (r.get('cnt', 0) or 0) for r in data['mo_leads']}
     c_ops = {r['mo']: (r.get('cnt', 0) or 0) for r in data['mo_opps']}
 
@@ -196,26 +198,26 @@ def build_won_list(data):
             'amount': r.get('Amount', 0) or 0, 'stage': r.get('StageName', ''),
             'probability': r.get('Probability', 0) or 0,
             'close_date': r.get('CloseDate', ''),
-            'commission': r.get('Earned_Commission_Amount__c', 0) or 0,
         })
     return won_list
 
 
 # ── Team Averages ────────────────────────────────────────────────────────────
 
-def compute_team_averages(data, line, is_insurance):
+def compute_team_averages(data, line, is_insurance, n_agents: Optional[int] = None):
     """Compute team-level comparison metrics."""
     t_rev = _val(data['t_won'], 'rev')
-    t_comm = t_rev if is_insurance else _val(data['t_won'], 'comm')
+    t_comm = _val(data['t_won'], 'comm')
     t_won_cnt = _val(data['t_won'], 'cnt')
     t_closed_cnt = _val(data['t_closed'], 'cnt')
     owner_map = get_owner_map()
-    t_agent_list = [a for a in data['t_agents'] if (a.get('cnt', 0) or 0) > 0]
-    t_agent_list = [
-        a for a in t_agent_list
-        if is_sales_agent(owner_map.get(a.get('OwnerId', ''), ''), line)
-    ]
-    n_agents = len(t_agent_list)
+    if n_agents is None:
+        t_agent_list = [a for a in data['t_agents'] if (a.get('cnt', 0) or 0) > 0]
+        t_agent_list = [
+            a for a in t_agent_list
+            if is_sales_agent(owner_map.get(a.get('OwnerId', ''), ''), line)
+        ]
+        n_agents = len(t_agent_list)
 
     t_wr = round(t_won_cnt / t_closed_cnt * 100, 1) if t_closed_cnt else 0
     t_avg_rev = round(t_rev / n_agents) if n_agents else 0
@@ -224,8 +226,8 @@ def compute_team_averages(data, line, is_insurance):
 
     div_month_rev  = _val(data.get('t_won_month', [{}]), 'rev')
     div_ytd_rev    = _val(data.get('t_won_ytd',   [{}]), 'rev')
-    div_month_comm = div_month_rev if is_insurance else _val(data.get('t_won_month', [{}]), 'comm')
-    div_ytd_comm   = div_ytd_rev   if is_insurance else _val(data.get('t_won_ytd',   [{}]), 'comm')
+    div_month_comm = _val(data.get('t_won_month', [{}]), 'comm')
+    div_ytd_comm   = _val(data.get('t_won_ytd',   [{}]), 'comm')
 
     return {
         'avg_revenue': t_avg_rev, 'avg_commission': t_avg_comm,

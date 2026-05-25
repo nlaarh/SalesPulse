@@ -165,6 +165,27 @@ export default function Layout() {
           <SalesPulseLogo size={28} showText />
         </div>
 
+        {/* Business line — top of sidebar, always visible */}
+        <div className="border-b border-sidebar-border px-4 pb-3 pt-2">
+          {lineLocked ? (
+            <div className="space-y-1">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/70">
+                Business line
+              </span>
+              <div className="flex items-center rounded-lg bg-secondary/60 px-3 py-2 text-[13px] font-medium text-foreground border border-border opacity-70">
+                {effectiveLine}
+              </div>
+            </div>
+          ) : (
+            <Dropdown
+              label="Business line"
+              value={line}
+              options={LINES.map(l => ({ key: l, label: l }))}
+              onSelect={(k) => setLine(k as typeof line)}
+            />
+          )}
+        </div>
+
         {/* Nav + Filters — scrollable middle section */}
         <div className="flex-1 overflow-y-auto">
         <nav className="space-y-0.5 px-3 pt-3">
@@ -275,26 +296,8 @@ export default function Layout() {
           )}
         </nav>
 
-        {/* Filters + Theme */}
+        {/* Filters */}
         <div className="space-y-4 border-t border-sidebar-border p-4">
-          {lineLocked ? (
-            <div className="space-y-1.5">
-              <span className="block text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/70">
-                Business line
-              </span>
-              <div className="flex items-center rounded-lg bg-secondary/60 px-3 py-2 text-[13px] font-medium text-foreground border border-border opacity-70">
-                {effectiveLine}
-              </div>
-            </div>
-          ) : (
-            <Dropdown
-              label="Business line"
-              value={line}
-              options={LINES.map(l => ({ key: l, label: l }))}
-              onSelect={(k) => setLine(k as typeof line)}
-            />
-          )}
-
           {/* Date Range Section */}
           <div className="space-y-2">
             <span className="block text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/70">
