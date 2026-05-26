@@ -25,43 +25,90 @@ export function buildGaugeOption(achievementPct: number, pacePct: number, c: Cha
     pct >= pacePct        ? '#22c55e' :
     pct >= pacePct * 0.85 ? '#f59e0b' : '#ef4444'
 
+  const clampedPace = Math.min(Math.max(pacePct, 0), 130)
+
   return {
     backgroundColor: 'transparent',
     animation: true,
-    series: [{
-      type: 'gauge',
-      center: ['50%', '70%'],
-      startAngle: 180, endAngle: 0,
-      min: 0, max: 130,
-      radius: '96%',
-      progress: {
-        show: true, width: 22,
-        itemStyle: { color, shadowBlur: 24, shadowColor: `${color}44` },
-      },
-      axisLine: { lineStyle: { width: 22, color: [[1, c.grid]] } },
-      pointer: { show: false },
-      axisTick: { show: false },
-      splitLine: {
-        show: true, distance: -30, length: 6,
-        lineStyle: { color: c.tick, width: 1, opacity: 0.5 },
-      },
-      axisLabel: {
-        distance: -42, fontSize: 9, color: c.tick,
-        formatter: (v: number) => v % 50 === 0 ? `${v}%` : '',
-      },
-      detail: {
-        valueAnimation: true,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        formatter: (v: any) =>
-          `{pct|${Number(v).toFixed(0)}%}\n{lbl|of annual goal}`,
-        rich: {
-          pct:  { fontSize: 28, fontWeight: 'bold', color, lineHeight: 34 },
-          lbl:  { fontSize: 10, color: c.tick, lineHeight: 15 },
+    series: [
+      {
+        type: 'gauge',
+        center: ['50%', '70%'],
+        startAngle: 180, endAngle: 0,
+        min: 0, max: 130,
+        radius: '96%',
+        progress: {
+          show: true, width: 22,
+          itemStyle: { color, shadowBlur: 24, shadowColor: `${color}44` },
         },
-        offsetCenter: [0, '-10%'],
+        axisLine: { lineStyle: { width: 22, color: [[1, c.grid]] } },
+        pointer: {
+          show: true,
+          length: '48%',
+          width: 3,
+          itemStyle: {
+            color: color,
+          }
+        },
+        anchor: {
+          show: true,
+          showAbove: true,
+          size: 8,
+          itemStyle: {
+            color: color,
+          }
+        },
+        axisTick: { show: false },
+        splitLine: {
+          show: true, distance: -30, length: 6,
+          lineStyle: { color: c.tick, width: 1, opacity: 0.5 },
+        },
+        axisLabel: {
+          distance: -42, fontSize: 9, color: c.tick,
+          formatter: (v: number) => v % 50 === 0 ? `${v}%` : '',
+        },
+        detail: {
+          valueAnimation: true,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          formatter: (v: any) =>
+            `{pct|${Number(v).toFixed(0)}%}\n{lbl|of annual goal}\n{pace|target pace: ${Math.round(pacePct)}%}`,
+          rich: {
+            pct:  { fontSize: 28, fontWeight: 'bold', color, lineHeight: 34 },
+            lbl:  { fontSize: 10, color: c.tick, lineHeight: 15 },
+            pace: { fontSize: 10, fontWeight: 'bold', color: '#22c55e', lineHeight: 18 },
+          },
+          offsetCenter: [0, '-5%'],
+        },
+        data: [{ value: pct }],
       },
-      data: [{ value: pct }],
-    }],
+      {
+        type: 'gauge',
+        center: ['50%', '70%'],
+        startAngle: 180, endAngle: 0,
+        min: 0, max: 130,
+        radius: '96%',
+        axisLine: { show: false },
+        axisLabel: { show: false },
+        axisTick: { show: false },
+        splitLine: { show: false },
+        pointer: {
+          show: true,
+          length: '96%',
+          width: 5,
+          icon: 'path://M -0.01,0 L 0.01,0 L 0.01,-80 L 2,-80 L 2,-100 L -2,-100 L -2,-80 L -0.01,-80 L -0.01,0 Z',
+          itemStyle: {
+            color: '#22c55e', // Always green as requested
+          }
+        },
+        anchor: {
+          show: false
+        },
+        detail: {
+          show: false,
+        },
+        data: [{ value: clampedPace }]
+      }
+    ],
   }
 }
 
@@ -76,6 +123,19 @@ export function buildMonthlyBulletOption(
     const m = months.find(x => x.month === i + 1)
     return m ?? { month: i + 1, target: 0, actual: 0, achievement_pct: null }
   })
+
+  const today = new Date()
+  const dayOfMonth = today.getDate()
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+  const pacePct = dayOfMonth / daysInMonth
+
+  const currentMonthEntry = filled[currentMonthIdx]
+  const currentMonthTarget = currentMonthEntry ? (currentMonthEntry.target || 0) : 0
+  const paceTargetValue = currentMonthTarget * pacePct
+  const currentMonthActual = currentMonthEntry ? (currentMonthEntry.actual || 0) : 0
+  const currentMonthPct = currentMonthTarget > 0 ? (currentMonthActual / currentMonthTarget) * 100 : 0
+  const isAhead = currentMonthActual >= paceTargetValue
+  const paceColor = isAhead ? '#22c55e' : '#ef4444'
 
   const barColor = (m: MonthlyTargetMonth, i: number): string | object => {
     if (i > currentMonthIdx) return '#64748b22'
@@ -147,6 +207,35 @@ export function buildMonthlyBulletOption(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           formatter: (p: any) => (p.value as number) > 0 ? formatCurrency(p.value as number, true) : '',
         },
+        markLine: currentMonthTarget > 0 ? {
+          symbol: ['none', 'none'],
+          label: {
+            show: true,
+            position: 'middle',
+            offset: [42, 0],
+            formatter: `${currentMonthPct.toFixed(1)}%\u00A0current`,
+            fontSize: 9,
+            fontWeight: 'bold',
+            color: '#ffffff',
+            backgroundColor: c.primary,
+            borderRadius: 3,
+            padding: [2, 4],
+            shadowBlur: 4,
+            shadowColor: 'rgba(0, 0, 0, 0.2)',
+          },
+          lineStyle: {
+            color: c.primary,
+            width: 2.2,
+            type: 'dashed',
+          },
+          data: [
+            [
+              { coord: [currentMonthIdx - 0.25, currentMonthActual] },
+              { coord: [currentMonthIdx + 0.25, currentMonthActual] }
+            ]
+          ],
+          z: 4,
+        } : undefined,
       },
       // Dashed target line — connects monthly target values
       {
@@ -157,6 +246,42 @@ export function buildMonthlyBulletOption(
         symbol: 'circle', symbolSize: 5,
         connectNulls: false,
         z: 3,
+      },
+      // Pace Line — dummy series to carry independent pace markLine
+      {
+        type: 'line',
+        name: 'PaceLine',
+        showSymbol: false,
+        data: [],
+        markLine: currentMonthTarget > 0 ? {
+          symbol: ['none', 'none'],
+          label: {
+            show: true,
+            position: 'middle',
+            offset: [-42, 0],
+            formatter: `${Math.round(pacePct * 100)}%\u00A0pace`,
+            fontSize: 9,
+            fontWeight: 'bold',
+            color: '#ffffff',
+            backgroundColor: paceColor,
+            borderRadius: 3,
+            padding: [2, 4],
+            shadowBlur: 4,
+            shadowColor: 'rgba(0, 0, 0, 0.2)',
+          },
+          lineStyle: {
+            color: paceColor,
+            width: 2.2,
+            type: 'solid',
+          },
+          data: [
+            [
+              { coord: [currentMonthIdx - 0.25, paceTargetValue] },
+              { coord: [currentMonthIdx + 0.25, paceTargetValue] }
+            ]
+          ],
+          z: 4,
+        } : undefined,
       },
     ],
   }
@@ -273,7 +398,7 @@ export function buildAdvisorBarOption(
         const pct = total > 0 ? Math.round((p.value as number) / total * 100) : 0
         const branchStr = a.branch ? `<br/>Branch: <b>${a.branch}</b>` : ''
         return `<b>${a.name}</b>${branchStr}<br/>` +
-          `${isInsurance ? 'Bookings' : 'Commission'}: <b>${formatCurrency(p.value as number, true)}</b><br/>` +
+          `${isInsurance ? 'Written Premium' : 'Commission'}: <b>${formatCurrency(p.value as number, true)}</b><br/>` +
           `Share: <b>${pct}%</b><br/>` +
           `Deals: <b>${a.deals}</b> &nbsp; Win: <b>${Math.round((a.win_rate ?? 0) * 100)}%</b><br/>` +
           `Pipeline: <b>${formatCurrency(a.pipeline_value, true)}</b>`

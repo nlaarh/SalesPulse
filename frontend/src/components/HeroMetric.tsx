@@ -21,6 +21,7 @@ export default function HeroMetric({
   comparisonLabel, deals, winRate, avgDeal, pipelineValue,
   line, periodLabel,
 }: HeroMetricProps) {
+  const isInsurance = line?.toLowerCase() === 'insurance'
   return (
     <div className="animate-enter">
       {/* Context line */}
@@ -30,7 +31,7 @@ export default function HeroMetric({
 
       {/* Two hero numbers side by side */}
       <div className="mt-2 flex flex-wrap items-end gap-x-8 gap-y-2">
-        {/* Bookings — primary */}
+        {/* Primary revenue number */}
         <div>
           <div className="flex items-baseline gap-2.5">
             <span className="tabular-nums text-[36px] font-bold leading-none tracking-tight text-foreground">
@@ -39,7 +40,7 @@ export default function HeroMetric({
             <Delta pct={bookingsYoyPct} label={comparisonLabel} />
           </div>
           <p className="mt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50">
-            Bookings
+            {isInsurance ? 'Written Premium' : 'Bookings'}
           </p>
         </div>
 
@@ -61,11 +62,15 @@ export default function HeroMetric({
 
       {/* Supporting metrics */}
       <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[14px] text-muted-foreground">
-        <Stat label="Won Deals" value={formatNumber(deals)} />
+        <Stat label={isInsurance ? 'Policies' : 'Won Deals'} value={formatNumber(deals)} />
+        {!isInsurance && (
+          <>
+            <Sep />
+            <Stat label="Win Rate" value={formatPct(winRate)} highlight={winRate >= 50} />
+          </>
+        )}
         <Sep />
-        <Stat label="Win Rate" value={formatPct(winRate)} highlight={winRate >= 50} />
-        <Sep />
-        <Stat label="Avg Booking" value={formatCurrency(avgDeal, true)} />
+        <Stat label={isInsurance ? 'Avg Premium' : 'Avg Booking'} value={formatCurrency(avgDeal, true)} />
         <Sep />
         <Stat label="Open Pipeline" value={formatCurrency(pipelineValue, true)} />
       </div>

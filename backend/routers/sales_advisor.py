@@ -10,9 +10,11 @@ from typing import Optional
 from fastapi import APIRouter, Query
 from sf_client import sf_query_all, sf_parallel
 import cache
-from pbi_client import (
-    travel_by_advisor, travel_by_day, travel_by_branch_day,
-    insurance_by_advisor, insurance_by_day, insurance_by_branch_day,
+from pbi_utils import (
+    pbi_by_advisor as _pbi_by_advisor,
+    pbi_by_day as _pbi_by_day,
+    pbi_by_branch_day as _pbi_by_branch_day,
+    pbi_nbus_by_advisor as _pbi_nbus_by_advisor,
 )
 from shared import (
     VALID_LINES, WON_STAGES,
@@ -34,25 +36,12 @@ def _date_filter(sd: str, ed: str, field: str = 'CloseDate') -> str:
     return f"{field} >= {sd} AND {field} <= {ed}"
 
 
-# ── PBI dispatch helpers ──────────────────────────────────────────────────────
-
-def _pbi_by_advisor(line: str, sd: str, ed: str) -> list[dict]:
-    return travel_by_advisor(sd, ed) if line == 'Travel' else insurance_by_advisor(sd, ed)
-
-
-def _pbi_by_day(line: str, sd: str, ed: str) -> list[dict]:
-    return travel_by_day(sd, ed) if line == 'Travel' else insurance_by_day(sd, ed)
-
-
-def _pbi_by_branch_day(line: str, sd: str, ed: str) -> list[dict]:
-    return travel_by_branch_day(sd, ed) if line == 'Travel' else insurance_by_branch_day(sd, ed)
-
-
-def _build_leaderboard(adv_rows: list[dict]) -> list[dict]:
+def _build_leaderboard(adv_rows: list[dict], nbus_map: dict | None = None) -> list[dict]:
     """Collapse by-advisor+branch rows into one row per advisor.
 
-    For advisors that span multiple branches (common in Insurance), totals are
-    summed and the branch with the highest commission is used as the display branch.
+    nbus_map: {name -> {nbus_premium, policy_count, branch}} — Insurance NBUS data.
+    When provided, advisors with $0 commission but positive NBUS production are included
+    (new advisors whose policies haven't renewed yet have commission=0 but real production).
     """
     agg: dict = {}
     for r in adv_rows:
@@ -72,10 +61,28 @@ def _build_leaderboard(adv_rows: list[dict]) -> list[dict]:
             agg[name]['_top_comm'] = r['commission']
             agg[name]['branch']    = r['branch']
 
+    # Ensure advisors present only in nbus_map (NEWB-only) appear in agg
+    if nbus_map:
+        for name, nd in nbus_map.items():
+            if name not in agg:
+                agg[name] = {
+                    'name': name, 'branch': nd.get('branch', ''),
+                    '_top_comm': 0.0,
+                    'commission': 0.0, 'sales': 0.0, 'txns': 0,
+                }
+
     advisors = []
     for d in agg.values():
-        if d['commission'] <= 0:
+        nbus_data    = (nbus_map or {}).get(d['name'], {})
+        nbus_premium = nbus_data.get('nbus_premium', 0.0)
+        policy_count = nbus_data.get('policy_count', 0)
+        # For Insurance: include advisors with NBUS production even if $0 commission
+        # (commission is recognised at first renewal ~1yr later)
+        # For Travel/SF: keep original behaviour (exclude zero-commission rows)
+        has_activity = d['commission'] > 0 or nbus_premium > 0
+        if not has_activity:
             continue
+
         txns = d['txns']
         advisors.append({
             'name':           d['name'],
@@ -88,9 +95,12 @@ def _build_leaderboard(adv_rows: list[dict]) -> list[dict]:
             'avg_deal_size':  round(d['sales'] / txns, 0) if txns > 0 else 0,
             'pipeline_value': 0,
             'pipeline_count': 0,
+            'nbus_premium':   round(nbus_premium, 2),
+            'policy_count':   policy_count,
         })
 
-    advisors.sort(key=lambda x: x['commission'], reverse=True)
+    # Primary: commission DESC; secondary: nbus_premium DESC (new advisors with $0 comm go last)
+    advisors.sort(key=lambda x: (x['commission'], x['nbus_premium']), reverse=True)
     for i, a in enumerate(advisors):
         a['rank'] = i + 1
     return advisors
@@ -108,7 +118,7 @@ def advisor_summary(
     if line not in VALID_LINES:
         line = 'Travel'
     sd, ed = _resolve_dates(start_date, end_date, period)
-    key = f"advisor_summary_{line}_{sd}_{ed}"
+    key = f"advisor_summary_v2_{line}_{sd}_{ed}"
 
     def fetch():
         if line in _PBI_LINES:
@@ -257,15 +267,16 @@ def advisor_leaderboard(
     if line not in VALID_LINES:
         line = 'Travel'
     sd, ed = _resolve_dates(start_date, end_date, period)
-    key = f"advisor_leaderboard_v2_{line}_{sd}_{ed}"
+    key = f"advisor_leaderboard_v4_{line}_{sd}_{ed}"
 
     def fetch():
         if line in _PBI_LINES:
             lf = _line_filter(line)
             df = _date_filter(sd, ed)
-            with ThreadPoolExecutor(max_workers=2) as ex:
-                adv_f = ex.submit(_pbi_by_advisor, line, sd, ed)
-                sf_f  = ex.submit(sf_parallel,
+            with ThreadPoolExecutor(max_workers=3) as ex:
+                adv_f  = ex.submit(_pbi_by_advisor, line, sd, ed)
+                nbus_f = ex.submit(_pbi_nbus_by_advisor, sd, ed) if line == 'Insurance' else None
+                sf_f   = ex.submit(sf_parallel,
                     won=f"SELECT OwnerId, COUNT(Id) cnt FROM Opportunity"
                         f" WHERE {WON_STAGES} AND {lf} AND {df} GROUP BY OwnerId",
                     closed=f"SELECT OwnerId, COUNT(Id) cnt FROM Opportunity"
@@ -276,8 +287,20 @@ def advisor_leaderboard(
                              f" AND Amount != null AND CloseDate >= TODAY"
                              f" AND CloseDate <= NEXT_N_MONTHS:12 GROUP BY OwnerId",
                 )
-                adv_rows = adv_f.result()
-                sf       = sf_f.result()
+                adv_rows  = adv_f.result()
+                nbus_rows = nbus_f.result() if nbus_f else []
+                sf        = sf_f.result()
+
+            # Build nbus_map for Insurance: {advisor_name -> {nbus_premium, policy_count, branch}}
+            nbus_map: dict | None = None
+            if line == 'Insurance' and nbus_rows:
+                nbus_map = {}
+                for r in nbus_rows:
+                    name = r['name']
+                    if name not in nbus_map:
+                        nbus_map[name] = {'nbus_premium': 0.0, 'policy_count': 0, 'branch': r.get('branch', '')}
+                    nbus_map[name]['nbus_premium'] += r['nbus_premium']
+                    nbus_map[name]['policy_count'] += r['policy_count']
 
             owner_map  = get_owner_map()
             won_map    = {owner_map[r['OwnerId']]: r.get('cnt', 0) or 0
@@ -288,7 +311,7 @@ def advisor_leaderboard(
                                                      'rev': r.get('rev', 0) or 0}
                           for r in sf.get('pipeline', []) if r.get('OwnerId') in owner_map}
 
-            advisors = _build_leaderboard(adv_rows)
+            advisors = _build_leaderboard(adv_rows, nbus_map)
             for a in advisors:
                 name = a['name']
                 won  = won_map.get(name, 0)
@@ -536,7 +559,7 @@ def advisor_trend(
     if line not in VALID_LINES:
         line = 'Travel'
     sd, ed = _resolve_dates(start_date, end_date, period)
-    key = f"advisor_trend_{line}_{sd}_{ed}"
+    key = f"advisor_trend_v2_{line}_{sd}_{ed}"
 
     def fetch():
         if line in _PBI_LINES:
@@ -595,7 +618,7 @@ def advisor_branch_monthly(
     if line not in VALID_LINES:
         line = 'Travel'
     sd, ed = _resolve_dates(start_date, end_date, period)
-    key = f"advisor_branch_monthly_{line}_{sd}_{ed}"
+    key = f"advisor_branch_monthly_v2_{line}_{sd}_{ed}"
 
     def fetch():
         if line not in _PBI_LINES:

@@ -4,14 +4,15 @@ All aggregations use SUMMARIZECOLUMNS (not SUMMARIZE).
 SUMMARIZE returns None for text columns via executeQueries; SUMMARIZECOLUMNS works correctly.
 
 Public API:
-    travel_by_advisor(sd, ed)      → [{name, branch, commission, sales, txns}]
-    travel_by_day(sd, ed)          → [{date, commission, sales, txns}]
-    travel_by_branch_day(sd, ed)   → [{branch, date, commission, sales}]
-    travel_by_advisor_day(sd, ed)  → [{name, branch, date, commission, sales, txns}]
-    insurance_by_advisor(sd, ed)   → [{name, branch, commission, sales, txns}]
-    insurance_by_day(sd, ed)       → [{date, commission, sales, txns}]
-    insurance_by_branch_day(sd, ed)→ [{branch, date, commission, sales}]
-    insurance_by_advisor_day(sd, ed)→ [{name, branch, date, commission, sales, txns}]
+    travel_by_advisor(sd, ed)           → [{name, branch, commission, sales, txns}]
+    travel_by_day(sd, ed)               → [{date, commission, sales, txns}]
+    travel_by_branch_day(sd, ed)        → [{branch, date, commission, sales}]
+    travel_by_advisor_day(sd, ed)       → [{name, branch, date, commission, sales, txns}]
+    insurance_by_advisor(sd, ed)        → [{name, branch, commission, sales, txns}]
+    insurance_by_day(sd, ed)            → [{date, commission, sales, txns}]
+    insurance_by_branch_day(sd, ed)     → [{branch, date, commission, sales}]
+    insurance_by_advisor_day(sd, ed)    → [{name, branch, date, commission, sales, txns}]
+    insurance_nbus_by_advisor(sd, ed)   → [{name, branch, commission, sales, txns}] (NEWB only)
 """
 import os
 import time
@@ -90,7 +91,7 @@ def _n(v) -> float:
 # ── Generic SUMMARIZECOLUMNS builders ─────────────────────────────────────────
 
 def _by_advisor(ws, ds, table, name_col, branch_col, date_col, comm_col, sales_col,
-                sd, ed, extra_filter="") -> list[dict]:
+                sd, ed, extra_filter="", code_col=None) -> list[dict]:
     """One aggregated row per advisor-name + branch combination."""
     tf = f"'{table}'"
     date_f = (
@@ -99,11 +100,14 @@ def _by_advisor(ws, ds, table, name_col, branch_col, date_col, comm_col, sales_c
     )
     if extra_filter:
         date_f += f" && {extra_filter}"
+
+    code_field_dax = f"    {tf}[{code_col}],\n" if code_col else ""
+
     raw = dax_query(ws, ds, f"""
 EVALUATE
 SUMMARIZECOLUMNS(
     {tf}[{name_col}],
-    {tf}[{branch_col}],
+{code_field_dax}    {tf}[{branch_col}],
     FILTER(ALL({tf}), {date_f}),
     "commission", SUM({tf}[{comm_col}]),
     "sales",      SUM({tf}[{sales_col}]),
@@ -113,9 +117,11 @@ ORDER BY [commission] DESC
 """)
     nk = f"{table}[{name_col}]"
     bk = f"{table}[{branch_col}]"
+    ck = f"{table}[{code_col}]" if code_col else None
     return [
         {
             "name":       (r.get(nk) or "").strip(),
+            "code":       (r.get(ck) or "").strip() if ck else "",
             "branch":     (r.get(bk) or "").strip(),
             "commission": _n(r.get("[commission]")),
             "sales":      _n(r.get("[sales]")),
@@ -195,7 +201,7 @@ SUMMARIZECOLUMNS(
 
 
 def _by_advisor_day(ws, ds, table, name_col, branch_col, date_col, comm_col, sales_col,
-                    sd, ed, extra_filter="") -> list[dict]:
+                    sd, ed, extra_filter="", code_col=None) -> list[dict]:
     """One aggregated row per advisor-name + branch + date combination.
 
     Designed for monthly breakdowns: caller collapses date[:7] → YYYY-MM.
@@ -207,11 +213,14 @@ def _by_advisor_day(ws, ds, table, name_col, branch_col, date_col, comm_col, sal
     )
     if extra_filter:
         date_f += f" && {extra_filter}"
+
+    code_field_dax = f"    {tf}[{code_col}],\n" if code_col else ""
+
     raw = dax_query(ws, ds, f"""
 EVALUATE
 SUMMARIZECOLUMNS(
     {tf}[{name_col}],
-    {tf}[{branch_col}],
+{code_field_dax}    {tf}[{branch_col}],
     {tf}[{date_col}],
     FILTER(ALL({tf}), {date_f}),
     "commission", SUM({tf}[{comm_col}]),
@@ -223,9 +232,11 @@ ORDER BY {tf}[{date_col}]
     nk = f"{table}[{name_col}]"
     bk = f"{table}[{branch_col}]"
     dk = f"{table}[{date_col}]"
+    ck = f"{table}[{code_col}]" if code_col else None
     return [
         {
             "name":       (r.get(nk) or "").strip(),
+            "code":       (r.get(ck) or "").strip() if ck else "",
             "branch":     (r.get(bk) or "").strip(),
             "date":       str(r.get(dk) or "")[:10],
             "commission": _n(r.get("[commission]")),
@@ -244,13 +255,14 @@ _T_BRANCH = "Primary Advisor Branch Name"
 _T_DATE   = "Invoice Date"
 _T_COMM   = "Revenue Club Commission Amount"
 _T_SALES  = "Gross Sales Amount"
+_T_CODE   = "Primary Advisor Teller Code"
 
 
 def travel_by_advisor(sd: str, ed: str) -> list[dict]:
     return _by_advisor(
         PBI_WS, TRAVEL_DS, _T_TABLE,
         _T_NAME, _T_BRANCH, _T_DATE, _T_COMM, _T_SALES,
-        sd, ed,
+        sd, ed, code_col=_T_CODE
     )
 
 
@@ -274,7 +286,7 @@ def travel_by_advisor_day(sd: str, ed: str) -> list[dict]:
     return _by_advisor_day(
         PBI_WS, TRAVEL_DS, _T_TABLE,
         _T_NAME, _T_BRANCH, _T_DATE, _T_COMM, _T_SALES,
-        sd, ed,
+        sd, ed, code_col=_T_CODE
     )
 
 
@@ -286,14 +298,16 @@ _I_DATE   = "invoice_date_generation"
 _I_COMM   = "commission_amount"
 _I_SALES  = "transaction_amount"
 # Restrict to AAA staff advisors only (excludes independent agents, support staff, etc.)
-_I_FILTER = "'insurance_transactions_f'[assoc_job_title_grps] = \"Insurance Advisors\""
+_I_FILTER      = "'insurance_transactions_f'[assoc_job_title_grps] = \"Insurance Advisors\""
+_I_NEWB_FILTER = _I_FILTER + " && 'insurance_transactions_f'[transaction_type] = \"NEWB\""
+_I_CODE        = "inserted_by_code"
 
 
 def insurance_by_advisor(sd: str, ed: str) -> list[dict]:
     return _by_advisor(
         PBI_WS, INSURANCE_DS, _I_TABLE,
         _I_NAME, _I_BRANCH, _I_DATE, _I_COMM, _I_SALES,
-        sd, ed, _I_FILTER,
+        sd, ed, _I_FILTER, code_col=_I_CODE
     )
 
 
@@ -317,5 +331,14 @@ def insurance_by_advisor_day(sd: str, ed: str) -> list[dict]:
     return _by_advisor_day(
         PBI_WS, INSURANCE_DS, _I_TABLE,
         _I_NAME, _I_BRANCH, _I_DATE, _I_COMM, _I_SALES,
-        sd, ed, _I_FILTER,
+        sd, ed, _I_FILTER, code_col=_I_CODE
+    )
+
+
+def insurance_nbus_by_advisor(sd: str, ed: str) -> list[dict]:
+    """NEWB-only transactions: sales = new business written premium, commission ≈ 0."""
+    return _by_advisor(
+        PBI_WS, INSURANCE_DS, _I_TABLE,
+        _I_NAME, _I_BRANCH, _I_DATE, _I_COMM, _I_SALES,
+        sd, ed, _I_NEWB_FILTER, code_col=_I_CODE
     )

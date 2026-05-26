@@ -25,6 +25,7 @@ export default function ManagerBriefing({
 }) {
   const [copied, setCopied] = useState(false)
   const [emailCopied, setEmailCopied] = useState(false)
+  const isInsurance = profile.line?.toLowerCase() === 'insurance'
   const pts = generateFocusAreas(profile)
   const s = profile.summary
   const yoy = profile.yoy
@@ -140,13 +141,13 @@ export default function ManagerBriefing({
             Your Numbers
           </h2>
           <div className="grid grid-cols-4 gap-4">
-            <MetricBox label="Bookings" value={formatCurrency(s.revenue, true)} delta={`${yoy.revenue_pct > 0 ? '+' : ''}${yoy.revenue_pct.toFixed(1)}% YoY`} positive={yoy.revenue_pct > 0} />
-            <MetricBox label="Deals Won" value={String(s.deals)} delta={`${yoy.deals_pct > 0 ? '+' : ''}${yoy.deals_pct.toFixed(1)}% YoY`} positive={yoy.deals_pct > 0} />
-            <MetricBox label="Win Rate" value={formatPct(s.win_rate)} delta={`Team: ${formatPct(profile.team.win_rate)}`} positive={s.win_rate >= profile.team.win_rate} />
+            <MetricBox label={isInsurance ? 'Written Premium' : 'Bookings'} value={formatCurrency(s.revenue, true)} delta={`${yoy.revenue_pct > 0 ? '+' : ''}${yoy.revenue_pct.toFixed(1)}% YoY`} positive={yoy.revenue_pct > 0} />
+            <MetricBox label={isInsurance ? 'Policies' : 'Deals Won'} value={String(s.deals)} delta={`${yoy.deals_pct > 0 ? '+' : ''}${yoy.deals_pct.toFixed(1)}% YoY`} positive={yoy.deals_pct > 0} />
+            <MetricBox label={isInsurance ? 'Avg Premium' : 'Win Rate'} value={isInsurance ? formatCurrency(s.avg_deal, true) : formatPct(s.win_rate)} delta={isInsurance ? `Team: ${formatCurrency(profile.team.avg_deal, true)}` : `Team: ${formatPct(profile.team.win_rate)}`} positive={isInsurance ? s.avg_deal >= profile.team.avg_deal : s.win_rate >= profile.team.win_rate} />
             <MetricBox label="Pipeline" value={formatCurrency(s.pipeline_value, true)} delta={s.coverage >= 2 ? 'Healthy' : 'Needs more deals'} positive={s.coverage >= 2} />
           </div>
           <div className="mt-3 flex gap-6 text-xs text-slate-500">
-            <span>Avg Deal: <b className="text-slate-700">{formatCurrency(s.avg_deal, true)}</b> (team: {formatCurrency(profile.team.avg_deal, true)})</span>
+            <span>{isInsurance ? 'Avg Premium' : 'Avg Deal'}: <b className="text-slate-700">{formatCurrency(s.avg_deal, true)}</b> (team: {formatCurrency(profile.team.avg_deal, true)})</span>
             <span>Leads: <b className="text-slate-700">{s.leads}</b></span>
             <span>Opps Created: <b className="text-slate-700">{s.opps_created}</b></span>
           </div>

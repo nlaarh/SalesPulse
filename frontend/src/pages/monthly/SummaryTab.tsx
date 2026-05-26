@@ -6,7 +6,7 @@ import { fmtMonth } from '@/lib/formatters'
 import RichNarrative from '@/components/RichNarrative'
 import { Sparkles, TrendingUp, Target, DollarSign, Users } from 'lucide-react'
 import type { AgentReport, Metric } from './types'
-import { METRICS } from './types'
+import { getMetrics } from './types'
 
 /* ── Props ────────────────────────────────────────────────────────────────── */
 
@@ -38,11 +38,12 @@ export default function SummaryTab({ agents, monthColumns, divTotals, metric, li
       .finally(() => setAiLoading(false))
   }, [ctxLine, period, startDate, endDate])
 
+  const isInsurance = line.toLowerCase() === 'insurance'
   const isCurrency = metric === 'commission' || metric === 'sales'
   const totalVal = divTotals[metric] || 0
   const avgPerAgent = agents.length > 0 ? totalVal / agents.length : 0
   const topAgents = [...agents].sort((a, b) => ((b.totals[metric] || 0) as number) - ((a.totals[metric] || 0) as number))
-  const metricLabel = METRICS.find(m => m.key === metric)?.label ?? metric
+  const metricLabel = getMetrics(isInsurance).find(m => m.key === metric)?.label ?? metric
 
   // Cross-metric totals
   const totalOpps     = divTotals.opps || 0
@@ -116,7 +117,7 @@ export default function SummaryTab({ agents, monthColumns, divTotals, metric, li
 
   // Build narrative
   const rawData = buildNarrative({
-    metric, isCurrency, totalVal, avgPerAgent, topAgents, metricLabel,
+    metric, isCurrency, isInsurance, totalVal, avgPerAgent, topAgents, metricLabel,
     totalOpps, totalLeads, totalInvoiced, totalSales, totalComm,
     leadToOppRate, oppToInvRate, avgDealSize, revenuePerOpp, revenuePerLead,
     recent3, prior3, recentSum, priorSum, trendPct,
@@ -245,7 +246,7 @@ export default function SummaryTab({ agents, monthColumns, divTotals, metric, li
 type Health = 'strong' | 'moderate' | 'weak'
 
 interface NarrativeInput {
-  metric: Metric; isCurrency: boolean; totalVal: number; avgPerAgent: number
+  metric: Metric; isCurrency: boolean; isInsurance: boolean; totalVal: number; avgPerAgent: number
   topAgents: AgentReport[]; metricLabel: string
   totalOpps: number; totalLeads: number; totalInvoiced: number; totalSales: number; totalComm: number
   leadToOppRate: number; oppToInvRate: number; avgDealSize: number; revenuePerOpp: number; revenuePerLead: number
@@ -259,6 +260,7 @@ interface NarrativeInput {
 }
 
 function buildNarrative(p: NarrativeInput) {
+  const bookingsLabel = p.isInsurance ? 'Written Premium' : 'Bookings'
   const {
     metric, totalVal, avgPerAgent, metricLabel,
     totalOpps, totalLeads, totalInvoiced, totalSales, totalComm,
@@ -277,7 +279,7 @@ function buildNarrative(p: NarrativeInput) {
     const verdict = trendPct > 5 ? '**Pipeline generation is healthy.**'
       : trendPct < -10 ? '**Pipeline generation is slowing** — this will hit bookings in 2-3 months.'
       : '**Pipeline generation is steady** but not accelerating.'
-    para1 = `${verdict} The team created **${formatNumber(totalOpps)} opportunities** over ${periodLabel.toLowerCase()}${prior3.length > 0 ? ` (**${qoqWord} ${Math.abs(trendPct).toFixed(0)}%** QoQ)` : ''}.${totalInvoiced > 0 ? ` **${oppToInvRate.toFixed(0)}%** converted to invoice — ${oppToInvRate >= 30 ? 'strong' : oppToInvRate < 15 ? 'a red flag' : 'moderate'}. ` : ' '}${totalSales > 0 ? `Bookings yield: **${formatCurrency(revenuePerOpp, true)}** per opp.` : ''}`
+    para1 = `${verdict} The team created **${formatNumber(totalOpps)} opportunities** over ${periodLabel.toLowerCase()}${prior3.length > 0 ? ` (**${qoqWord} ${Math.abs(trendPct).toFixed(0)}%** QoQ)` : ''}.${totalInvoiced > 0 ? ` **${oppToInvRate.toFixed(0)}%** converted to invoice — ${oppToInvRate >= 30 ? 'strong' : oppToInvRate < 15 ? 'a red flag' : 'moderate'}. ` : ' '}${totalSales > 0 ? `${bookingsLabel} yield: **${formatCurrency(revenuePerOpp, true)}** per opp.` : ''}`
     para2 = oppsTrendPct > 5 && salesTrendPct < -5
       ? `**Warning:** more opps (+${oppsTrendPct.toFixed(0)}%) but less bookings (${salesTrendPct.toFixed(0)}%). The team is creating lower-quality opportunities. Fix: shift focus from volume to qualification.`
       : `${top1 ? `**${top1.name}** leads with **${formatNumber(top1Val)}** opps.` : ''} ${top3Pct > 40 ? `Top 3 generate **${top3Pct.toFixed(0)}%** of all opps — concentration risk.` : `Well-distributed across ${agents.length} advisors.`}${totalInvoiced > 0 && oppToInvRate < 15 ? ` Only **${oppToInvRate.toFixed(0)}%** of opps reach invoice — deals are dying mid-pipeline. Review stage requirements.` : ''}`
@@ -287,7 +289,7 @@ function buildNarrative(p: NarrativeInput) {
       : ''
   } else if (metric === 'leads') {
     const convVerdict = leadToOppRate >= 40 ? '**Quality is strong**' : leadToOppRate >= 20 ? 'Quality is acceptable' : '**Too many leads are dying** before becoming opportunities'
-    para1 = `**${formatNumber(totalLeads)} leads** captured over ${periodLabel.toLowerCase()}${prior3.length > 0 ? ` (**${qoqWord} ${Math.abs(trendPct).toFixed(0)}%** QoQ)` : ''}. ${convVerdict} — **${leadToOppRate.toFixed(0)}%** convert to opportunities.${totalSales > 0 ? ` Each lead ultimately produces **${formatCurrency(revenuePerLead, true)}** in bookings.` : ''}`
+    para1 = `**${formatNumber(totalLeads)} leads** captured over ${periodLabel.toLowerCase()}${prior3.length > 0 ? ` (**${qoqWord} ${Math.abs(trendPct).toFixed(0)}%** QoQ)` : ''}. ${convVerdict} — **${leadToOppRate.toFixed(0)}%** convert to opportunities.${totalSales > 0 ? ` Each lead ultimately produces **${formatCurrency(revenuePerLead, true)}** in ${bookingsLabel.toLowerCase()}.` : ''}`
     para2 = leadToOppRate < 20 && totalLeads > 50
       ? `**The funnel is leaking:** less than 1 in 5 leads converts. Either lead sources are poor or qualification is too lax. Review which channels produce leads that actually close.`
       : `${top1 ? `**${top1.name}** leads with **${formatNumber(top1Val)}**.` : ''} ${top3Pct > 40 ? `Top 3 drive **${top3Pct.toFixed(0)}%** — lead gen is concentrated in few advisors. Get the broader team prospecting.` : `Lead generation is well-distributed across the team.`}`
@@ -305,12 +307,12 @@ function buildNarrative(p: NarrativeInput) {
     para2 = `${top1 ? `Top earner: **${top1.name}** at **${formatCurrency(top1Val, true)}**${top2 ? `, followed by **${top2.name}** at **${formatCurrency((top2.totals[metric] || 0) as number, true)}**` : ''}.` : ''} ${topVsMedian > 5 ? `The top earner makes **${topVsMedian.toFixed(0)}x the median** — investigate whether this reflects territory advantage or skill gap.` : ''} ${top3Pct > 40 ? `**Risk:** top 3 earn **${top3Pct.toFixed(0)}%** of all commission. Losing any one of them significantly impacts the division.` : `Commissions are well-distributed (top 3 at ${top3Pct.toFixed(0)}%) — healthy team depth.`}`
     para3 = `**Important:** commission data lags bookings by 2-3 months. Recent months (especially ${latestMonth ? fmtMonth(latestMonth) : 'the latest'}) may be incomplete — do not make staffing or comp decisions based on partial data.${latestMonth && latestVsAvg < -30 ? ` The sharp drop in ${fmtMonth(latestMonth)} (**${formatCurrency(latestVal, true)}**) is almost certainly a lag artifact, not a real decline.` : ''}`
   } else if (metric === 'sales') {
-    const verdict = trendPct > 10 ? '**Bookings are accelerating** — strong quarter.'
-      : trendPct > 0 ? '**Bookings are growing modestly.**'
-      : trendPct > -5 ? '**Bookings are flat** — the team is maintaining but not growing.'
-      : '**Bookings are declining** — this needs attention now.'
-    para1 = `${verdict} The ${line} Division closed **${formatCurrency(totalSales, true)}** in bookings${prior3.length > 0 ? ` (**${qoqWord} ${Math.abs(trendPct).toFixed(0)}%** QoQ)` : ''}.${totalInvoiced > 0 ? ` **${formatNumber(totalInvoiced)} deals** at **${formatCurrency(avgDealSize, true)}** average.` : ''}${totalOpps > 0 ? ` **${oppToInvRate.toFixed(0)}%** of opportunities reached close.` : ''}`
-    para2 = `${top1 ? `**${top1.name}** leads the division at **${formatCurrency(top1Val, true)}**${top2 ? `, **${top2.name}** at **${formatCurrency((top2.totals[metric] || 0) as number, true)}**` : ''}.` : ''} ${top3Pct > 40 ? `**Bookings are concentrated** — top 3 drive **${top3Pct.toFixed(0)}%** (${formatCurrency(top3Val, true)}). If ${top1Name} slows down, the division feels it. Invest in developing the middle of the pack.` : `Bookings are well-distributed across the team.`}${topVsMedian > 5 ? ` The **${topVsMedian.toFixed(0)}x gap** between top and median advisor suggests untapped potential in the mid-tier.` : ''}`
+    const verdict = trendPct > 10 ? `**${bookingsLabel} are accelerating** — strong quarter.`
+      : trendPct > 0 ? `**${bookingsLabel} are growing modestly.**`
+      : trendPct > -5 ? `**${bookingsLabel} are flat** — the team is maintaining but not growing.`
+      : `**${bookingsLabel} are declining** — this needs attention now.`
+    para1 = `${verdict} The ${line} Division closed **${formatCurrency(totalSales, true)}** in ${bookingsLabel.toLowerCase()}${prior3.length > 0 ? ` (**${qoqWord} ${Math.abs(trendPct).toFixed(0)}%** QoQ)` : ''}.${totalInvoiced > 0 ? ` **${formatNumber(totalInvoiced)} deals** at **${formatCurrency(avgDealSize, true)}** average.` : ''}${totalOpps > 0 ? ` **${oppToInvRate.toFixed(0)}%** of opportunities reached close.` : ''}`
+    para2 = `${top1 ? `**${top1.name}** leads the division at **${formatCurrency(top1Val, true)}**${top2 ? `, **${top2.name}** at **${formatCurrency((top2.totals[metric] || 0) as number, true)}**` : ''}.` : ''} ${top3Pct > 40 ? `**${bookingsLabel} are concentrated** — top 3 drive **${top3Pct.toFixed(0)}%** (${formatCurrency(top3Val, true)}). If ${top1Name} slows down, the division feels it. Invest in developing the middle of the pack.` : `${bookingsLabel} are well-distributed across the team.`}${topVsMedian > 5 ? ` The **${topVsMedian.toFixed(0)}x gap** between top and median advisor suggests untapped potential in the mid-tier.` : ''}`
     para3 = latestMonth
       ? `**${fmtMonth(latestMonth)}:** **${formatCurrency(latestVal, true)}**${latestVsAvg < -15 ? ` — **${Math.abs(latestVsAvg).toFixed(0)}% below average**. Is pipeline drying up? Check if there are enough qualified opps to sustain next month.` : latestVsAvg > 15 ? ` — strong month (**+${latestVsAvg.toFixed(0)}%**). Was this one big deal or broad-based? The answer determines whether this is sustainable.` : `, in line with recent months. Consistent but no breakout growth.`}`
       : ''
@@ -340,7 +342,7 @@ function buildNarrative(p: NarrativeInput) {
     healthCards = [
       { label: 'QoQ Trend', value: `${trendPct > 0 ? '+' : ''}${trendPct.toFixed(0)}%`, health: trendHealth, detail: `${fmtVal(recentSum)} last 3mo`, icon: TrendingUp },
       { label: convLabel, value: `${convRate.toFixed(1)}%`, health: convHealth, detail: `${formatNumber(metric === 'opps' ? totalInvoiced : totalOpps)} converted`, icon: Target },
-      { label: 'Bookings Yield', value: metric === 'opps' ? formatCurrency(revenuePerOpp, true) : formatCurrency(revenuePerLead, true), health: yieldHealth, detail: `${formatCurrency(totalSales, true)} total bookings`, icon: DollarSign },
+      { label: `${bookingsLabel} Yield`, value: metric === 'opps' ? formatCurrency(revenuePerOpp, true) : formatCurrency(revenuePerLead, true), health: yieldHealth, detail: `${formatCurrency(totalSales, true)} total ${bookingsLabel.toLowerCase()}`, icon: DollarSign },
       { label: 'Latest Month', value: latestMonth ? fmtMonth(latestMonth) : '—', health: momentumHealth, detail: `${fmtVal(latestVal)} (${latestVsAvg > 0 ? '+' : ''}${latestVsAvg.toFixed(0)}%)`, icon: Users },
     ]
   } else if (metric === 'commission') {
@@ -350,7 +352,7 @@ function buildNarrative(p: NarrativeInput) {
     const momentumHealth: Health = latestVsAvg > 5 ? 'strong' : latestVsAvg > -10 ? 'moderate' : 'weak'
     healthCards = [
       { label: 'QoQ Trend', value: `${trendPct > 0 ? '+' : ''}${trendPct.toFixed(0)}%`, health: trendHealth, detail: `${formatCurrency(recentSum, true)} last 3mo`, icon: TrendingUp },
-      { label: 'Comm Rate', value: `${commRate.toFixed(1)}%`, health: commRateHealth, detail: `on ${formatCurrency(totalSales, true)} bookings`, icon: Target },
+      { label: 'Comm Rate', value: `${commRate.toFixed(1)}%`, health: commRateHealth, detail: `on ${formatCurrency(totalSales, true)} ${bookingsLabel.toLowerCase()}`, icon: Target },
       { label: 'Team Breadth', value: `${aboveAvgPct.toFixed(0)}%`, health: breadthHealth, detail: `${aboveAvgCount} of ${agents.length} above avg`, icon: Users },
       { label: 'Latest Month', value: latestMonth ? fmtMonth(latestMonth) : '—', health: momentumHealth, detail: `${formatCurrency(latestVal, true)} (${latestVsAvg > 0 ? '+' : ''}${latestVsAvg.toFixed(0)}%)`, icon: DollarSign },
     ]
@@ -373,7 +375,7 @@ function buildNarrative(p: NarrativeInput) {
 
   if (metric === 'opps' || metric === 'leads') {
     if (metric === 'opps' && oppToInvRate < 15 && totalOpps > 50) actions.push({ priority: 'high', label: `${oppToInvRate.toFixed(0)}% Conversion Rate`, action: `Only ${oppToInvRate.toFixed(1)}% of opportunities reach invoice stage. Deals are stalling — review qualification criteria and stage progression requirements. The team may be creating low-quality opps that never advance.` })
-    if (metric === 'opps' && revenuePerOpp < 2000 && totalOpps > 50) actions.push({ priority: 'medium', label: `${formatCurrency(revenuePerOpp, true)}/Opp Yield`, action: `Bookings per opportunity is low. Consider whether the team is pursuing too many small deals. Focusing on fewer, higher-value opportunities could improve overall bookings yield.` })
+    if (metric === 'opps' && revenuePerOpp < 2000 && totalOpps > 50) actions.push({ priority: 'medium', label: `${formatCurrency(revenuePerOpp, true)}/Opp Yield`, action: `${bookingsLabel} per opportunity is low. Consider whether the team is pursuing too many small deals. Focusing on fewer, higher-value opportunities could improve overall ${bookingsLabel.toLowerCase()} yield.` })
     if (metric === 'leads' && leadToOppRate < 20 && totalLeads > 50) actions.push({ priority: 'high', label: `${leadToOppRate.toFixed(0)}% Lead Conversion`, action: `Less than 1 in 5 leads converts to an opportunity. Review lead sources — some channels may produce volume without quality. Tighten qualification before leads enter advisor workflows.` })
     if (metric === 'opps' && oppsTrendPct > 10 && salesTrendPct < -5) actions.push({ priority: 'high', label: 'Volume-Bookings Divergence', action: `Opportunity volume is up ${oppsTrendPct.toFixed(0)}% but bookings are down ${Math.abs(salesTrendPct).toFixed(0)}%. More opps but less bookings = declining deal quality. Shift focus from opp creation to opp progression and close rates.` })
   }

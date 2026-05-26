@@ -35,7 +35,7 @@ export default function RankingsTab({ leaders, slipping, leadSources, c, targetM
     <>
       {/* Full Leaderboard */}
       <div className="animate-enter card-premium overflow-hidden">
-        <LeaderboardFull leaders={leaders} onSelect={onSelectAdvisor} targetMap={targetMap} showBranch={line === 'Travel'} />
+        <LeaderboardFull leaders={leaders} onSelect={onSelectAdvisor} targetMap={targetMap} showBranch={line === 'Travel'} line={line} />
       </div>
 
       {/* At-Risk + Lead Sources */}
@@ -53,7 +53,7 @@ export default function RankingsTab({ leaders, slipping, leadSources, c, targetM
 
 /* ── LeaderboardFull ──────────────────────────────────────────────────────── */
 
-type SortKey = 'commission' | 'bookings' | 'deals' | 'win_rate' | 'avg_deal_size' | 'pipeline_value'
+type SortKey = 'commission' | 'bookings' | 'deals' | 'win_rate' | 'avg_deal_size' | 'pipeline_value' | 'nbus_premium'
 
 function ShareBar({ pct, rank }: { pct: number; rank: number }) {
   const color = rank === 1 ? 'bg-amber-500' : rank === 2 ? 'bg-slate-500' : rank === 3 ? 'bg-amber-700/70' : 'bg-primary/40'
@@ -67,9 +67,15 @@ function ShareBar({ pct, rank }: { pct: number; rank: number }) {
   )
 }
 
-function LeaderboardFull({ leaders, onSelect, targetMap, showBranch }: {
-  leaders: Advisor[]; onSelect: (name: string) => void; targetMap?: Map<string, number>; showBranch?: boolean
+function getVal(a: Advisor, key: SortKey): number {
+  if (key === 'nbus_premium') return a.nbus_premium ?? 0
+  return (a[key as keyof Advisor] as number) || 0
+}
+
+function LeaderboardFull({ leaders, onSelect, targetMap, showBranch, line }: {
+  leaders: Advisor[]; onSelect: (name: string) => void; targetMap?: Map<string, number>; showBranch?: boolean; line?: string
 }) {
+  const isInsurance = line?.toLowerCase() === 'insurance'
   const hasTargets = targetMap && targetMap.size > 0
   const [sortKey, setSortKey] = useState<SortKey>('commission')
   const [sortAsc, setSortAsc] = useState(false)
@@ -81,8 +87,8 @@ function LeaderboardFull({ leaders, onSelect, targetMap, showBranch }: {
   }
 
   const sorted = [...leaders].sort((a, b) => {
-    const aVal = a[sortKey] || 0
-    const bVal = b[sortKey] || 0
+    const aVal = getVal(a, sortKey)
+    const bVal = getVal(b, sortKey)
     return sortAsc ? aVal - bVal : bVal - aVal
   })
 
@@ -93,7 +99,13 @@ function LeaderboardFull({ leaders, onSelect, targetMap, showBranch }: {
   const totalCommission = leaders.reduce((s, a) => s + (a.commission || 0), 0)
   const shareBase = totalCommission > 0 ? totalCommission : totalBookings
 
-  const COLS: { key: SortKey; label: string; fmt: (a: Advisor) => string }[] = [
+  const COLS: { key: SortKey; label: string; fmt: (a: Advisor) => string }[] = isInsurance ? [
+    { key: 'commission',    label: 'Commission',      fmt: (a) => formatCurrency(a.commission, true) },
+    { key: 'nbus_premium',  label: 'New Business',    fmt: (a) => formatCurrency(a.nbus_premium ?? 0, true) },
+    { key: 'bookings',      label: 'Written Premium', fmt: (a) => formatCurrency(a.bookings, true) },
+    { key: 'deals',         label: 'Transactions',    fmt: (a) => formatNumber(a.deals) },
+    { key: 'pipeline_value',label: 'Pipeline',        fmt: (a) => formatCurrency(a.pipeline_value, true) },
+  ] : [
     { key: 'commission',    label: 'Commission', fmt: (a) => a.commission > 0 ? formatCurrency(a.commission, true) : formatCurrency(a.bookings, true) },
     { key: 'bookings',      label: 'Bookings',   fmt: (a) => formatCurrency(a.bookings, true) },
     { key: 'deals',         label: 'Deals',      fmt: (a) => formatNumber(a.deals) },
@@ -116,7 +128,16 @@ function LeaderboardFull({ leaders, onSelect, targetMap, showBranch }: {
               const rows = sorted.map((a, i) => {
                 const agentBase = totalCommission > 0 ? (a.commission || 0) : (a.bookings || 0)
                 const sharePct = shareBase > 0 ? (agentBase / shareBase) * 100 : 0
-                return {
+                return isInsurance ? {
+                  Rank: i + 1,
+                  Advisor: a.name,
+                  Commission: a.commission ?? 0,
+                  'New Business': a.nbus_premium ?? 0,
+                  'Written Premium': a.bookings ?? 0,
+                  'Share %': parseFloat(sharePct.toFixed(2)),
+                  Transactions: a.deals ?? 0,
+                  Pipeline: a.pipeline_value ?? 0,
+                } : {
                   Rank: i + 1,
                   Advisor: a.name,
                   Commission: a.commission ?? 0,

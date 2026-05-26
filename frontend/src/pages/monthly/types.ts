@@ -32,6 +32,17 @@ export const METRICS: { key: Metric; label: string; short: string; tip: string }
   { key: 'invoiced', label: 'Invoiced', short: 'Inv', tip: TIPS.monthlyInvoiced },
 ]
 
+/** Return METRICS with 'sales' labels overridden to "Written Premium" for Insurance. */
+export function getMetrics(isInsurance: boolean) {
+  if (!isInsurance) return METRICS
+  return METRICS
+    .filter(m => m.key !== 'invoiced')
+    .map(m => m.key === 'sales'
+      ? { ...m, label: 'Written Premium ($)', short: 'Premium' }
+      : m
+    )
+}
+
 export function fmtCell(value: number, metric: Metric): string {
   if (metric === 'commission' || metric === 'sales') return formatCurrency(value, true)
   return formatNumber(value)

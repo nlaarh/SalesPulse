@@ -107,14 +107,23 @@ export default function OverviewTab({
 
   const annualPct    = achievement?.yearly?.company?.achievement_pct ?? null
   const pacePct      = achievement?.yearly?.pace_pct ?? 0
-  const monthPct     = achievement?.current_month?.company?.achievement_pct ?? null
-  const monthActual  = achBase === 'bookings'
+
+  // Always use the current calendar month entry from monthlyTargets (never period-aggregate)
+  const curCalMonth   = new Date().getMonth() + 1
+  const curMonthEntry = monthlyTargets?.company?.months?.find(m => m.month === curCalMonth)
+  const monthActual   = achBase === 'bookings'
     ? (achievement?.current_month?.company?.bookings_actual ?? achievement?.current_month?.company?.actual ?? 0)
-    : (achievement?.current_month?.company?.commission_actual ?? achievement?.current_month?.company?.actual ?? 0)
-  const monthTarget  = achBase === 'bookings'
-    ? (achievement?.current_month?.company?.bookings_target ?? achievement?.current_month?.company?.target ?? 0)
-    : (achievement?.current_month?.company?.target ?? 0)
+    : (curMonthEntry?.actual ?? achievement?.current_month?.company?.commission_actual ?? achievement?.current_month?.company?.actual ?? 0)
+  const monthTarget   = achBase === 'bookings'
+    ? (curMonthEntry?.target_bookings ?? achievement?.current_month?.company?.bookings_target ?? achievement?.current_month?.company?.target ?? 0)
+    : (curMonthEntry?.target ?? achievement?.current_month?.company?.target ?? 0)
+  const monthPct      = monthTarget > 0 ? Math.round((monthActual / monthTarget) * 100) : (achievement?.current_month?.company?.achievement_pct ?? null)
+
   const companyMonths = monthlyTargets?.company?.months ?? []
+  const today = new Date()
+  const dayOfMonth = today.getDate()
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+  const monthPacePct = (dayOfMonth / daysInMonth) * 100
   const hasGoalData   = annualPct !== null && achievement?.yearly
 
   const yearlyActual = achBase === 'bookings'
@@ -138,11 +147,11 @@ export default function OverviewTab({
 
   const kpis = [
     { icon: DollarSign, iconBg: 'bg-primary/10',     iconColor: 'text-primary',
-      title: 'Billed Bookings', tip: TIPS.billedRevenue,
+      title: isInsurance ? 'Written Premium' : 'Billed Bookings', tip: TIPS.billedRevenue,
       value: formatCurrency(billedValue, true),
       delta: billedPct, deltaLabel: 'vs last year', onClick: () => nav('/monthly') },
     { icon: Trophy,    iconBg: 'bg-amber-500/10',   iconColor: 'text-amber-500',
-      title: 'Won Deals', tip: TIPS.wonDeals,
+      title: isInsurance ? 'Policies' : 'Won Deals', tip: TIPS.wonDeals,
       value: formatNumber(summary.deals),
       delta: dealsYoyPct, deltaLabel: 'from last year', onClick: () => nav('/monthly') },
     { icon: GitBranch, iconBg: 'bg-cyan-500/10',    iconColor: 'text-cyan-500',
@@ -151,9 +160,9 @@ export default function OverviewTab({
       sub: `${pipelineCoverage.toFixed(1)}x coverage · ${formatNumber(summary.pipeline_count)} deals`,
       onClick: () => nav('/pipeline') },
     { icon: Target,    iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500',
-      title: 'Win Rate', tip: TIPS.winRate,
-      value: formatPct(summary.win_rate),
-      sub: `Avg ${formatCurrency(summary.avg_deal_size, true)} per deal`,
+      title: isInsurance ? 'Avg Premium' : 'Win Rate', tip: isInsurance ? TIPS.avgDeal : TIPS.winRate,
+      value: isInsurance ? formatCurrency(summary.avg_deal_size, true) : formatPct(summary.win_rate),
+      sub: isInsurance ? undefined : `Avg ${formatCurrency(summary.avg_deal_size, true)} per deal`,
       onClick: () => nav('/monthly') },
   ] as const
 
@@ -177,11 +186,15 @@ export default function OverviewTab({
             <div className="grid grid-cols-2 divide-x divide-border/50 border-t border-border/50 text-center">
               <div className="px-3 py-2.5">
                 <p className="tabular-nums text-[15px] font-bold leading-none">{formatCurrency(yearlyActual, true)}</p>
-                <p className="mt-1 text-[10px] text-muted-foreground">Actual</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Annual {achBase === 'commission' ? 'Comm' : (isInsurance ? 'Premium' : 'Booking')} YTD
+                </p>
               </div>
               <div className="px-3 py-2.5">
                 <p className="tabular-nums text-[15px] font-bold leading-none text-muted-foreground">{formatCurrency(yearlyTarget, true)}</p>
-                <p className="mt-1 text-[10px] text-muted-foreground">Target</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Annual {achBase === 'commission' ? 'Comm' : (isInsurance ? 'Premium' : 'Booking')} Target
+                </p>
               </div>
             </div>
             {achievement?.current_month && (
@@ -189,13 +202,16 @@ export default function OverviewTab({
                 'border-t border-border/50 px-4 py-2 text-center text-[11px]',
                 (monthPct ?? 0) >= 100 ? 'bg-emerald-500/5' : (monthPct ?? 0) >= 80 ? 'bg-amber-500/5' : 'bg-rose-500/5',
               )}>
+                <span className="text-muted-foreground">
+                  {new Date().toLocaleString('en-US', { month: 'short' })} {achBase === 'commission' ? 'Comm' : (isInsurance ? 'Premium' : 'Booking')}:&nbsp;
+                </span>
                 <span className="font-semibold">{formatCurrency(monthActual, true)} / {formatCurrency(monthTarget, true)}</span>
                 <span className={cn('ml-1.5 font-bold',
                   (monthPct ?? 0) >= 100 ? 'text-emerald-500' : (monthPct ?? 0) >= 80 ? 'text-amber-500' : 'text-rose-500')}>
                   {monthPct !== null ? `${monthPct.toFixed(0)}%` : '—'}
                 </span>
                 <span className="ml-1 text-muted-foreground">
-                  · Day {achievement.current_month.day_of_month}/{achievement.current_month.days_in_month}
+                  · {Math.round(monthPacePct)}% pace · Day {achievement.current_month.day_of_month}/{achievement.current_month.days_in_month}
                 </span>
               </div>
             )}
@@ -306,8 +322,8 @@ export default function OverviewTab({
           <div className="grid grid-cols-2 gap-2.5">
             <ActivityCell icon={Megaphone}  label="Leads"    value={formatNumber(leadsCount)}                     color="text-primary"     bg="bg-primary/10"     onClick={() => nav('/leads')}    tip={TIPS.leads} />
             <ActivityCell icon={Target}     label="Opps"     value={formatNumber(oppsCount)}                     color="text-amber-500"   bg="bg-amber-500/10"   onClick={() => nav('/pipeline')} tip={TIPS.opps} />
-            <ActivityCell icon={Trophy}     label="Won"      value={formatNumber(summary.deals)}                 color="text-emerald-500" bg="bg-emerald-500/10" onClick={() => nav('/monthly')}  tip={TIPS.wonDeals} />
-            <ActivityCell icon={DollarSign} label="Avg Deal" value={formatCurrency(summary.avg_deal_size, true)}  color="text-cyan-500"    bg="bg-cyan-500/10"    onClick={() => nav('/monthly')}  tip={TIPS.avgDeal} />
+            <ActivityCell icon={Trophy}     label={isInsurance ? 'Policies' : 'Won'}      value={formatNumber(summary.deals)}                 color="text-emerald-500" bg="bg-emerald-500/10" onClick={() => nav('/monthly')}  tip={TIPS.wonDeals} />
+            <ActivityCell icon={DollarSign} label={isInsurance ? 'Avg Premium' : 'Avg Deal'} value={formatCurrency(summary.avg_deal_size, true)}  color="text-cyan-500"    bg="bg-cyan-500/10"    onClick={() => nav('/monthly')}  tip={TIPS.avgDeal} />
           </div>
           <div onClick={() => nav('/pipeline')} className="mt-3 cursor-pointer rounded-xl border border-border/40 bg-secondary/20 p-3.5 hover:bg-secondary/30">
             <div className="mb-2 flex items-center justify-between">

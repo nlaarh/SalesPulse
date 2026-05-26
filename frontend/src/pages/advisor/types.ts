@@ -23,6 +23,8 @@ export interface Advisor {
   deals: number; win_rate: number; avg_deal_size: number
   pipeline_value: number; pipeline_count: number
   branch?: string
+  nbus_premium?: number
+  policy_count?: number
 }
 
 export interface YoYData {

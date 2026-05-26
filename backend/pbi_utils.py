@@ -160,6 +160,31 @@ def overlay_pbi_on_month_map(month_map: dict, pbi_data: dict, norm_key: str, yea
             pass
 
 
+def pbi_nbus_by_advisor(sd: str, ed: str) -> list[dict]:
+    """Insurance NEWB-only written premium by advisor. Used for the New Business leaderboard column."""
+    from pbi_client import insurance_nbus_by_advisor
+    raw_rows = insurance_nbus_by_advisor(sd, ed)
+    id_map = get_pbi_advisor_id_map('Insurance')
+    result = []
+    for r in raw_rows:
+        name = r['name']
+        code = r.get('code', '')
+        resolved_name = name
+        if code:
+            code_lower = code.lower().strip()
+            if code_lower in id_map:
+                resolved_name = id_map[code_lower]
+        if not resolved_name or is_pbi_noise(resolved_name):
+            continue
+        result.append({
+            "name":         resolved_name,
+            "branch":       r["branch"],
+            "nbus_premium": r["sales"],   # transaction_amount for NEWB only
+            "policy_count": r["txns"],    # count of new policies written
+        })
+    return result
+
+
 def pbi_by_advisor(line: str, sd: str, ed: str) -> list[dict]:
     """Pre-aggregated advisor totals (no monthly breakdown). Used for leaderboard."""
     from pbi_client import travel_by_advisor, insurance_by_advisor

@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { Tip } from '@/components/MetricTip'
 import { Loader2, BarChart3, Table2, Sparkles, RefreshCw } from 'lucide-react'
 import type { AgentReport, Metric, SortField, MonthData } from './monthly/types'
-import { METRICS } from './monthly/types'
+import { METRICS, getMetrics } from './monthly/types'
 import ChartsTab from './monthly/ChartsTab'
 import DetailsTab from './monthly/DetailsTab'
 import SummaryTab from './monthly/SummaryTab'
@@ -162,6 +162,8 @@ export default function MonthlyReport() {
 
   const activeItems = viewType === 'advisor' ? agents : aggregatedBranches
   const activeTargetMap = viewType === 'advisor' ? targetMap : branchTargetMap
+  const isInsurance = line.toLowerCase() === 'insurance'
+  const displayMetrics = getMetrics(isInsurance)
 
   // Sorting logic (shared across tabs)
   const toggleSort = (field: SortField) => {
@@ -212,7 +214,7 @@ export default function MonthlyReport() {
             </p>
             <h1 className="mt-0.5 text-2xl font-bold tracking-tight">
               Monthly Report
-              <span className="ml-2 text-lg font-semibold text-primary/60">— {METRICS.find(m => m.key === metric)?.label ?? metric}</span>
+              <span className="ml-2 text-lg font-semibold text-primary/60">— {displayMetrics.find(m => m.key === metric)?.label ?? metric}</span>
             </h1>
           </div>
           <DateSelector />
@@ -256,9 +258,9 @@ export default function MonthlyReport() {
       {/* Row 2: Metric & Tab Selectors (Combined/Horizontal on one line) */}
       <div className="animate-enter flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/40 pb-3">
         <div className="flex items-center gap-2.5">
-          <Tip text={METRICS.find(m => m.key === metric)?.tip ?? ''} />
+          <Tip text={displayMetrics.find(m => m.key === metric)?.tip ?? ''} />
           <div className="flex gap-1 rounded-lg border border-border bg-secondary/30 p-1">
-            {METRICS.map((m) => (
+            {displayMetrics.map((m) => (
               <button
                 key={m.key}
                 onClick={() => setMetric(m.key)}

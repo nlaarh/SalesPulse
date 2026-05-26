@@ -1,5 +1,6 @@
 import { useChartColors, tooltipStyle, ChartGradients } from '@/lib/chart-theme'
 import { formatCurrency, cn } from '@/lib/utils'
+import { useSales } from '@/contexts/SalesContext'
 import { Tip, TIPS } from '@/components/MetricTip'
 import CompareBar from '@/components/CompareBar'
 import ProgressRing from '@/components/ProgressRing'
@@ -25,8 +26,12 @@ interface PerformanceTabProps {
 /* ── Main Component ─────────────────────────────────────────────────────── */
 
 export default function PerformanceTab({ profile, c, monthlyTarget, targetData }: PerformanceTabProps) {
+  const { line } = useSales()
+  const isInsurance = line.toLowerCase() === 'insurance'
+  const bookingsLabel = isInsurance ? 'Written Premium' : 'Bookings'
   const s = profile.summary
-  const currentMonth = new Date().getMonth() + 1
+  const systemYear = new Date().getFullYear()
+  const currentMonth = profile.current_year < systemYear ? 12 : new Date().getMonth() + 1
 
   // Revenue trend chart data
   const chartData = profile.months
@@ -63,12 +68,12 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
 
   return (
     <div className="space-y-6">
-      {/* Row 1: Bookings Trend + Team Comparison */}
+      {/* Row 1: Revenue Trend + Team Comparison */}
       <div className="grid grid-cols-3 gap-4">
-        {/* Bookings Chart */}
+        {/* Revenue Chart */}
         <div className="col-span-2">
           <div className="mb-3">
-            <h3 className="text-sm font-semibold">Bookings by Month<Tip text={TIPS.revenueByMonth} /></h3>
+            <h3 className="text-sm font-semibold">{bookingsLabel} by Month<Tip text={TIPS.revenueByMonth} /></h3>
             <span className="text-[11px] text-muted-foreground">
               Solid: {profile.current_year} &middot; Dashed: {profile.prior_year}
             </span>
@@ -154,7 +159,7 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
             />
             {profile.has_separate_bookings && (
               <CompareBar
-                label="Bookings"
+                label={bookingsLabel}
                 agent={s.revenue}
                 team={profile.team.avg_revenue}
                 format={(v) => formatCurrency(v, true)}
@@ -295,8 +300,8 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
                 [`${profile.current_year} Commission`]: m.commission ?? 0,
                 [`${profile.prior_year} Commission`]: m.prior_commission ?? 0,
                 ...(profile.has_separate_bookings ? {
-                  [`${profile.current_year} Bookings`]: m.revenue ?? 0,
-                  [`${profile.prior_year} Bookings`]: m.prior_revenue ?? 0,
+                  [`${profile.current_year} ${bookingsLabel}`]: m.revenue ?? 0,
+                  [`${profile.prior_year} ${bookingsLabel}`]: m.prior_revenue ?? 0,
                 } : {}),
                 Deals: m.deals ?? 0,
               }))
@@ -327,8 +332,6 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
                 months={profile.months}
                 getter={(m) => m.commission}
                 format={(v) => v === 0 ? '\u2014' : formatCurrency(v, true)}
-                total={s.commission}
-                totalFmt={formatCurrency(s.commission, true)}
                 bold
                 currentMonth={currentMonth}
               />
@@ -337,30 +340,24 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
                 months={profile.months}
                 getter={(m) => m.prior_commission}
                 format={(v) => v === 0 ? '\u2014' : formatCurrency(v, true)}
-                total={profile.prior.commission}
-                totalFmt={formatCurrency(profile.prior.commission, true)}
                 muted
                 currentMonth={12}
               />
               {profile.has_separate_bookings && (
                 <>
                   <MonthRow
-                    label={`${profile.current_year} Bookings`}
+                    label={`${profile.current_year} ${bookingsLabel}`}
                     months={profile.months}
                     getter={(m) => m.revenue}
                     format={(v) => v === 0 ? '\u2014' : formatCurrency(v, true)}
-                    total={s.revenue}
-                    totalFmt={formatCurrency(s.revenue, true)}
                     bold
                     currentMonth={currentMonth}
                   />
                   <MonthRow
-                    label={`${profile.prior_year} Bookings`}
+                    label={`${profile.prior_year} ${bookingsLabel}`}
                     months={profile.months}
                     getter={(m) => m.prior_revenue}
                     format={(v) => v === 0 ? '\u2014' : formatCurrency(v, true)}
-                    total={profile.prior.revenue}
-                    totalFmt={formatCurrency(profile.prior.revenue, true)}
                     muted
                     currentMonth={12}
                   />
@@ -371,8 +368,6 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
                 months={profile.months}
                 getter={(m) => m.deals}
                 format={(v) => v === 0 ? '\u2014' : String(v)}
-                total={s.deals}
-                totalFmt={String(s.deals)}
                 currentMonth={currentMonth}
               />
             </tbody>
@@ -385,18 +380,21 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
 
 /* ── MonthRow ───────────────────────────────────────────────────────────── */
 
-function MonthRow({ label, months, getter, format, totalFmt, bold, muted, currentMonth }: {
+function MonthRow({ label, months, getter, format, bold, muted, currentMonth }: {
   label: string
   months: AgentMonthData[]
   getter: (m: AgentMonthData) => number
   format: (v: number) => string
-  total?: number
-  totalFmt: string
   bold?: boolean
   muted?: boolean
   currentMonth: number
 }) {
   const visible = months.filter(m => m.month <= currentMonth || m.prior_revenue > 0)
+  const sum = visible.reduce((acc, m) => {
+    const isFuture = m.month > currentMonth && !muted
+    return acc + (isFuture ? 0 : getter(m))
+  }, 0)
+
   return (
     <tr className={cn('border-b border-border/20 transition-colors hover:bg-primary/5',
       muted && 'opacity-60')}>
@@ -420,7 +418,7 @@ function MonthRow({ label, months, getter, format, totalFmt, bold, muted, curren
       })}
       <td className="border-l border-border px-3 py-2 text-right">
         <span className={cn('tabular-nums text-[12px]', bold ? 'font-bold' : 'font-semibold')}>
-          {totalFmt}
+          {format(sum)}
         </span>
       </td>
     </tr>

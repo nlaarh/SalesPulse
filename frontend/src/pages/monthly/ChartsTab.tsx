@@ -11,7 +11,7 @@ import {
   PieChart, Pie, Cell,
 } from 'recharts'
 import type { AgentReport, Metric } from './types'
-import { METRICS } from './types'
+import { getMetrics } from './types'
 
 /* ── Props ────────────────────────────────────────────────────────────────── */
 
@@ -33,6 +33,8 @@ export default function ChartsTab({
 }: ChartsTabProps) {
   const { isDark } = useTheme()
   const c = useChartColors()
+  const isInsurance = line.toLowerCase() === 'insurance'
+  const displayMetrics = getMetrics(isInsurance)
   const isCurrency = metric === 'commission' || metric === 'sales'
   const hasTargets = targetMap && targetMap.size > 0
   const isRevenueMetric = metric === 'commission' || metric === 'sales'
@@ -139,7 +141,7 @@ export default function ChartsTab({
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KPICard
-          title={`Total ${METRICS.find(m => m.key === metric)?.label ?? ''}`}
+          title={`Total ${displayMetrics.find(m => m.key === metric)?.label ?? ''}`}
           value={isCurrency ? formatCurrency(totalVal, true) : formatNumber(totalVal)}
           icon={<DollarSign className="h-4 w-4" />} className="stagger-1"
         />
@@ -165,7 +167,7 @@ export default function ChartsTab({
         {/* Monthly Trend */}
         <div className="card-premium animate-enter">
           <div className="border-b border-border px-6 py-4">
-            <h2 className="text-sm font-semibold tracking-tight">Monthly Trend — {METRICS.find(m => m.key === metric)?.label}</h2>
+            <h2 className="text-sm font-semibold tracking-tight">Monthly Trend — {displayMetrics.find(m => m.key === metric)?.label}</h2>
           </div>
           <div className="p-5">
             <ResponsiveContainer width="100%" height={300}>
@@ -182,7 +184,7 @@ export default function ChartsTab({
                   interval="preserveStartEnd" />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 11 }} width={55}
                   tickFormatter={(v: number) => isCurrency ? (v >= 1e6 ? `$${(v/1e6).toFixed(1)}M` : `$${(v/1e3).toFixed(0)}K`) : formatNumber(v)} />
-                <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [isCurrency ? formatCurrency(Number(v), true) : formatNumber(Number(v)), METRICS.find(m => m.key === metric)?.label ?? '']} />
+                <Tooltip contentStyle={tooltipStyle(c)} formatter={(v) => [isCurrency ? formatCurrency(Number(v), true) : formatNumber(Number(v)), displayMetrics.find(m => m.key === metric)?.label ?? '']} />
                 <Area type="monotone" dataKey="value" stroke={c.primary} strokeWidth={2} fill="url(#mrTrend)" dot={false} />
               </AreaChart>
             </ResponsiveContainer>
@@ -192,7 +194,7 @@ export default function ChartsTab({
         {/* Top 10 Agents */}
         <div className="card-premium animate-enter">
           <div className="border-b border-border px-6 py-4">
-            <h2 className="text-sm font-semibold tracking-tight">Top 10 {viewType === 'advisor' ? 'Advisors' : 'Branches'} — {METRICS.find(m => m.key === metric)?.label}</h2>
+            <h2 className="text-sm font-semibold tracking-tight">Top 10 {viewType === 'advisor' ? 'Advisors' : 'Branches'} — {displayMetrics.find(m => m.key === metric)?.label}</h2>
           </div>
           <div className="p-5">
             <ResponsiveContainer width="100%" height={300}>
@@ -215,7 +217,7 @@ export default function ChartsTab({
         {isRevenueMetric && hasTargets && (
           <div className="card-premium animate-enter">
             <div className="border-b border-border px-6 py-4">
-              <h2 className="text-sm font-semibold tracking-tight">Actual vs Target — {METRICS.find(m => m.key === metric)?.label}</h2>
+              <h2 className="text-sm font-semibold tracking-tight">Actual vs Target — {displayMetrics.find(m => m.key === metric)?.label}</h2>
               <p className="text-[11px] text-muted-foreground mt-0.5">
                 Comparing period actuals against targets ({viewType === 'advisor' ? 'top 12 advisors' : 'all branches'}).
               </p>
@@ -249,9 +251,9 @@ export default function ChartsTab({
         <div className={cn("card-premium animate-enter", (!isRevenueMetric || !hasTargets) && "lg:col-span-2")}>
           <div className="border-b border-border px-6 py-4 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-sm font-semibold tracking-tight">Contribution Share — {METRICS.find(m => m.key === metric)?.label}</h2>
+              <h2 className="text-sm font-semibold tracking-tight">Contribution Share — {displayMetrics.find(m => m.key === metric)?.label}</h2>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                Distribution of total {METRICS.find(m => m.key === metric)?.label.toLowerCase()} by {viewType === 'advisor' ? 'advisor' : 'branch'}.
+                Distribution of total {displayMetrics.find(m => m.key === metric)?.label.toLowerCase()} by {viewType === 'advisor' ? 'advisor' : 'branch'}.
               </p>
             </div>
             {(!isRevenueMetric || !hasTargets) && (

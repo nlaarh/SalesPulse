@@ -275,6 +275,7 @@ export default function AgentDashboard() {
 
   const s = profile.summary
   const yoy = profile.yoy
+  const isInsurance = line?.toLowerCase() === 'insurance'
 
   return (
     <div className="space-y-5">
@@ -327,7 +328,11 @@ export default function AgentDashboard() {
       </div>
 
       {/* ── KPI Cards Row ─────────────────────────────────────────────── */}
-      <div className={cn('animate-enter stagger-1 grid gap-3', monthlyTarget != null ? 'grid-cols-6' : 'grid-cols-5')}>
+      <div className={cn('animate-enter stagger-1 grid gap-3',
+        isInsurance
+          ? (monthlyTarget != null ? 'grid-cols-5' : 'grid-cols-4')
+          : (monthlyTarget != null ? 'grid-cols-6' : 'grid-cols-5')
+      )}>
         <KPICard
           label="Commissions"
           value={formatCurrency(s.commission, true)}
@@ -337,7 +342,7 @@ export default function AgentDashboard() {
         />
         {profile.has_separate_bookings ? (
           <KPICard
-            label="Bookings"
+            label={line?.toLowerCase() === 'insurance' ? 'Written Premium' : 'Bookings'}
             value={formatCurrency(s.revenue, true)}
             delta={<DeltaPill value={yoy.revenue_pct} suffix="% YoY" />}
             sub={`PY: ${formatCurrency(profile.prior.revenue, true)}`}
@@ -345,7 +350,7 @@ export default function AgentDashboard() {
           />
         ) : (
           <KPICard
-            label="Avg Deal"
+            label={isInsurance ? 'Avg Premium' : 'Avg Deal'}
             value={formatCurrency(s.avg_deal, true)}
             delta={<DeltaPill value={profile.prior.avg_deal > 0 ? Math.round((s.avg_deal - profile.prior.avg_deal) / profile.prior.avg_deal * 1000) / 10 : 0} suffix="% YoY" />}
             sub={`PY: ${formatCurrency(profile.prior.avg_deal, true)}`}
@@ -353,19 +358,21 @@ export default function AgentDashboard() {
           />
         )}
         <KPICard
-          label="Deals Won"
+          label={isInsurance ? 'Policies' : 'Deals Won'}
           value={String(s.deals)}
           delta={<DeltaPill value={yoy.deals_pct} suffix="% YoY" />}
           sub={`PY: ${profile.prior.deals}`}
           tip={TIPS.wonDeals}
         />
-        <KPICard
-          label="Win Rate"
-          value={formatPct(s.win_rate)}
-          delta={<DeltaPill value={yoy.win_rate_delta} suffix="pts" />}
-          sub={`PY: ${formatPct(profile.prior.win_rate)}`}
-          tip={TIPS.winRate}
-        />
+        {!isInsurance && (
+          <KPICard
+            label="Win Rate"
+            value={formatPct(s.win_rate)}
+            delta={<DeltaPill value={yoy.win_rate_delta} suffix="pts" />}
+            sub={`PY: ${formatPct(profile.prior.win_rate)}`}
+            tip={TIPS.winRate}
+          />
+        )}
         <KPICard
           label="Pipeline"
           value={formatCurrency(s.pipeline_value, true)}
@@ -441,7 +448,7 @@ export default function AgentDashboard() {
                     achBase === 'commission' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  <DollarSign className="h-3 w-3" /> Commissions
+                  <DollarSign className="h-3 w-3" /> Commission
                 </button>
                 <button
                   onClick={() => switchAchBase('bookings')}
@@ -450,7 +457,7 @@ export default function AgentDashboard() {
                     achBase === 'bookings' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  <BookOpen className="h-3 w-3" /> Bookings
+                  <BookOpen className="h-3 w-3" /> {line?.toLowerCase() === 'insurance' ? 'Written Premium' : 'Bookings'}
                 </button>
               </div>
             </div>
