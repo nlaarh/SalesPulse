@@ -52,8 +52,12 @@ export interface MonthlyTargetMonth {
   month: number
   target: number
   target_bookings?: number
-  actual: number
+  actual: number           // commission actual
+  bookings_actual?: number // bookings actual
+  actual_py?: number
+  bookings_actual_py?: number
   achievement_pct: number | null
+  bookings_achievement_pct?: number | null
 }
 
 export interface MonthlyTargetAdvisor {
@@ -141,6 +145,11 @@ export async function saveMonthlyTargets(
 ) {
   const { data } = await api.put('/api/admin/targets/monthly', { year, updates, base, line })
   return data as { status: string; count: number }
+}
+
+export async function clearMonthlyTargetSeeds(year: number, line = 'Travel') {
+  const { data } = await api.delete(`/api/admin/targets/monthly/${year}/reseed`, { params: { line } })
+  return data as { status: string; deleted: number }
 }
 
 export async function exportMonthlyTargetsExcel(

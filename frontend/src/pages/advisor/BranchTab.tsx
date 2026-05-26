@@ -75,7 +75,7 @@ export default function BranchTab({ data }: { data: BranchMonthlyData | null }) 
       trigger: 'axis' as const,
       axisPointer: { type: 'shadow' as const },
       ...getEChartTooltip(c.isDark),
-      formatter: (params: { seriesName: string; value: number; color: string }[]) => {
+      formatter: (params: any[]) => {
         const lines = params
           .filter(p => p.value > 0)
           .map(p => `

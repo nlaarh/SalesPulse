@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import TargetGrid from '@/components/TargetGrid'
 
 export default function TargetsTab() {
   const [line, setLine] = useState<'Travel' | 'Insurance'>('Travel')
+  const navigate = useNavigate()
 
   return (
     <div className="space-y-6">
@@ -39,7 +41,7 @@ export default function TargetsTab() {
       </div>
 
       <div className="card-premium p-6">
-        <TargetGrid line={line} />
+        <TargetGrid line={line} onBack={() => navigate(-1)} />
       </div>
     </div>
   )

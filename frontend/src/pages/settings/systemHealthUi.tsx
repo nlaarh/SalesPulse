@@ -16,16 +16,17 @@ import type { SystemServiceHealth, SystemServiceStatus } from '@/lib/api_admin'
 
 export const SERVICE_LABELS: Record<string, string> = {
   salesforce: 'SALESFORCE',
-  postgres: 'DATABASE',
+  postgres: 'PRIMARY DATABASE',
   dr_postgres: 'DR DATABASE',
-  app: 'API NODE',
+  app: 'PRIMARY API NODE',
+  dr_app: 'DR API NODE',
   pbi: 'POWER BI',
   azure: 'AZURE VM',
   openai: 'OPENAI SERVICE',
   github: 'GITHUB REPO',
 }
 
-export const SERVICE_ORDER = ['salesforce', 'postgres', 'dr_postgres', 'app', 'pbi', 'azure', 'openai', 'github']
+export const SERVICE_ORDER = ['salesforce', 'postgres', 'dr_postgres', 'app', 'dr_app', 'pbi', 'azure', 'openai', 'github']
 
 export function statusTone(status?: SystemServiceStatus | string) {
   if (status === 'online') {
@@ -71,7 +72,7 @@ export function ServiceIcon({ serviceKey, small = false }: { serviceKey: string;
   const cls = small ? 'h-3.5 w-3.5 text-primary' : 'h-4 w-4 text-primary'
   if (serviceKey === 'postgres' || serviceKey === 'dr_postgres') return <Database className={cls} />
   if (serviceKey === 'pbi') return <Layers className={cls} />
-  if (serviceKey === 'app') return <Cpu className={cls} />
+  if (serviceKey === 'app' || serviceKey === 'dr_app') return <Cpu className={cls} />
   if (serviceKey === 'salesforce') return <Layers className={cls} />
   if (serviceKey === 'openai') return <Zap className={cls} />
   if (serviceKey === 'github') return <GitBranch className={cls} />
@@ -174,17 +175,31 @@ export function ServiceLogs({ logs }: { logs?: string[] }) {
   )
 }
 
+export function AzureIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M5.183 19h13.634L22 13h-8.183L5.183 19z" fill="#0078D4" />
+      <path d="M13.817 5H1.366L5 11h8.183l3.634-6z" fill="#50E6FF" />
+    </svg>
+  )
+}
+
 export function OpenLink({ href }: { href?: string }) {
   if (!href) return null
+  const isAzure = href.includes('portal.azure.com')
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      title="Open resource link"
-      className="rounded p-1 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+      title={isAzure ? "View in Azure Portal" : "Open resource link"}
+      className="rounded p-1 text-muted-foreground transition hover:bg-secondary hover:text-foreground flex items-center justify-center"
     >
-      <ExternalLink className="h-3.5 w-3.5" />
+      {isAzure ? (
+        <AzureIcon className="h-3.5 w-3.5 transition-transform duration-200 hover:scale-110" />
+      ) : (
+        <ExternalLink className="h-3.5 w-3.5" />
+      )}
     </a>
   )
 }

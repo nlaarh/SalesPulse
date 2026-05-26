@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { ChangeEvent, ReactNode } from 'react'
 import {
   fetchMonthlyTargets,
   saveMonthlyTargets,
   exportMonthlyTargetsExcel,
   importMonthlyTargetsExcel,
+  clearMonthlyTargetSeeds,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { AlertCircle, Calculator, Check, Download, Loader2, Maximize2, Minimize2, Save, Search, Upload } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Calculator, Check, Download, Loader2, Save, Search, Trash2, Upload } from 'lucide-react'
 import TargetSpreadsheetTable from './TargetSpreadsheetTable'
 import {
   buildDirtyTargetUpdates,
@@ -19,14 +21,15 @@ import type { AdvisorState, MetadataField, SortDirection, TargetBase } from './t
 
 interface Props {
   line: string
+  onBack?: () => void
 }
 
-export default function TargetGrid({ line }: Props) {
+export default function TargetGrid({ line, onBack }: Props) {
   const currentYear = new Date().getFullYear()
   const currentMonth = new Date().getMonth() + 1
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [year, setYear] = useState(currentYear)
+  const [year] = useState(currentYear)
   const [base] = useState<TargetBase>('commission')
   const [advisors, setAdvisors] = useState<AdvisorState[]>([])
   const [originalAdvisors, setOriginalAdvisors] = useState<AdvisorState[]>([])
@@ -36,7 +39,7 @@ export default function TargetGrid({ line }: Props) {
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const isFullscreen = true
   const [sortField, setSortField] = useState('prior_year_actual')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [growthPct, setGrowthPct] = useState(5)
@@ -119,6 +122,21 @@ export default function TargetGrid({ line }: Props) {
     }
   }
 
+  const handleClearSeeds = async () => {
+    if (!window.confirm(`Clear all system-seeded ${line} targets for ${year}? Manually saved targets are preserved.`)) return
+    setErrorMsg('')
+    setSuccessMsg('')
+    setLoading(true)
+    try {
+      const res = await clearMonthlyTargetSeeds(year, line)
+      setSuccessMsg(`Cleared ${res.deleted} seeded target rows for ${line} ${year}.`)
+      await loadData()
+    } catch (err: any) {
+      setErrorMsg(err?.response?.data?.detail || 'Failed to clear seeded targets.')
+      setLoading(false)
+    }
+  }
+
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
@@ -180,26 +198,30 @@ export default function TargetGrid({ line }: Props) {
 
   if (loading) return <LoadingState />
 
-  return (
-    <div className={cn('space-y-6', isFullscreen && 'fixed inset-0 z-50 bg-background p-6 overflow-hidden flex flex-col animate-fade-in')}>
+  // Fullscreen toggle removed as layout is locked to fullscreen
+
+  const inner = (
+    <div className={cn(
+      isFullscreen
+        ? 'fixed inset-0 z-[9999] flex flex-col gap-4 p-3 md:p-6 bg-background/95 backdrop-blur-xl overflow-hidden'
+        : 'space-y-4',
+    )}>
       <StatusMessage errorMsg={errorMsg} successMsg={successMsg} />
       <ControlPanel
         year={year}
-        currentYear={currentYear}
         growthPct={growthPct}
         searchQuery={searchQuery}
         saving={saving}
         isDirty={isDirty}
-        isFullscreen={isFullscreen}
         fileInputRef={fileInputRef}
-        onYearChange={setYear}
         onGrowthPctChange={setGrowthPct}
         onApplyGrowth={applyGrowth}
         onSearchChange={setSearchQuery}
         onExport={handleExport}
         onImport={handleImport}
         onSave={handleSave}
-        onToggleFullscreen={() => setIsFullscreen((prev) => !prev)}
+        onClearSeeds={handleClearSeeds}
+        onBack={onBack}
       />
       <TargetSpreadsheetTable
         advisors={sortedAdvisors}
@@ -215,62 +237,79 @@ export default function TargetGrid({ line }: Props) {
       />
     </div>
   )
+
+  return isFullscreen ? createPortal(inner, document.body) : inner
 }
 
 function ControlPanel({
   year,
-  currentYear,
   growthPct,
   searchQuery,
   saving,
   isDirty,
-  isFullscreen,
   fileInputRef,
-  onYearChange,
   onGrowthPctChange,
   onApplyGrowth,
   onSearchChange,
   onExport,
   onImport,
   onSave,
-  onToggleFullscreen,
+  onClearSeeds,
+  onBack,
 }: any) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card p-4 shadow-sm">
+    <div className="card-premium flex flex-wrap items-center justify-between gap-4 px-5 py-3.5">
       <div className="flex flex-wrap items-center gap-4">
+        {onBack && (
+          <button onClick={onBack} title="Back to settings" className="flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors">
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+        )}
+        {onBack && <div className="h-5 w-px bg-border/60" />}
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Target Year</span>
-          <select value={year} onChange={(event) => onYearChange(Number(event.target.value))} className="rounded-lg border border-border bg-background px-3 py-1.5 text-[13px] font-bold outline-none focus:ring-2 focus:ring-primary/20">
-            {[currentYear - 1, currentYear, currentYear + 1].map((optionYear) => <option key={optionYear} value={optionYear}>{optionYear}</option>)}
-          </select>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Year</span>
+          <span className="bg-secondary/50 border border-border px-3 py-1.5 rounded-lg text-[13px] font-bold text-foreground">{year}</span>
         </div>
-        <div className="h-6 w-px bg-border" />
+        <div className="h-5 w-px bg-border/60" />
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Growth Tool</span>
-          <div className="flex items-center rounded-lg border border-border bg-background px-2 py-1 focus-within:ring-2 focus-within:ring-primary/20">
-            <input type="number" value={growthPct} onChange={(event) => onGrowthPctChange(Number(event.target.value) || 0)} className="w-10 bg-transparent text-center text-[12px] font-bold outline-none border-none" />
+          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Growth</span>
+          <div className="flex items-center rounded-lg border border-border bg-secondary/50 px-2 py-1 focus-within:ring-2 focus-within:ring-primary/20">
+            <input type="number" value={growthPct} onChange={(event) => onGrowthPctChange(Number(event.target.value) || 0)} className="w-10 bg-transparent text-center text-[12px] font-bold outline-none border-none text-foreground" />
             <span className="text-[11px] font-medium text-muted-foreground">%</span>
           </div>
-          <IconButton onClick={onApplyGrowth} title="Apply growth formula (+% to future targets)"><Calculator className="h-4 w-4" /></IconButton>
+          <IconButton onClick={onApplyGrowth} title="Apply +% growth to all future month targets"><Calculator className="h-3.5 w-3.5" /></IconButton>
         </div>
       </div>
 
+      <div className="hidden xl:flex items-center gap-2 text-[11px] text-muted-foreground/80 bg-secondary/30 px-3 py-1.5 rounded-lg border border-border/50">
+        <span className="font-semibold text-primary">Tip:</span>
+        <span>Drag table to scroll in any direction, or use the scrollbars.</span>
+      </div>
+
       <div className="flex items-center gap-2">
-        <div className="relative flex items-center rounded-lg border border-border bg-background px-3 py-1.5 focus-within:ring-2 focus:ring-primary/20">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <input type="text" placeholder="Search advisor or branch..." value={searchQuery} onChange={(event) => onSearchChange(event.target.value)} className="ml-2 w-44 bg-transparent text-[12px] outline-none placeholder:text-muted-foreground/60" />
+        <div className="relative flex items-center rounded-lg border border-border bg-secondary/50 px-3 py-1.5 focus-within:ring-2 focus-within:ring-primary/20">
+          <Search className="h-3.5 w-3.5 text-muted-foreground" />
+          <input type="text" placeholder="Search advisor or branch..." value={searchQuery} onChange={(event) => onSearchChange(event.target.value)} className="ml-2 w-44 bg-transparent text-[12px] outline-none placeholder:text-muted-foreground/60 text-foreground" />
         </div>
-        <IconButton onClick={onExport} title="Export target spreadsheet"><Download className="h-4 w-4" /></IconButton>
-        <label className="flex items-center justify-center h-8 w-8 rounded-lg border border-border bg-secondary hover:bg-secondary/80 text-foreground cursor-pointer transition-colors shadow-sm" title="Import Excel spreadsheet">
-          <Upload className="h-4 w-4" />
+        <IconButton onClick={onExport} title="Export targets to Excel (.xlsx)"><Download className="h-3.5 w-3.5" /></IconButton>
+        <label className="group relative flex items-center justify-center h-8 w-8 rounded-lg border border-border bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground cursor-pointer transition-all" title="Import targets from Excel (.xlsx)">
+          <Upload className="h-3.5 w-3.5" />
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={onImport} className="hidden" />
         </label>
-        <button onClick={onSave} disabled={!isDirty || saving} className={cn('flex items-center justify-center h-8 w-8 rounded-lg transition-all shadow-sm border border-border', isDirty ? 'bg-primary text-primary-foreground hover:opacity-90' : 'bg-secondary text-muted-foreground/50 cursor-not-allowed opacity-60')} title="Save changes">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+        <IconButton onClick={onClearSeeds} title="Clear system-seeded targets (keeps manually saved targets)"><Trash2 className="h-3.5 w-3.5" /></IconButton>
+        <button
+          onClick={onSave}
+          disabled={!isDirty || saving}
+          title={isDirty ? 'Save changes' : 'No unsaved changes'}
+          className={cn(
+            'flex items-center justify-center h-8 w-8 rounded-lg transition-all border border-border',
+            isDirty ? 'bg-primary text-primary-foreground hover:opacity-90' : 'bg-secondary/50 text-muted-foreground/50 cursor-not-allowed opacity-60',
+          )}
+        >
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
         </button>
-        <IconButton onClick={onToggleFullscreen} title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen View'}>
-          {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-        </IconButton>
+        {/* Fullscreen button removed as layout is locked to fullscreen/expanded mode */}
       </div>
     </div>
   )
@@ -278,7 +317,7 @@ function ControlPanel({
 
 function IconButton({ children, onClick, title }: { children: ReactNode; onClick: () => void; title: string }) {
   return (
-    <button onClick={onClick} title={title} className="flex items-center justify-center h-8 w-8 rounded-lg border border-border bg-secondary hover:bg-secondary/80 text-foreground transition-colors shadow-sm">
+    <button onClick={onClick} title={title} className="flex items-center justify-center h-8 w-8 rounded-lg border border-border bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground transition-all">
       {children}
     </button>
   )
@@ -287,8 +326,8 @@ function IconButton({ children, onClick, title }: { children: ReactNode; onClick
 function StatusMessage({ errorMsg, successMsg }: { errorMsg: string; successMsg: string }) {
   return (
     <>
-      {errorMsg && <div className="flex items-center gap-2 rounded-lg bg-destructive/10 px-4 py-3 text-[13px] text-destructive animate-fade-in"><AlertCircle className="h-4 w-4 shrink-0" />{errorMsg}</div>}
-      {successMsg && <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 px-4 py-3 text-[13px] text-emerald-600 dark:text-emerald-400 animate-fade-in"><Check className="h-4 w-4 shrink-0" />{successMsg}</div>}
+      {errorMsg && <div className="card-premium flex items-center gap-2 border-rose-500/20 px-4 py-3 text-[12px] text-rose-500"><AlertCircle className="h-3.5 w-3.5 shrink-0" />{errorMsg}</div>}
+      {successMsg && <div className="card-premium flex items-center gap-2 border-emerald-500/20 px-4 py-3 text-[12px] text-emerald-500"><Check className="h-3.5 w-3.5 shrink-0" />{successMsg}</div>}
     </>
   )
 }

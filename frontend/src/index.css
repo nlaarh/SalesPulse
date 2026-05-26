@@ -200,11 +200,32 @@ body {
 #root { min-height: 100dvh; }
 
 /* ═══ Scrollbar ═════════════════════════════════════════════════════════ */
-* { scrollbar-width: thin; scrollbar-color: var(--si-border) transparent; }
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--si-border); border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { opacity: 0.8; }
+* {
+  scrollbar-width: auto;
+  scrollbar-color: rgba(100, 116, 139, 0.4) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 999px;
+}
+:root.dark ::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.4);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.65);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
 
 /* ═══ Card Premium — Glassmorphism ══════════════════════════════════════ */
 .card-premium {
@@ -458,3 +479,14 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 /* ═══ Leaflet overrides ═════════════════════════════════════════════════ */
 .leaflet-tooltip-pane { z-index: 1000; overflow: visible !important; }
 .leaflet-tooltip     { max-height: none !important; white-space: normal !important; z-index: 1001; }
+
+/* ── Targets Spreadsheet Scrollbar ── */
+.custom-spreadsheet-scroll {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none;  /* IE and Edge */
+}
+.custom-spreadsheet-scroll::-webkit-scrollbar {
+  display: none !important; /* Chrome, Safari, Opera */
+}
+
+

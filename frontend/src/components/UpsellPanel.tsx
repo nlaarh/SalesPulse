@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Loader2, Sparkles } from 'lucide-react'
 import axios from 'axios'
 import Markdown from '@/components/Markdown'
@@ -16,19 +16,52 @@ export default function UpsellPanel({ accountId }: { accountId: string }) {
   const [error, setError] = useState<string | null>(null)
   const [generated, setGenerated] = useState(false)
 
-  const generate = async () => {
+  const generate = async (forceRefresh = false) => {
     setLoading(true); setError(null)
     try {
-      const { data } = await api.post(`/api/customers/${accountId}/upsell`)
-      if (data.error) { setError(data.error); return }
+      const url = forceRefresh
+        ? `/api/customers/${accountId}/upsell?refresh=true`
+        : `/api/customers/${accountId}/upsell`
+      const { data } = await api.post(url)
+      if (data.error) {
+        setError(data.error)
+        return
+      }
       setAnalysis(data.analysis)
       setGenerated(true)
-    } catch {
+    } catch (err) {
       setError('Failed to generate upsell analysis')
     } finally {
       setLoading(false)
     }
   }
+
+  // Load from cache on mount if available (instant loading)
+  useEffect(() => {
+    let active = true
+    const checkCache = async () => {
+      setLoading(true)
+      try {
+        const { data } = await api.post(`/api/customers/${accountId}/upsell`)
+        if (!active) return
+        if (data.analysis) {
+          setAnalysis(data.analysis)
+          setGenerated(true)
+        }
+      } catch (err) {
+        console.warn('No cached upsell analysis found or failed to load', err)
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+    setAnalysis(null)
+    setGenerated(false)
+    setError(null)
+    checkCache()
+    return () => {
+      active = false
+    }
+  }, [accountId])
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -38,14 +71,14 @@ export default function UpsellPanel({ accountId }: { accountId: string }) {
           <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60">AI Upsell Analysis</p>
         </div>
         {!generated && (
-          <button onClick={generate} disabled={loading}
+          <button onClick={() => generate(false)} disabled={loading}
             className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
             {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
             {loading ? 'Analyzing…' : 'Analyze'}
           </button>
         )}
         {generated && (
-          <button onClick={generate} disabled={loading}
+          <button onClick={() => generate(true)} disabled={loading}
             className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">
             {loading ? 'Refreshing…' : 'Refresh'}
           </button>

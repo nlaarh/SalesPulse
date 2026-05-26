@@ -133,7 +133,7 @@ export function tooltipStyle(c: ChartColors) {
 
 /* ═══ Recharts / SVG Gradients ══════════════════════════════════════════ */
 
-export function getGradUrl(hex: string, _id: string): string {
+export function getGradUrl(hex: string, _id: string, _dir?: string): string {
   return hex
 }
 

@@ -9,7 +9,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   ArrowLeft, User, Phone, Mail, MapPin, Shield,
   Car, CreditCard, Loader2,
-  AlertCircle, Clock, ExternalLink, HelpCircle, Printer,
+  AlertCircle, Clock, ExternalLink, HelpCircle, Printer, RotateCw,
 } from 'lucide-react'
 import axios from 'axios'
 import { cn } from '@/lib/utils'
@@ -69,6 +69,15 @@ interface Profile {
 }
 
 /* ── Product config ─────────────────────────────────────────────────────── */
+
+function formatLevel(level: string | null | undefined): string | null {
+  if (!level) return null;
+  const l = level.trim().toUpperCase();
+  if (l === 'B') return 'Basic';
+  if (l === 'PLUS') return 'Plus';
+  if (l === 'PREMIER') return 'Premier';
+  return level.charAt(0).toUpperCase() + level.slice(1).toLowerCase();
+}
 
 function StatusBadge({ status, label }: { status: string | null; label: string | null }) {
   const isActive = status === 'A'
@@ -142,11 +151,13 @@ export default function CustomerProfile() {
   const { user } = useAuth()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!id) return
     setLoading(true)
+    setError(null)
     api.get(`/api/customers/${id}`)
       .then(r => {
         if (r.data.error) setError(r.data.error)
@@ -156,18 +167,45 @@ export default function CustomerProfile() {
       .finally(() => setLoading(false))
   }, [id])
 
-  if (loading) return (
+  const handleRefresh = async () => {
+    if (!id) return
+    setRefreshing(true)
+    setError(null)
+    try {
+      const r = await api.get(`/api/customers/${id}?refresh=true`)
+      if (r.data.error) {
+        setError(r.data.error)
+      } else {
+        setProfile(r.data)
+      }
+    } catch (err) {
+      setError('Failed to refresh customer profile')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  if (loading && !profile) return (
     <div className="flex items-center justify-center py-20 gap-2 text-muted-foreground">
       <Loader2 className="h-5 w-5 animate-spin" /> Loading profile…
     </div>
   )
 
-  if (error || !profile) return (
+  if (error && !profile) return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6">
         <ArrowLeft className="h-4 w-4" /> Back
       </button>
-      <p className="text-rose-500">{error || 'Customer not found'}</p>
+      <p className="text-rose-500">{error}</p>
+    </div>
+  )
+
+  if (!profile) return (
+    <div className="mx-auto max-w-4xl px-4 py-8">
+      <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6">
+        <ArrowLeft className="h-4 w-4" /> Back
+      </button>
+      <p className="text-rose-500">Customer not found</p>
     </div>
   )
 
@@ -183,6 +221,14 @@ export default function CustomerProfile() {
           <ArrowLeft className="h-4 w-4" /> Back
         </button>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all disabled:opacity-50"
+          >
+            <RotateCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
           <button onClick={() => printFromDom('customer-print-root', `Customer 360 — ${acct.name}`)}
             className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all">
             <Printer className="h-3.5 w-3.5" /> PDF / Print
@@ -194,6 +240,14 @@ export default function CustomerProfile() {
           />
         </div>
       </div>
+
+      {error && (
+        <div data-no-print className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-rose-600 text-xs flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="ml-auto hover:text-rose-800 font-semibold">✕</button>
+        </div>
+      )}
 
       {/* Member header card */}
       <div className="rounded-xl border border-border bg-card p-5">
@@ -250,19 +304,8 @@ export default function CustomerProfile() {
         </div>
 
         {/* Membership + vehicles strip */}
-        {(activeMembership || vehicles.length > 0) && (
+        {(acct.insurance_customer_id || acct.ers_calls_made != null || vehicles.length > 0) && (
           <div className="mt-4 pt-4 border-t border-border flex flex-wrap gap-3">
-            {activeMembership && (
-              <div className="flex items-center gap-2 rounded-lg bg-blue-500/10 border border-blue-500/20 px-3 py-2">
-                <CreditCard className="h-4 w-4 text-blue-500" />
-                <div>
-                  <p className="text-[11px] font-bold text-blue-600">{activeMembership.level || 'Membership'}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    Expires {fmtDate(activeMembership.expiry_date)}
-                  </p>
-                </div>
-              </div>
-            )}
             {acct.insurance_customer_id && (
               <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
                 <Shield className="h-4 w-4 text-emerald-500" />
@@ -300,7 +343,11 @@ export default function CustomerProfile() {
 
       {/* Product 360 + AI side by side on large screens */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <Product360Visual p360={product_360} />
+        <Product360Visual
+          p360={product_360}
+          membershipLevel={formatLevel(activeMembership?.level || acct.coverage)}
+          expiryDate={activeMembership?.expiry_date || acct.membership_expiry}
+        />
         <div className="space-y-3">
           {/* Membership history */}
           {memberships.length > 0 && (
@@ -315,10 +362,10 @@ export default function CustomerProfile() {
                       {m.sf_url ? (
                         <a href={m.sf_url} target="_blank" rel="noopener noreferrer"
                           className="font-medium text-primary hover:underline flex items-center gap-1">
-                          {m.level || 'Basic'} <ExternalLink className="h-3 w-3" />
+                          {formatLevel(m.level) || 'Basic'} <ExternalLink className="h-3 w-3" />
                         </a>
                       ) : (
-                        <span className="font-medium text-foreground">{m.level || 'Basic'}</span>
+                        <span className="font-medium text-foreground">{formatLevel(m.level) || 'Basic'}</span>
                       )}
                       <span className="text-muted-foreground/50 font-mono text-[10px]">#{m.member_number}</span>
                     </div>

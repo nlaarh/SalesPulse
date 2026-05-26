@@ -87,7 +87,7 @@ def get_target_achievement(
     all_names.update(cur_actuals['names'])
     all_names.update(py_actuals['names'])
 
-    advisor_ids = _ensure_advisor_targets(db, list(all_names.values()))
+    advisor_ids = _ensure_advisor_targets(db, list(all_names.values()), line=line)
     
     prior_earnings: dict[str, float] = {}
     py_monthly_map: dict[str, dict[int, float]] = {}

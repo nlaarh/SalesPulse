@@ -418,12 +418,36 @@ async def import_monthly_targets_excel(
     if comm_rate <= 0:
         comm_rate = 0.187  # default fallback
 
-    # Get system upload ID
-    upload = db.query(TargetUpload).filter(TargetUpload.filename == '__sf_auto__').first()
-    upload_id = upload.id if upload else 1
+    # Get or create a line-specific system upload record for new advisors created during import.
+    # Must be scoped to `line` so that an advisor who sells both Travel and Insurance
+    # gets separate AdvisorTarget rows (one per line) rather than sharing one row.
+    sys_upload = (
+        db.query(TargetUpload)
+        .filter(TargetUpload.filename == '__sf_auto__', TargetUpload.line == line)
+        .first()
+    )
+    if not sys_upload:
+        sys_upload = TargetUpload(
+            filename='__sf_auto__',
+            line=line,
+            uploaded_by_id=admin.id,
+            uploaded_by_email=admin.email,
+            advisor_count=0,
+        )
+        db.add(sys_upload)
+        db.flush()
+    upload_id = sys_upload.id
 
-    # Load all existing advisor targets to perform fuzzy name matching in Python
-    all_advisors = db.query(AdvisorTarget).all()
+    # Load existing advisor targets scoped to this line only.
+    # Without the line filter an advisor who sells both Travel and Insurance would
+    # resolve to whichever line's record happened to appear last in the query,
+    # and the import would update the wrong line's monthly targets.
+    all_advisors = (
+        db.query(AdvisorTarget)
+        .join(TargetUpload, AdvisorTarget.upload_id == TargetUpload.id)
+        .filter(TargetUpload.line == line)
+        .all()
+    )
     advisor_map = {}
     for adv in all_advisors:
         if adv.sf_name:

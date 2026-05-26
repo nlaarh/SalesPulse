@@ -107,7 +107,7 @@ def compute_estimates(
         if n:
             all_names[n.lower()] = n
 
-    advisor_ids = _ensure_advisor_targets(db, list(all_names.values()))
+    advisor_ids = _ensure_advisor_targets(db, list(all_names.values()), line=body.line)
 
     # Check if targets already exist for this year
     existing_count = db.query(MonthlyAdvisorTarget).filter(
@@ -274,7 +274,7 @@ def get_monthly_targets(
             all_names[name_lower] = dt.sf_name
 
     # 3. Read existing AdvisorTarget rows only. GET must not mutate target data.
-    advisor_ids = _get_existing_advisor_targets(db, list(all_names.values()))
+    advisor_ids = _get_existing_advisor_targets(db, list(all_names.values()), line=line)
 
     # 4. Compute prior year totals for seeding
     prior_earnings: dict[str, float] = {}
@@ -546,13 +546,22 @@ def save_monthly_targets(
 @router.delete("/api/admin/targets/monthly/{year}/reseed")
 def reseed_monthly_targets(
     year: int,
+    line: str = Query('Travel'),
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Delete system-seeded targets for a year. Admins must save/import new targets explicitly."""
+    """Delete system-seeded targets for a year/line. Scoped so clearing Insurance never touches Travel."""
     from sqlalchemy import or_
+    # Find advisor_target_ids that belong to this line
+    line_at_ids = (
+        db.query(AdvisorTarget.id)
+        .join(TargetUpload, AdvisorTarget.upload_id == TargetUpload.id)
+        .filter(TargetUpload.line == line)
+        .subquery()
+    )
     deleted = db.query(MonthlyAdvisorTarget).filter(
         MonthlyAdvisorTarget.year == year,
+        MonthlyAdvisorTarget.advisor_target_id.in_(line_at_ids),
         or_(
             MonthlyAdvisorTarget.updated_by_email == 'system-seed',
             MonthlyAdvisorTarget.updated_by_email.is_(None),
@@ -562,7 +571,7 @@ def reseed_monthly_targets(
     log_activity(
         db, action='monthly_targets_reseeded', category='targets',
         user=admin,
-        detail=f"Cleared {deleted} system-seeded targets for {year}; no read endpoint will auto-reseed",
-        metadata={'year': year, 'deleted': deleted},
+        detail=f"Cleared {deleted} system-seeded {line} targets for {year}",
+        metadata={'year': year, 'line': line, 'deleted': deleted},
     )
     return {'status': 'reseeded', 'deleted': deleted}

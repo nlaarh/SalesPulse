@@ -15,11 +15,12 @@ const NODE_POSITIONS: Record<string, string> = {
   salesforce:  'top-[5px] left-[50%] -translate-x-1/2',
   postgres:    'top-[80px] left-[10px]',
   app:         'top-[80px] right-[10px]',
-  pbi:         'top-[215px] left-[10px]',
-  openai:      'top-[215px] right-[10px]',
-  github:      'bottom-[5px] left-[10px]',
-  dr_postgres: 'bottom-[5px] left-[50%] -translate-x-1/2',
-  azure:       'bottom-[5px] right-[10px]',
+  pbi:         'top-[200px] left-[10px]',
+  openai:      'top-[200px] right-[10px]',
+  github:      'top-[310px] left-[10px]',
+  azure:       'top-[310px] right-[10px]',
+  dr_postgres: 'bottom-[5px] left-[35%] -translate-x-1/2',
+  dr_app:      'bottom-[5px] left-[65%] -translate-x-1/2',
 }
 
 type Props = {
@@ -91,17 +92,33 @@ function CableLines({ health }: { health: SystemHealthResponse }) {
     { key: 'salesforce',  d: 'M 320 90 L 320 130' },
     { key: 'postgres',    d: 'M 127 115 L 240 115 L 295 150' },
     { key: 'app',         d: 'M 513 115 L 400 115 L 345 150' },
-    { key: 'pbi',         d: 'M 127 210 L 240 210 L 290 195' },
-    { key: 'openai',      d: 'M 513 210 L 400 210 L 350 195' },
-    { key: 'github',      d: 'M 127 325 L 240 325 L 295 230' },
-    { key: 'dr_postgres', d: 'M 320 325 L 320 238' },
-    { key: 'azure',       d: 'M 513 325 L 400 325 L 345 230' },
+    { key: 'pbi',         d: 'M 127 195 L 240 195 L 290 195' },
+    { key: 'openai',      d: 'M 513 195 L 400 195 L 350 195' },
+    { key: 'github',      d: 'M 127 285 L 240 285 L 295 230' },
+    { key: 'azure',       d: 'M 513 285 L 400 285 L 345 230' },
+    { key: 'dr_postgres', d: 'M 224 325 L 270 325 L 300 238' },
+    { key: 'dr_app',      d: 'M 416 325 L 370 325 L 340 238' },
   ]
+
+  // Replication / Sync Line between DR nodes
+  const drDbOnline = health.services['dr_postgres']?.status === 'online'
+  const drAppOnline = health.services['dr_app']?.status === 'online'
+  const syncColor = (drDbOnline && drAppOnline) ? '#10B981' : '#F59E0B'
+  const syncPath = 'M 224 325 L 416 325'
+
   return (
     <svg viewBox="0 0 640 380" className="pointer-events-none absolute inset-0 z-0 h-full w-full">
       <defs>
         <style>{'@keyframes pulseLine{to{stroke-dashoffset:-20}}.line-pulse{stroke-dasharray:4 12;animation:pulseLine 1.2s linear infinite}'}</style>
       </defs>
+
+      {/* Background / Static sync line */}
+      <path d={syncPath} stroke={syncColor} strokeWidth="2.5" opacity="0.15" fill="none" />
+      {/* Animated sync replication pulse */}
+      {(drDbOnline || drAppOnline) && (
+        <path d={syncPath} stroke={syncColor} strokeWidth="1.5" strokeDasharray="6 6" className="line-pulse" fill="none" opacity="0.8" />
+      )}
+
       {lines.map(({ key, d }) => {
         const service = health.services[key]
         const color = statusTone(service?.status).hex
@@ -124,7 +141,8 @@ function CorePdu({ health }: { health: SystemHealthResponse }) {
     { key: 'pbi',         label: 'PBI', x: 290, y: 195, anchor: 'start' },
     { key: 'openai',      label: 'AI',  x: 350, y: 195, anchor: 'end' },
     { key: 'github',      label: 'GIT', x: 295, y: 230, anchor: 'start' },
-    { key: 'dr_postgres', label: 'DR',  x: 320, y: 238, anchor: 'middle' },
+    { key: 'dr_postgres', label: 'DR_DB',  x: 300, y: 238, anchor: 'middle' },
+    { key: 'dr_app',      label: 'DR_API', x: 340, y: 238, anchor: 'middle' },
     { key: 'azure',       label: 'VM',  x: 345, y: 230, anchor: 'end' },
   ]
   return (

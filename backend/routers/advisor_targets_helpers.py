@@ -85,16 +85,23 @@ def _get_comm_rate_accurate(line: str, year: int, cache_module, sf_query_all, WO
     return 0.187
 
 
-def _ensure_advisor_targets(db: Session, sf_names: list[str]):
+def _ensure_advisor_targets(db: Session, sf_names: list[str], line: str = 'Travel'):
     """Auto-create AdvisorTarget rows for SF advisors that don't have one yet.
-    Returns dict of sf_name_lower -> AdvisorTarget.id
+    Returns dict of sf_name_lower -> AdvisorTarget.id.
+    Uses a per-line __sf_auto__ upload so Travel and Insurance advisors stay isolated.
     """
-    # Get or create a system upload record
-    upload = db.query(TargetUpload).filter(TargetUpload.filename == '__sf_auto__').first()
+    # Get or create a line-scoped system upload record.
+    # One record per line prevents Insurance advisors from landing on a Travel upload
+    # (which was the old behaviour when a single __sf_auto__ record existed).
+    upload = (
+        db.query(TargetUpload)
+        .filter(TargetUpload.filename == '__sf_auto__', TargetUpload.line == line)
+        .first()
+    )
     if not upload:
         upload = TargetUpload(
             filename='__sf_auto__',
-            line='Travel',
+            line=line,
             uploaded_by_id=0,
             uploaded_by_email='system',
             advisor_count=0,
@@ -102,7 +109,7 @@ def _ensure_advisor_targets(db: Session, sf_names: list[str]):
         db.add(upload)
         db.flush()
 
-    # Get existing advisor targets
+    # Get existing advisor targets for this line's upload only
     existing = db.query(AdvisorTarget).filter(AdvisorTarget.upload_id == upload.id).all()
     existing_map = {at.sf_name.strip().lower(): at for at in existing}
 
@@ -128,12 +135,17 @@ def _ensure_advisor_targets(db: Session, sf_names: list[str]):
     return {at.sf_name.strip().lower(): at.id for at in existing_map.values()}
 
 
-def _get_existing_advisor_targets(db: Session, sf_names: list[str]):
-    """Read-only lookup for existing AdvisorTarget rows by Salesforce name."""
+def _get_existing_advisor_targets(db: Session, sf_names: list[str], line: str = 'Travel'):
+    """Read-only lookup for existing AdvisorTarget rows by Salesforce name, scoped to line."""
     wanted = {name.strip().lower() for name in sf_names if name and name.strip()}
     if not wanted:
         return {}
-    rows = db.query(AdvisorTarget).all()
+    rows = (
+        db.query(AdvisorTarget)
+        .join(TargetUpload, AdvisorTarget.upload_id == TargetUpload.id)
+        .filter(TargetUpload.line == line)
+        .all()
+    )
     return {
         row.sf_name.strip().lower(): row.id
         for row in rows

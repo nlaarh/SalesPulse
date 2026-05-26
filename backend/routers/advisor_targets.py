@@ -19,7 +19,37 @@ router = APIRouter()
 log = logging.getLogger('salesinsight.targets')
 
 
-# ── Helpers ─────────────────────────────────────────────────────────────────
+import threading
+_ALIASES_LOCK = threading.Lock()
+_DB_NAME_ALIASES = None
+
+def _get_db_aliases() -> dict[str, str]:
+    global _DB_NAME_ALIASES
+    if _DB_NAME_ALIASES is not None:
+        return _DB_NAME_ALIASES
+    with _ALIASES_LOCK:
+        if _DB_NAME_ALIASES is not None:
+            return _DB_NAME_ALIASES
+        try:
+            from database import SessionLocal
+            from data.models import AdvisorAlias
+            db = SessionLocal()
+            try:
+                rows = db.query(AdvisorAlias).all()
+                _DB_NAME_ALIASES = {r.alias_name.lower(): r.canonical_name for r in rows}
+            finally:
+                db.close()
+        except Exception as e:
+            log.warning(f"Failed to load advisor aliases from DB: {e}")
+            _DB_NAME_ALIASES = {}
+    return _DB_NAME_ALIASES
+
+
+def reload_aliases_cache():
+    global _DB_NAME_ALIASES
+    with _ALIASES_LOCK:
+        _DB_NAME_ALIASES = None
+
 
 def _normalize_name(raw: str) -> str:
     """Convert name to 'First Last' format, ignoring middle names/initials and resolving aliases."""
@@ -27,29 +57,8 @@ def _normalize_name(raw: str) -> str:
         return ""
     raw_clean = raw.strip()
     
-    # Map spelling variations and nicknames to canonical Salesforce User Names
-    NAME_ALIASES = {
-        "kevin fairbanks-bloom": "Kevin Bloom",
-        "bloom, kevin": "Kevin Bloom",
-        "fairbanks-bloom, kevin": "Kevin Bloom",
-        "michelle szalapak": "Michelle Szlapak",
-        "michelle a szlapak": "Michelle Szlapak",
-        "szalapak, michelle": "Michelle Szlapak",
-        "joanna voight": "Joanna Voigt",
-        "voight, joanna": "Joanna Voigt",
-        "joy kellner": "Joyce Foglia Kellner",
-        "kellner, joy": "Joyce Foglia Kellner",
-        "jacki nieman": "Jacqueline Nieman",
-        "nieman, jacki": "Jacqueline Nieman",
-        "beth steves": "Bethany Steves",
-        "steves, beth": "Bethany Steves",
-        "kelly harrienger": "Kelly Gonseth-Harrienger",
-        "harrienger, kelly": "Kelly Gonseth-Harrienger",
-        "cat mccarthy": "Catherine McCarthy",
-        "mccarthy, cat": "Catherine McCarthy",
-        "kim greene": "Kimberly Greene",
-        "greene, kim": "Kimberly Greene",
-    }
+    # Map spelling variations and nicknames dynamically from DB
+    NAME_ALIASES = _get_db_aliases()
 
     # 1. Check direct raw_lower match in aliases
     raw_lower = raw_clean.lower()
@@ -372,7 +381,12 @@ def targets_with_actuals(
     from routers.advisor_targets_monthly import _get_advisor_monthly_actuals
     from datetime import date as dt_date
 
-    upload = db.query(TargetUpload).order_by(TargetUpload.id.desc()).first()
+    upload = (
+        db.query(TargetUpload)
+        .filter(TargetUpload.line == line)
+        .order_by(TargetUpload.id.desc())
+        .first()
+    )
     if not upload:
         return {'advisors': [], 'branches': [], 'upload': None}
 

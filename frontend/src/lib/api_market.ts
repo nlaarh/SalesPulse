@@ -48,6 +48,46 @@ export async function fetchCrossSellInsights(
   return data as CrossSellInsights
 }
 
+// ── Membership Upgrade Insights ───────────────────────────────────────────────
+
+export interface MembershipUpgradeCustomer {
+  account_id: string
+  account_name: string
+  phone: string
+  email: string
+  city: string
+  ltv: string
+  current_tier: string
+  upgrade_to: string
+  total_spend: number
+  transaction_count: number
+  score: number
+  priority: 'high' | 'medium' | 'low'
+  reason: string
+  sf_link: string
+}
+
+export interface MembershipUpgradeInsights {
+  summary: {
+    total_upgradeable: number
+    upgrade_value: number
+    by_tier: Record<string, number>
+  }
+  customers: MembershipUpgradeCustomer[]
+  date_range: { start: string; end: string }
+}
+
+export async function fetchMembershipUpgrades(
+  period = 12,
+  startDate?: string | null,
+  endDate?: string | null,
+): Promise<MembershipUpgradeInsights> {
+  const { data } = await api.get('/api/cross-sell/membership-upgrades', {
+    params: withDates({ period }, startDate, endDate),
+  })
+  return data as MembershipUpgradeInsights
+}
+
 // ── Market Pulse ──────────────────────────────────────────────────────────────
 
 export interface MarketPulseAlert {
