@@ -173,6 +173,10 @@ export default function AgentDashboard() {
   const monthlyTarget = targetData?.monthlyTarget ?? null
   const c = useChartColors()
 
+  useEffect(() => {
+    setAchBase(line?.toLowerCase() === 'insurance' ? 'bookings' : 'commission')
+  }, [line])
+
   // Refetch achievement if bookings_actual is missing (stale pre-deploy state)
   function switchAchBase(base: 'commission' | 'bookings') {
     setAchBase(base)

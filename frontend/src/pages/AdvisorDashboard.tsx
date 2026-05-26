@@ -69,6 +69,10 @@ export default function AdvisorDashboard() {
   const [achievement, setAchievement] = useState<AchievementResponse | null>(null)
   const [achBase, setAchBase] = useState<'commission' | 'bookings'>(line.toLowerCase() === 'insurance' ? 'bookings' : 'commission')
 
+  useEffect(() => {
+    setAchBase(line.toLowerCase() === 'insurance' ? 'bookings' : 'commission')
+  }, [line])
+
   function switchAchBase(base: 'commission' | 'bookings') {
     setAchBase(base)
     if (base === 'bookings' && achievement?.current_month?.company?.bookings_actual === undefined) {
