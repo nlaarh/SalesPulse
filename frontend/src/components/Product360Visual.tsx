@@ -1,23 +1,24 @@
 import {
   Shield, Car, CreditCard, Plane, Heart,
-  AlertCircle, CheckCircle2,
+  CheckCircle2, ArrowUpCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { fmtDate } from '@/lib/formatters'
 
 export interface Product360 {
   membership: boolean; travel: boolean; insurance: boolean; medicare: boolean
-  driver: boolean; ers: boolean
+  driver: boolean; ers?: boolean; travel_insurance?: boolean
 }
 
 const PRODUCTS = [
-  { key: 'membership',          label: 'Membership Level', icon: CreditCard, color: 'text-blue-500',    bg: 'bg-blue-500/10',    border: 'border-blue-500/30' },
-  { key: 'travel',              label: 'Travel',        icon: Plane,      color: 'text-indigo-500',  bg: 'bg-indigo-500/10',  border: 'border-indigo-500/30' },
-  { key: 'insurance',           label: 'Insurance',     icon: Shield,     color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' },
-  { key: 'medicare',            label: 'Medicare',      icon: Heart,      color: 'text-rose-500',    bg: 'bg-rose-500/10',    border: 'border-rose-500/30' },
-  { key: 'driver',              label: 'Driver Pgm',    icon: Car,        color: 'text-orange-500',  bg: 'bg-orange-500/10',  border: 'border-orange-500/30' },
-  { key: 'ers',                 label: 'ERS',           icon: AlertCircle,color: 'text-cyan-500',    bg: 'bg-cyan-500/10',    border: 'border-cyan-500/30' },
+  { key: 'membership', label: 'Membership', icon: CreditCard, color: 'text-blue-500',    bg: 'bg-blue-500/10',    border: 'border-blue-500/30' },
+  { key: 'travel',     label: 'Travel',     icon: Plane,      color: 'text-indigo-500',  bg: 'bg-indigo-500/10',  border: 'border-indigo-500/30' },
+  { key: 'insurance',  label: 'Insurance',  icon: Shield,     color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' },
+  { key: 'medicare',   label: 'Medicare',   icon: Heart,      color: 'text-rose-500',    bg: 'bg-rose-500/10',    border: 'border-rose-500/30' },
+  { key: 'driver',     label: 'Driver Pgm', icon: Car,        color: 'text-orange-500',  bg: 'bg-orange-500/10',  border: 'border-orange-500/30' },
 ]
+
+const UPGRADEABLE_TIERS = new Set(['basic', 'plus', 'classic', 'b'])
 
 function formatLevel(level: string | null | undefined): string | null {
   if (!level) return null;
@@ -37,6 +38,7 @@ export default function Product360Visual({
   membershipLevel?: string | null
   expiryDate?: string | null
 }) {
+  const canUpgrade = p360.membership && UPGRADEABLE_TIERS.has((membershipLevel || '').toLowerCase())
   const total = PRODUCTS.length
   const owned = PRODUCTS.filter(p => p360[p.key as keyof Product360]).length
 
@@ -64,20 +66,31 @@ export default function Product360Visual({
                 {p.label}
               </span>
               {has ? (
-                p.key === 'membership' && membershipLevel ? (
-                  <div className="flex flex-col items-center gap-1.5 mt-0.5">
-                    <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded text-[11px] font-extrabold bg-blue-600 text-white dark:bg-blue-500 dark:text-white uppercase tracking-wider leading-none shadow-sm">
-                      {formatLevel(membershipLevel)}
-                    </span>
+                p.key === 'membership' ? (
+                  <div className="flex flex-col items-center gap-1 mt-0.5">
+                    {membershipLevel && (
+                      <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded text-[11px] font-extrabold bg-blue-600 text-white dark:bg-blue-500 dark:text-white uppercase tracking-wider leading-none shadow-sm">
+                        {formatLevel(membershipLevel)}
+                      </span>
+                    )}
                     <span className="text-[10px] text-blue-950 dark:text-blue-100 font-bold leading-none whitespace-nowrap">
                       Exp: {expiryDate ? fmtDate(expiryDate) : '—'}
                     </span>
+                    {canUpgrade && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-[9px] font-semibold text-amber-700 dark:text-amber-400 whitespace-nowrap">
+                        <ArrowUpCircle className="h-2.5 w-2.5" />Upgrade available
+                      </span>
+                    )}
                   </div>
                 ) : (
                   <CheckCircle2 className="h-3 w-3 text-emerald-500" />
                 )
               ) : (
-                <span className="h-3 w-3 rounded-full border border-dashed border-muted-foreground/30" />
+                p.key === 'membership' ? (
+                  <span className="text-[9px] font-semibold text-blue-500/70 text-center leading-tight">New membership</span>
+                ) : (
+                  <span className="h-3 w-3 rounded-full border border-dashed border-muted-foreground/30" />
+                )
               )}
             </div>
           )

@@ -303,8 +303,8 @@ export default function CustomerProfile() {
           </div>
         </div>
 
-        {/* Membership + vehicles strip */}
-        {(acct.insurance_customer_id || acct.ers_calls_made != null || vehicles.length > 0) && (
+        {/* Vehicles + insurance strip */}
+        {(acct.insurance_customer_id || vehicles.length > 0) && (
           <div className="mt-4 pt-4 border-t border-border flex flex-wrap gap-3">
             {acct.insurance_customer_id && (
               <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
@@ -313,17 +313,6 @@ export default function CustomerProfile() {
                   <p className="text-[11px] font-bold text-emerald-600">Insurance</p>
                   <p className="text-[10px] text-muted-foreground">
                     {acct.total_premiums ? fmt$(acct.total_premiums) + '/yr' : `#${acct.insurance_customer_id}`}
-                  </p>
-                </div>
-              </div>
-            )}
-            {acct.ers_calls_made != null && (
-              <div className="flex items-center gap-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 px-3 py-2">
-                <AlertCircle className="h-4 w-4 text-cyan-500" />
-                <div>
-                  <p className="text-[11px] font-bold text-cyan-600">ERS Calls</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {acct.ers_calls_made} used / {acct.ers_calls_available ?? '?'} avail
                   </p>
                 </div>
               </div>

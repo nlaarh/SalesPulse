@@ -73,17 +73,23 @@ def get_upsell_analysis(
     if not p360.get('travel', False):
         eligible_products.append("Travel bookings (Concierge agency services, flights, hotels, vacation packages)")
 
-    # 3b. Travel insurance — only if they don't already have it
-    if not p360.get('travel_insurance', False):
-        eligible_products.append("Travel Insurance (trip protection / travel insurance policy)")
+    # 3b. Travel insurance — ONLY if they are an active traveler (have travel history) AND don't already have it
+    has_travel = p360.get('travel', False)
+    has_travel_insurance = p360.get('travel_insurance', False)
+    if has_travel and not has_travel_insurance:
+        eligible_products.append("Travel Insurance (trip protection for their AAA travel bookings — they travel but have no coverage)")
 
     # 4. Medicare supplement (strictly age-dependent, only if >= 65 and missing)
     if member_age is not None and member_age >= 65 and not p360.get('medicare', False):
         eligible_products.append("Medicare Supplement/Advantage plans")
 
-    # 5. Driver Safety Program — only for members 55+ who haven't enrolled
-    if member_age is not None and member_age >= 55 and not p360.get('driver', False):
-        eligible_products.append("Driver Safety Program (AAA mature/senior driver course for members 55+, may qualify for auto insurance discount)")
+    # 5. Driver Safety Program — requires: member, age 55+, has vehicle or auto insurance, not already enrolled
+    has_vehicle = bool(profile_data.get('vehicles'))
+    has_auto = p360.get('insurance', False)
+    if (is_member and member_age is not None and member_age >= 55
+            and not p360.get('driver', False)
+            and (has_vehicle or has_auto)):
+        eligible_products.append("Driver Safety Program (AAA mature driver course — member is 55+, has vehicle/insurance, course may qualify them for auto insurance discount)")
 
     # Build active products list
     active_products = []
@@ -177,8 +183,8 @@ def get_upsell_analysis(
 - Do NOT offer products the member already owns (see PRODUCT HOLDINGS above).
 - ERS (Emergency Road Assistance) is AUTOMATICALLY INCLUDED with all AAA membership tiers. NEVER recommend ERS as a separate product to members — they already have it.
 - Recommending Medicare Supplement/Advantage plans is STRICTLY prohibited unless the member is age 65 or older.
-- Driver Safety Programs: ONLY recommend for members age 55 or older.
-- Travel Insurance: ONLY recommend if the customer does NOT already have travel insurance (check product holdings).
+- Driver Safety Programs: ONLY recommend if the customer is a member, age 55+, AND has a vehicle or auto insurance. Never recommend to non-members or people without vehicles.
+- Travel Insurance: ONLY recommend if the customer has an active travel history with AAA (they have booked trips) AND does NOT already have travel insurance. Never recommend travel insurance to someone who has never booked travel.
 - If they do not have a membership, the FIRST priority is a New Membership.
 - If they have a membership but it is Basic, Plus, or Classic, the FIRST priority is a Membership Upgrade — recommend this before any other cross-sell.
 
