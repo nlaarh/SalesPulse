@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 import logging
+import cache
 from auth import get_current_user
 from models import User
 from routers.ai_config import call_ai, get_ai_config
@@ -13,10 +14,11 @@ log = logging.getLogger('salesinsight.customer')
 @router.post('/api/customers/{account_id}/upsell')
 def get_upsell_analysis(
     account_id: str,
+    refresh: bool = False,
     _user: User = Depends(get_current_user),
 ):
     """Generate AI upsell recommendations for this customer."""
-    profile_data = get_customer_profile(account_id, _user)
+    profile_data = get_customer_profile(account_id, refresh=refresh, _user=_user)
     if 'error' in profile_data:
         return profile_data
 
@@ -25,13 +27,7 @@ def get_upsell_analysis(
     txns    = profile_data['transactions']
     mships  = profile_data['memberships']
 
-    active_products = [k.replace('_', ' ').title() for k, v in p360.items() if v]
-    missing = [k.replace('_', ' ').title() for k, v in p360.items() if not v]
-    recent_txns = '\n'.join(
-        f"- {t['created_date']}: {t['record_type']} — {t['name']} — ${t['amount'] or 0:,.0f} ({t['stage']})"
-        for t in txns[:10]
-    )
-    current_membership = mships[0]['level'] if mships else 'Unknown'
+    current_membership = mships[0]['level'] if mships else 'None'
     member_since = acct.get('member_since', 'Unknown')
     mpi = acct.get('mpi') or 0
 
@@ -47,90 +43,182 @@ def get_upsell_analysis(
         except (ValueError, TypeError):
             pass
 
+    # Calculate tenure safely
+    tenure_years = 'N/A'
+    if member_since and member_since != 'Unknown':
+        try:
+            if hasattr(member_since, 'year'):
+                tenure_years = str(date.today().year - member_since.year)
+            elif isinstance(member_since, str):
+                tenure_years = str(date.today().year - date.fromisoformat(member_since[:10]).year)
+        except Exception:
+            pass
+
+    # Build eligibility constraints dynamically
+    eligible_products = []
+    
+    # 1. Membership status and upgrade rules
+    is_member = p360.get('membership', False) or acct.get('member_status') == 'A'
+    if not is_member:
+        eligible_products.append("New Membership (Basic, Plus, or Premier)")
+    elif current_membership in ('Basic', 'Plus', 'Classic', 'B') and current_membership != 'Premier':
+        target_tiers = "Plus or Premier" if current_membership in ('Basic', 'Classic', 'B') else "Premier"
+        eligible_products.append(f"Membership Upgrade (Current: {current_membership} → Target: {target_tiers})")
+
+    # 2. Insurance cross-sell
+    if not p360.get('insurance', False):
+        eligible_products.append("Insurance (Auto, Home, or Umbrella)")
+
+    # 3. Travel cross-sell
+    if not p360.get('travel', False):
+        eligible_products.append("Travel bookings (Concierge agency services, flights, hotels, vacation packages)")
+
+    # 3b. Travel insurance — only if they don't already have it
+    if not p360.get('travel_insurance', False):
+        eligible_products.append("Travel Insurance (trip protection / travel insurance policy)")
+
+    # 4. Medicare supplement (strictly age-dependent, only if >= 65 and missing)
+    if member_age is not None and member_age >= 65 and not p360.get('medicare', False):
+        eligible_products.append("Medicare Supplement/Advantage plans")
+
+    # 5. Driver Safety Program — only for members 55+ who haven't enrolled
+    if member_age is not None and member_age >= 55 and not p360.get('driver', False):
+        eligible_products.append("Driver Safety Program (AAA mature/senior driver course for members 55+, may qualify for auto insurance discount)")
+
+    # Build active products list
+    active_products = []
+    if is_member:
+        # ERS is included with all membership tiers — always list it here so AI never treats it as a gap
+        active_products.append(f"Membership (Tier: {current_membership or 'Standard'}) — Emergency Road Service (ERS) included, {ers_calls_available} calls/year ({ers_calls_made} used this year)")
+    if p360.get('insurance', False):
+        active_products.append("Insurance (Auto, Home, or Umbrella)")
+    if p360.get('travel', False):
+        active_products.append("Travel bookings")
+    if p360.get('travel_insurance', False):
+        active_products.append("Travel Insurance")
+    if p360.get('medicare', False):
+        active_products.append("Medicare Supplement/Advantage")
+    if p360.get('driver', False):
+        active_products.append("Driver Safety Program")
+
+    # Group and aggregate historical transaction info
+    travel_opps = profile_data.get('opportunities', {}).get('Travel', [])
+    insurance_opps = profile_data.get('opportunities', {}).get('Insurance', [])
+    
+    won_travel_rev = sum(o.get('amount') or 0 for o in travel_opps if o.get('stage') in ('Closed Won', 'Invoice'))
+    won_ins_rev = sum(o.get('amount') or 0 for o in insurance_opps if o.get('stage') == 'Closed Won')
+    total_spent_rev = won_travel_rev + won_ins_rev
+
+    # Open opportunities to prioritize closing
+    open_opps = [
+        t for t in txns
+        if t.get('stage') not in ('Closed Won', 'Invoice', 'Closed Lost')
+    ]
+    open_opps_str = '\n'.join(
+        f"- Opportunity: {o['name']} ({o['record_type']}) — Stage: {o['stage']} — Amount: ${o['amount'] or 0:,.0f} — Owner: {o['owner'] or 'N/A'}"
+        for o in open_opps
+    ) if open_opps else "No active open opportunities."
+
+    # Recent won history for context
+    won_txns = [
+        t for t in txns
+        if t.get('stage') in ('Closed Won', 'Invoice')
+    ]
+    recent_won_str = '\n'.join(
+        f"- {t['created_date']}: {t['record_type']} — {t['name']} — ${t['amount'] or 0:,.0f}"
+        for t in won_txns[:5]
+    ) if won_txns else "No recent won transactions."
+
+    ers_calls_made = acct.get('ers_calls_made') or 0
+    ers_calls_available = acct.get('ers_calls_available') or 4
+    ltv = acct.get('ltv') or 'Standard'
+
+    # Reconstruct state signature to invalidate cache if the customer profile changes
+    state_parts = [
+        acct.get('member_status') or '',
+        current_membership or '',
+        str(mpi),
+        str(acct.get('total_premiums') or 0),
+        str(ltv),
+        "_".join(active_products),
+        str(len(txns)),
+    ]
+    state_sig = "_".join(state_parts).replace(" ", "_")
+    ai_key = f"customer_upsell_{account_id}_{state_sig}"
+    print(f"Upsell Cache Key: {ai_key}")
+
+    if refresh:
+        cache.invalidate(ai_key)
+
     cfg = get_ai_config()
     if not cfg.get('api_key'):
         return {'analysis': None, 'error': 'AI not configured'}
 
-    age_line = f"- Age: {member_age}" if member_age else "- Age: Unknown"
-    # Build age-appropriateness rules
-    age_rules = []
-    if member_age is not None:
-        if member_age < 25:
-            age_rules.append("- Young member: emphasize driver training, roadside assistance (ERS), and basic auto insurance.")
-            age_rules.append("- Do NOT recommend Medicare, financial services, or home insurance — not relevant at this age.")
-        elif member_age < 40:
-            age_rules.append("- Young professional: auto insurance, home insurance, travel, financial services, and membership upgrades are appropriate.")
-            age_rules.append("- Do NOT recommend Medicare — member is far from eligibility.")
-        elif member_age < 60:
-            age_rules.append("- Mid-career member: all products EXCEPT Medicare are appropriate.")
-            age_rules.append("- Do NOT recommend Medicare — member is under 60 and not yet eligible.")
-        else:  # 60+
-            age_rules.append("- Senior member: Medicare IS age-appropriate — recommend if not already held.")
-            age_rules.append("- Travel insurance, financial services, and ERS are especially relevant.")
-    age_instructions = '\n'.join(age_rules) if age_rules else "- No age data available; omit age-specific products like Medicare unless the member already holds them."
+    prompt = f"""You are a senior AAA strategic growth analyst. Conduct a comprehensive customer 360 review for this member to generate highly targeted cross-sell and upsell recommendations.
 
-    # Build explicit product ownership rules
-    already_held_rules = []
-    if active_products:
-        already_held_rules.append(f"- Member ALREADY owns: {', '.join(active_products)}. Do NOT suggest these as new cross-sell — instead suggest upgrades/enhancements within these lines if applicable.")
-    if missing:
-        already_held_rules.append(f"- Member does NOT yet have: {', '.join(missing)}. These are your cross-sell targets (subject to age rules).")
-    if current_membership == 'Premier':
-        already_held_rules.append("- Member is already Premier level — do NOT suggest membership upgrade. Instead focus on product cross-sell.")
-    elif current_membership == 'Plus':
-        already_held_rules.append("- Member is on Plus — suggest Premier upgrade for enhanced benefits.")
-    elif current_membership in ('Basic', 'Classic'):
-        already_held_rules.append("- Member is on Basic/Classic — suggest Plus or Premier upgrade.")
-    product_rules = '\n'.join(already_held_rules) if already_held_rules else ''
-
-    prompt = f"""You are a AAA sales advisor analyzing a member profile to identify upsell and cross-sell opportunities.
-
-## Member Profile
+## CUSTOMER PROFILE & METRICS
 - Name: {acct['name']}
-{age_line}
-- Member Since: {member_since}
-- Membership Level: {current_membership}
-- Member Product Index (MPI): {mpi} (higher = more engaged, max ~5)
-- Region: {acct.get('region', 'N/A')}
+- Age: {f"{member_age} years old" if member_age else "Unknown"}
+- Member Since: {member_since} (Tenure: {tenure_years} years)
+- Current Membership Tier: {current_membership}
+- Lifetime Value (LTV) Grade: {ltv} (A is highest, E is lowest)
+- Member Product Index (MPI): {mpi}/5
+- Total Won Travel Bookings: ${won_travel_rev:,.2f} ({len([o for o in travel_opps if o.get('stage') in ('Closed Won', 'Invoice')])} won trips)
+- Total Won Insurance Policies: ${won_ins_rev:,.2f} ({len([o for o in insurance_opps if o.get('stage') == 'Closed Won'])} won policies)
+- Total Historical Won Revenue: ${total_spent_rev:,.2f}
+- Annual Household Insurance Premiums: ${acct.get('total_premiums') or 0:,.2f}
+- Roadside Assistance (ERS): {ers_calls_made} of {ers_calls_available} annual calls used {'(included with membership — NOT a separate upsell)' if is_member else '(not a member)'}
+
+## PRODUCT HOLDINGS (Do NOT recommend these!)
 - Active Products: {', '.join(active_products) if active_products else 'None'}
-- Products NOT yet held: {', '.join(missing) if missing else 'None'}
-- Insurance Customer Since: {acct.get('insurance_since', 'N/A')}
-- Total Household Premiums: ${acct.get('total_premiums') or 0:,.0f}
 
-## Recent Transactions (last 10)
-{recent_txns if recent_txns else 'No transactions found'}
+## STRICT ELIGIBILITY RULES
+- You MUST ONLY recommend products listed under "ELIGIBLE PRODUCTS FOR CROSS-SELL/UPSELL" below.
+- Do NOT offer products the member already owns (see PRODUCT HOLDINGS above).
+- ERS (Emergency Road Assistance) is AUTOMATICALLY INCLUDED with all AAA membership tiers. NEVER recommend ERS as a separate product to members — they already have it.
+- Recommending Medicare Supplement/Advantage plans is STRICTLY prohibited unless the member is age 65 or older.
+- Driver Safety Programs: ONLY recommend for members age 55 or older.
+- Travel Insurance: ONLY recommend if the customer does NOT already have travel insurance (check product holdings).
+- If they do not have a membership, the FIRST priority is a New Membership.
+- If they have a membership but it is Basic, Plus, or Classic, the FIRST priority is a Membership Upgrade — recommend this before any other cross-sell.
 
-## STRICT RULES — You MUST follow these
+## ELIGIBLE PRODUCTS FOR CROSS-SELL/UPSELL (Choose only from this list!)
+{chr(10).join(f"- {p}" for p in eligible_products) if eligible_products else "- None (Customer is fully penetrated across all eligible products)"}
 
-### Age-Appropriateness (MANDATORY)
-{age_instructions}
+## DEALS & PIPELINE TO CLOSE
+{open_opps_str}
 
-### Product Ownership (MANDATORY)
-{product_rules}
-- NEVER recommend a product the member already has as a new cross-sell.
-- Only recommend products from the "NOT yet held" list above (subject to age appropriateness).
-- For products the member already owns, you may suggest upgrades or enhanced coverage — but clearly label these as "enhancements" not new products.
+## RECENT WON HISTORY
+{recent_won_str}
 
-## Your Task
-Provide concise upsell/cross-sell recommendations. Use ## headers and bullet points.
-Structure as:
-1. **Membership Upgrade** — only if not already on Premier
-2. **Cross-Sell Opportunities** — products they DON'T have yet, filtered by age appropriateness
-3. **Enhancement Opportunities** — upgrades to products they already own
-4. **Specific Next Actions** — what the advisor should do based on transaction history
-5. **Risk Signals** — any signs of churn or disengagement
+## YOUR TASK
+Write a highly structured, professional, and strategic briefing for the sales advisor. Use **Markdown formatting** with bold text for emphasis.
+You MUST structure your response around the following 4 sections exactly:
 
-Be specific, actionable, and brief. Max 300 words."""
+### 1. Customer Value & Loyalty Assessment
+Analyze the customer's loyalty, tenure, and total economic value (won revenue, household premiums, and LTV grade). Explain why this customer is highly important to AAA.
 
-    try:
-        text = call_ai(
+### 2. Next Best Product (NBP) Recommendations
+Rank the top 1-2 eligible products that the customer qualifies for and does NOT currently hold. Detail the precise reasoning of why they qualify and why it benefits them. Enforce the eligibility rules (such as age for Medicare, and current tier for upgrades).
+
+### 3. Actionable Next Steps
+Provide concrete, step-by-step next actions for the advisor. If there are active open opportunities, prioritize those to get them closed. Otherwise, pitch the next best product or upgrade, referencing their recent transactions or road service usage.
+
+### 4. Risk & Retention Signals
+Evaluate potential churn risk factors such as lapsed/expired membership, low engagement, or upcoming renewal dates. Note ERS usage ({ers_calls_made}/{ers_calls_available} calls) only as an engagement signal, NOT as a product gap.
+
+Keep the tone professional, direct, and actionable. Limit your response to 300 words."""
+
+    def _fetch_ai():
+        return call_ai(
             messages=[{'role': 'user', 'content': prompt}],
             max_tokens=600,
             cfg=cfg,
         )
+
+    try:
+        text = cache.cached_query(ai_key, _fetch_ai, ttl=86400, disk_ttl=86400)
         return {'analysis': text}
     except Exception as e:
         log.error(f'Upsell AI error: {e}')
         return {'analysis': None, 'error': str(e)}
-
-

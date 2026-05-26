@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 import logging
 import cache
 from auth import get_current_user
@@ -16,9 +16,12 @@ log = logging.getLogger('salesinsight.customer')
 @router.get('/api/customers/{account_id}')
 def get_customer_profile(
     account_id: str,
+    refresh: bool = False,
     _user: User = Depends(get_current_user),
 ):
     key = f"customer_360_{account_id}"
+    if refresh:
+        cache.invalidate(key)
 
     def _fetch():
         return _fetch_customer_profile(account_id)
@@ -114,13 +117,19 @@ def _fetch_customer_profile(account_id: str):
     active_mship = any(m.get('Status') == 'A' for m in mships)
     member_status = acct.get('Member_Status__c')
     ers_calls = acct.get('ERS_Calls_Made_CP__c') or 0
+    # Travel insurance: Insurance opps with 'travel' in the opportunity name
+    ins_opp_names = [
+        (o.get('Name') or '').lower() for o in opps
+        if (o.get('RecordType') or {}).get('Name') == 'Insurance'
+    ]
     product_360 = {
-        'membership': active_mship or member_status == 'A',
-        'travel':     'Travel' in opp_types,
-        'insurance':  'Insurance' in opp_types or bool(acct.get('Insuance_Customer_ID__c')),
-        'medicare':   'Medicare' in opp_types,
-        'driver':     'Driver Programs' in opp_types,
-        'ers':        ers_calls > 0,
+        'membership':       active_mship or member_status == 'A',
+        'travel':           'Travel' in opp_types,
+        'travel_insurance': any('travel' in n for n in ins_opp_names),
+        'insurance':        'Insurance' in opp_types or bool(acct.get('Insuance_Customer_ID__c')),
+        'medicare':         'Medicare' in opp_types,
+        'driver':           'Driver Programs' in opp_types,
+        'ers':              ers_calls > 0,
     }
 
     # Transactions — last 30 opportunities as history
