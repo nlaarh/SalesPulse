@@ -63,7 +63,7 @@ export default function Layout() {
   // Filter nav entries that are tagged adminOnly (e.g. Strategic Insights)
   // so managers don't see them. Backend remains authoritative.
   const externalNav = NAV_EXTERNAL.filter(
-    (n) => !('adminOnly' in n && n.adminOnly) || isAdminOrSuperadmin,
+    (n) => !('adminOnly' in n && n.adminOnly) || isAdminOrSuperadmin || user?.role === 'executive',
   )
   const navigate = useNavigate()
 
