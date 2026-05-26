@@ -106,7 +106,13 @@ export default function OverviewTab({
   const currentMonthIdx  = new Date().getMonth()
 
   const annualPct = achBase === 'bookings'
-    ? (achievement?.yearly?.company?.bookings_achievement_pct ?? null)
+    ? (() => {
+        const c = achievement?.yearly?.company
+        if (!c) return null
+        const t = c.bookings_target ?? c.target
+        const a = c.bookings_actual ?? c.actual
+        return t > 0 ? Math.round((a / t) * 100) : (c.achievement_pct ?? null)
+      })()
     : (achievement?.yearly?.company?.achievement_pct ?? null)
   const pacePct      = achievement?.yearly?.pace_pct ?? 0
 
