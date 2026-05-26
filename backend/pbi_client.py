@@ -258,11 +258,11 @@ _T_SALES  = "Gross Sales Amount"
 _T_CODE   = "Primary Advisor Teller Code"
 
 
-def travel_by_advisor(sd: str, ed: str) -> list[dict]:
+def travel_by_advisor(sd: str, ed: str, extra_filter: str = "") -> list[dict]:
     return _by_advisor(
         PBI_WS, TRAVEL_DS, _T_TABLE,
         _T_NAME, _T_BRANCH, _T_DATE, _T_COMM, _T_SALES,
-        sd, ed, code_col=_T_CODE
+        sd, ed, extra_filter, code_col=_T_CODE
     )
 
 
@@ -282,11 +282,11 @@ def travel_by_branch_day(sd: str, ed: str) -> list[dict]:
     )
 
 
-def travel_by_advisor_day(sd: str, ed: str) -> list[dict]:
+def travel_by_advisor_day(sd: str, ed: str, extra_filter: str = "") -> list[dict]:
     return _by_advisor_day(
         PBI_WS, TRAVEL_DS, _T_TABLE,
         _T_NAME, _T_BRANCH, _T_DATE, _T_COMM, _T_SALES,
-        sd, ed, code_col=_T_CODE
+        sd, ed, extra_filter, code_col=_T_CODE
     )
 
 
@@ -303,11 +303,14 @@ _I_NEWB_FILTER = _I_FILTER + " && 'insurance_transactions_f'[transaction_type] =
 _I_CODE        = "inserted_by_code"
 
 
-def insurance_by_advisor(sd: str, ed: str) -> list[dict]:
+def insurance_by_advisor(sd: str, ed: str, extra_filter: str = "") -> list[dict]:
+    combined = _I_FILTER
+    if extra_filter:
+        combined = f"{combined} && {extra_filter}"
     return _by_advisor(
         PBI_WS, INSURANCE_DS, _I_TABLE,
         _I_NAME, _I_BRANCH, _I_DATE, _I_COMM, _I_SALES,
-        sd, ed, _I_FILTER, code_col=_I_CODE
+        sd, ed, combined, code_col=_I_CODE
     )
 
 
@@ -327,18 +330,24 @@ def insurance_by_branch_day(sd: str, ed: str) -> list[dict]:
     )
 
 
-def insurance_by_advisor_day(sd: str, ed: str) -> list[dict]:
+def insurance_by_advisor_day(sd: str, ed: str, extra_filter: str = "") -> list[dict]:
+    combined = _I_FILTER
+    if extra_filter:
+        combined = f"{combined} && {extra_filter}"
     return _by_advisor_day(
         PBI_WS, INSURANCE_DS, _I_TABLE,
         _I_NAME, _I_BRANCH, _I_DATE, _I_COMM, _I_SALES,
-        sd, ed, _I_FILTER, code_col=_I_CODE
+        sd, ed, combined, code_col=_I_CODE
     )
 
 
-def insurance_nbus_by_advisor(sd: str, ed: str) -> list[dict]:
-    """NEWB-only transactions: sales = new business written premium, commission ≈ 0."""
+def insurance_nbus_by_advisor(sd: str, ed: str, extra_filter: str = "") -> list[dict]:
+    """Insurance NEWB-only transactions: sales = new business written premium, commission ≈ 0."""
+    combined = _I_NEWB_FILTER
+    if extra_filter:
+        combined = f"{combined} && {extra_filter}"
     return _by_advisor(
         PBI_WS, INSURANCE_DS, _I_TABLE,
         _I_NAME, _I_BRANCH, _I_DATE, _I_COMM, _I_SALES,
-        sd, ed, _I_NEWB_FILTER, code_col=_I_CODE
+        sd, ed, combined, code_col=_I_CODE
     )

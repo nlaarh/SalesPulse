@@ -105,7 +105,9 @@ export default function OverviewTab({
   const billedPct        = summary.bookings_yoy_pct
   const currentMonthIdx  = new Date().getMonth()
 
-  const annualPct    = achievement?.yearly?.company?.achievement_pct ?? null
+  const annualPct = achBase === 'bookings'
+    ? (achievement?.yearly?.company?.bookings_achievement_pct ?? null)
+    : (achievement?.yearly?.company?.achievement_pct ?? null)
   const pacePct      = achievement?.yearly?.pace_pct ?? 0
 
   // Always use the current calendar month entry from monthlyTargets (never period-aggregate)

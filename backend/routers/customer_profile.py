@@ -12,12 +12,13 @@ from sf_client import sf_parallel, sf_query_all, sf_instance_url, sf_sosl
 from routers.ai_config import call_ai, get_ai_config
 import cache
 from shared import VALID_LINES, line_filter_opp as _line_filter, resolve_dates as _resolve_dates, six_months_ago
-from constants import CACHE_TTL_HOUR
+from constants import CACHE_TTL_HOUR, CACHE_TTL_SHORT
 
 router = APIRouter()
 log = logging.getLogger('salesinsight.customer')
 
 MEMBER_STATUS = {'A': 'Active', 'X': 'Expired', 'C': 'Cancelled', 'L': 'Lapsed', 'P': 'Pending'}
+
 
 # ── Top Customers by Revenue ─────────────────────────────────────────────────
 
@@ -111,132 +112,148 @@ def search_customers(
 @router.get('/api/customers/{account_id}')
 def get_customer_profile(
     account_id: str,
+    *,
+    refresh: bool = False,
     _user: User = Depends(get_current_user),
 ):
-    try:
-        data = sf_parallel(
-            account=f"""
-                SELECT Id, Name, PersonEmail, Phone, PersonBirthdate,
-                       Account_Member_ID__c, Member_Status__c,
-                       Account_Member_Since__c, ImportantActiveMemCoverage__c,
-                       ImportantActiveMemExpiryDate__c,
-                       Insuance_Customer_ID__c, EPIC_GUID__c,
-                       Region__c, MPI__c, LTV__c,
-                       FinServ__InsuranceCustomerSince__c,
-                       FinServ__TotalHouseholdPremiums__c,
-                       BillingStreet, BillingCity, BillingState, BillingPostalCode,
-                       ERS_Calls_Made_CP__c, ERS_Calls_Available_CP__c
-                FROM Account WHERE Id = '{account_id}' LIMIT 1
-            """,
-            memberships=f"""
-                SELECT Id, Name, Status, SerialNumber, PurchaseDate, UsageEndDate, Price
-                FROM Asset
-                WHERE AccountId = '{account_id}' AND RecordType.Name = 'Membership'
-                ORDER BY PurchaseDate DESC NULLS LAST LIMIT 10
-            """,
-            vehicles=f"""
-                SELECT Id, Name, Status, SerialNumber, Description
-                FROM Asset
-                WHERE AccountId = '{account_id}' AND RecordType.Name = 'Vehicle'
-                ORDER BY Name LIMIT 10
-            """,
-            opportunities=f"""
-                SELECT Id, Name, StageName, Amount, Earned_Commission_Amount__c,
-                       CloseDate, CreatedDate, RecordType.Name,
-                       Destination_Region__c, Axis_Trip_ID__c, Owner.Name
-                FROM Opportunity
-                WHERE AccountId = '{account_id}'
-                  AND (StageName IN ('Closed Won','Invoice') OR CloseDate >= {six_months_ago()})
-                ORDER BY CreatedDate DESC LIMIT 60
-            """,
-            leads=f"""
-                SELECT Id, Name, Status, IsConverted, ConvertedDate, CreatedDate,
-                       RecordType.Name, Owner.Name, LeadSource
-                FROM Lead
-                WHERE ConvertedAccountId = '{account_id}'
-                ORDER BY CreatedDate DESC LIMIT 30
-            """,
-        )
-    except Exception as e:
-        log.error(f'Customer profile error {account_id}: {e}')
-        return {'error': str(e)}
+    key = f"customer_profile_{account_id}"
 
-    acct_list = data.get('account') or []
-    if not acct_list:
-        return {'error': 'Customer not found'}
-
-    acct   = acct_list[0]
-    mships = data.get('memberships') or []
-    vehs   = data.get('vehicles') or []
-    opps   = data.get('opportunities') or []
-    raw_leads = data.get('leads') or []
-
-    # Also try email-based lead lookup for unlinked leads
-    email = acct.get('PersonEmail')
-    if email:
+    def fetch():
         try:
-            email_leads = sf_query_all(f"""
-                SELECT Id, Name, Status, IsConverted, ConvertedDate, CreatedDate,
-                       RecordType.Name, Owner.Name, LeadSource
-                FROM Lead
-                WHERE Email = '{email}' AND ConvertedAccountId = null
-                ORDER BY CreatedDate DESC LIMIT 10
-            """)
-            # Deduplicate by Id
-            seen = {l['Id'] for l in raw_leads}
-            for l in email_leads:
-                if l.get('Id') not in seen:
-                    raw_leads.append(l)
+            data = sf_parallel(
+                account=f"""
+                    SELECT Id, Name, PersonEmail, Phone, PersonBirthdate,
+                           Account_Member_ID__c, Member_Status__c,
+                           Account_Member_Since__c, ImportantActiveMemCoverage__c,
+                           ImportantActiveMemExpiryDate__c,
+                           Insuance_Customer_ID__c, EPIC_GUID__c,
+                           Region__c, MPI__c, LTV__c,
+                           FinServ__InsuranceCustomerSince__c,
+                           FinServ__TotalHouseholdPremiums__c,
+                           BillingStreet, BillingCity, BillingState, BillingPostalCode,
+                           ERS_Calls_Made_CP__c, ERS_Calls_Available_CP__c
+                    FROM Account WHERE Id = '{account_id}' LIMIT 1
+                """,
+                memberships=f"""
+                    SELECT Id, Name, Status, SerialNumber, PurchaseDate, UsageEndDate, Price
+                    FROM Asset
+                    WHERE AccountId = '{account_id}' AND RecordType.Name = 'Membership'
+                    ORDER BY PurchaseDate DESC NULLS LAST LIMIT 10
+                """,
+                vehicles=f"""
+                    SELECT Id, Name, Status, SerialNumber, Description
+                    FROM Asset
+                    WHERE AccountId = '{account_id}' AND RecordType.Name = 'Vehicle'
+                    ORDER BY Name LIMIT 10
+                """,
+                opportunities=f"""
+                    SELECT Id, Name, StageName, Amount, Earned_Commission_Amount__c,
+                           CloseDate, CreatedDate, RecordType.Name,
+                           Destination_Region__c, Axis_Trip_ID__c, Owner.Name
+                    FROM Opportunity
+                    WHERE AccountId = '{account_id}'
+                      AND (StageName IN ('Closed Won','Invoice','In Process') OR CloseDate >= {six_months_ago()})
+                    ORDER BY CreatedDate DESC LIMIT 60
+                """,
+                leads=f"""
+                    SELECT Id, Name, Status, IsConverted, ConvertedDate, CreatedDate,
+                           RecordType.Name, Owner.Name, LeadSource
+                    FROM Lead
+                    WHERE ConvertedAccountId = '{account_id}'
+                    ORDER BY CreatedDate DESC LIMIT 30
+                """,
+            )
+        except Exception as e:
+            log.error(f'Customer profile error {account_id}: {e}')
+            return {'error': str(e)}
+
+        acct_list = data.get('account') or []
+        if not acct_list:
+            return {'error': 'Customer not found'}
+
+        acct   = acct_list[0]
+        mships = data.get('memberships') or []
+        vehs   = data.get('vehicles') or []
+        opps   = data.get('opportunities') or []
+        raw_leads = data.get('leads') or []
+
+        # Also try email-based lead lookup for unlinked leads
+        email = acct.get('PersonEmail')
+        if email:
+            try:
+                email_leads = sf_query_all(f"""
+                    SELECT Id, Name, Status, IsConverted, ConvertedDate, CreatedDate,
+                           RecordType.Name, Owner.Name, LeadSource
+                    FROM Lead
+                    WHERE Email = '{email}' AND ConvertedAccountId = null
+                    ORDER BY CreatedDate DESC LIMIT 10
+                """)
+                # Deduplicate by Id
+                seen = {l['Id'] for l in raw_leads}
+                for l in email_leads:
+                    if l.get('Id') not in seen:
+                        raw_leads.append(l)
+            except Exception:
+                pass
+
+        # Product 360 — which product families does this customer have?
+        try:
+            base_url = sf_instance_url()
         except Exception:
-            pass
+            base_url = ''
 
-    # Product 360 — which product families does this customer have?
-    try:
-        base_url = sf_instance_url()
-    except Exception:
-        base_url = ''
+        opp_types = {(o.get('RecordType') or {}).get('Name', 'Other') for o in opps}
+        product_360 = {
+            'membership': bool(mships or acct.get('Account_Member_ID__c')),
+            'travel':     'Travel' in opp_types,
+            'insurance':  'Insurance' in opp_types or bool(acct.get('Insuance_Customer_ID__c')),
+            'medicare':   'Medicare' in opp_types,
+            'driver':     'Driver Programs' in opp_types,
+        }
 
-    opp_types = {(o.get('RecordType') or {}).get('Name', 'Other') for o in opps}
-    product_360 = {
-        'membership': bool(mships or acct.get('Account_Member_ID__c')),
-        'travel':     'Travel' in opp_types,
-        'insurance':  'Insurance' in opp_types or bool(acct.get('Insuance_Customer_ID__c')),
-        'medicare':   'Medicare' in opp_types,
-        'membership_services': 'Membership Services' in opp_types,
-        'financial':  'Financial Services' in opp_types,
-        'driver':     'Driver Programs' in opp_types,
-        'ers':        bool(acct.get('ERS_Calls_Made_CP__c')),
-    }
+        # Transactions — last 30 opportunities as history
+        transactions = [_fmt_opp(o, base_url) for o in opps[:30]]
 
-    # Transactions — last 30 opportunities as history
-    transactions = [_fmt_opp(o, base_url) for o in opps[:30]]
+        # Opportunity groups for product breakdown
+        opp_groups: dict = {}
+        for o in opps:
+            rt = (o.get('RecordType') or {}).get('Name', 'Other')
+            opp_groups.setdefault(rt, []).append(_fmt_opp(o, base_url))
 
-    # Opportunity groups for product breakdown
-    opp_groups: dict = {}
-    for o in opps:
-        rt = (o.get('RecordType') or {}).get('Name', 'Other')
-        opp_groups.setdefault(rt, []).append(_fmt_opp(o, base_url))
+        return {
+            'account':      _fmt_account(acct, base_url),
+            'memberships':  [_fmt_membership(m) for m in mships],
+            'vehicles':     [_fmt_vehicle(v) for v in vehs],
+            'product_360':  product_360,
+            'transactions': transactions,
+            'opportunities': opp_groups,
+            'leads':        [_fmt_lead(l, base_url) for l in raw_leads],
+        }
 
-    return {
-        'account':      _fmt_account(acct, base_url),
-        'memberships':  [_fmt_membership(m) for m in mships],
-        'vehicles':     [_fmt_vehicle(v) for v in vehs],
-        'product_360':  product_360,
-        'transactions': transactions,
-        'opportunities': opp_groups,
-        'leads':        [_fmt_lead(l, base_url) for l in raw_leads],
-    }
+    if refresh:
+        res = fetch()
+        if 'error' not in res:
+            cache.put(key, res, ttl=CACHE_TTL_SHORT)
+            cache.disk_put(key, res, ttl=14400)
+        return res
+
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_SHORT, disk_ttl=14400)
 
 
 # ── AI Upsell ────────────────────────────────────────────────────────────────
 
+_SELLABLE_PRODUCTS = {'membership', 'travel', 'insurance', 'medicare', 'driver'}
+
+
 @router.post('/api/customers/{account_id}/upsell')
 def get_upsell_analysis(
     account_id: str,
+    *,
+    refresh: bool = False,
     _user: User = Depends(get_current_user),
 ):
     """Generate AI upsell recommendations for this customer."""
-    profile_data = get_customer_profile(account_id, _user)
+    profile_data = get_customer_profile(account_id, refresh=refresh, _user=_user)
     if 'error' in profile_data:
         return profile_data
 
@@ -245,45 +262,108 @@ def get_upsell_analysis(
     txns    = profile_data['transactions']
     mships  = profile_data['memberships']
 
-    active_products = [k.replace('_', ' ').title() for k, v in p360.items() if v]
-    missing = [k.replace('_', ' ').title() for k, v in p360.items() if not v]
+    # Only include sellable products — ERS is a membership benefit, not a product
+    active_products = [k.replace('_', ' ').title() for k, v in p360.items() if v and k in _SELLABLE_PRODUCTS]
+    missing = [k.replace('_', ' ').title() for k, v in p360.items() if not v and k in _SELLABLE_PRODUCTS]
     recent_txns = '\n'.join(
         f"- {t['created_date']}: {t['record_type']} — {t['name']} — ${t['amount'] or 0:,.0f} ({t['stage']})"
         for t in txns[:10]
     )
-    current_membership = mships[0]['level'] if mships else 'Unknown'
+    current_membership = mships[0]['level'] if mships else 'None'
     member_since = acct.get('member_since', 'Unknown')
     mpi = acct.get('mpi') or 0
+
+    # Calculate age for Medicare check
+    age = None
+    if acct.get('birthdate'):
+        try:
+            from datetime import date as _date
+            bd = _date.fromisoformat(acct['birthdate'])
+            today = _date.today()
+            age = today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
+        except Exception:
+            pass
+
+    # Reconstruct state signature to invalidate cache if the customer profile changes
+    state_parts = [
+        acct.get('member_status') or '',
+        current_membership or '',
+        str(mpi),
+        str(acct.get('total_premiums') or 0),
+        str(acct.get('ltv') or ''),
+        "_".join(active_products),
+        str(len(txns)),
+    ]
+    state_sig = "_".join(state_parts).replace(" ", "_")
+    ai_key = f"customer_upsell_{account_id}_{state_sig}"
+
+    if not refresh:
+        cached_upsell = cache.get(ai_key)
+        if cached_upsell:
+            return {'analysis': cached_upsell}
 
     cfg = get_ai_config()
     if not cfg.get('api_key'):
         return {'analysis': None, 'error': 'AI not configured'}
 
-    prompt = f"""You are a AAA sales advisor analyzing a member profile to identify upsell and cross-sell opportunities.
+    # Build eligibility constraints dynamically
+    eligible_products = []
+    # 1. Membership status and upgrade rules
+    if not p360.get('membership'):
+        eligible_products.append("New Membership (Basic, Plus, or Premier)")
+    elif current_membership in ('Basic', 'Plus', 'B'):
+        eligible_products.append(f"Membership Upgrade (Current: {current_membership} → target: Plus/Premier)")
 
-## Member Profile
+    # 2. Insurance cross-sell
+    if not p360.get('insurance'):
+        eligible_products.append("Insurance (Auto, Home, or Umbrella)")
+
+    # 3. Travel cross-sell
+    if not p360.get('travel'):
+        eligible_products.append("Travel bookings (Concierge agency services, flights, hotels, vacation packages)")
+
+    # 4. Medicare supplement (strictly age-dependent, only if >= 65 and missing)
+    if age is not None and age >= 65 and not p360.get('medicare'):
+        eligible_products.append("Medicare Supplement/Advantage plans")
+
+    prompt = f"""You are a AAA senior sales consultant conducting a Customer 360 review to identify upsell and cross-sell opportunities.
+
+## Member Value & Profile
 - Name: {acct['name']}
+- Age: {f"{age} years old" if age else "Unknown"}
 - Member Since: {member_since}
-- Membership Level: {current_membership}
-- Member Product Index (MPI): {mpi} (higher = more engaged, max ~5)
-- Region: {acct.get('region', 'N/A')}
-- Active Products: {', '.join(active_products) if active_products else 'None'}
-- Products NOT yet held: {', '.join(missing) if missing else 'None'}
-- Insurance Customer Since: {acct.get('insurance_since', 'N/A')}
+- Lifetime Value (LTV) Tier: {acct.get('ltv') or 'Standard'}
+- Member Product Index (MPI): {mpi}/5 (higher = more engaged)
+- Insurance Customer Since: {acct.get('insurance_since', 'Not a customer')}
 - Total Household Premiums: ${acct.get('total_premiums') or 0:,.0f}
+
+## Product Holdings (Do NOT recommend these!)
+- Active Products: {', '.join(active_products) if active_products else 'None'}
+- Current Membership Tier: {current_membership}
+
+## ELIGIBLE PRODUCTS FOR CROSS-SELL/UPSELL (Only recommend from this list!)
+{chr(10).join(f"- {p}" for p in eligible_products) if eligible_products else "- None (Customer holds all major products)"}
 
 ## Recent Transactions (last 10)
 {recent_txns if recent_txns else 'No transactions found'}
 
 ## Your Task
-Provide concise upsell/cross-sell recommendations. Use ## headers and bullet points.
-Focus on:
-1. **Membership upgrade** if on Basic/Plus (upgrade to Plus/Premier)
-2. **Missing products** the member doesn't have yet
-3. **Specific next actions** for the advisor based on transaction history
-4. **Risk signals** — any signs of churn or disengagement
+Write a premium, brief, and highly structured strategic advisory briefing for the sales advisor. Use **Markdown formatting** with bold text for emphasis.
+You MUST focus on customer value (LTV, premiums, tenure) and follow these exact sections:
 
-Be specific, actionable, and brief. Max 300 words."""
+## Customer Value & Loyalty Assessment
+Assess the customer's value in terms of revenue, loyalty, and tenure. Highlight if they are a VIP or long-term member.
+
+## Next Best Product (NBP) Recommendations
+Rank the top 1-2 products from the ELIGIBLE PRODUCTS list. Detail WHY the customer qualifies (e.g. recommend Medicare only if they are 65+, recommend new membership if they aren't a member, upgrade if Basic/Plus, etc.). DO NOT offer products they already have.
+
+## Actionable Next Steps
+Provide specific action items for the advisor's next call. Reference their recent transactions or open opportunities to close if applicable.
+
+## Risk & Retention Signals
+Analyze potential risk factors (e.g., ERS road service calls made {acct.get('ers_calls_made') or 0}/{acct.get('ers_calls_available') or 4}, disengagement, lapsed status, or age shifts).
+
+Be professional, brief, and extremely actionable. Max 300 words."""
 
     try:
         text = call_ai(
@@ -291,6 +371,9 @@ Be specific, actionable, and brief. Max 300 words."""
             max_tokens=600,
             cfg=cfg,
         )
+        if text:
+            cache.put(ai_key, text, ttl=86400)
+            cache.disk_put(ai_key, text, ttl=86400)
         return {'analysis': text}
     except Exception as e:
         log.error(f'Upsell AI error: {e}')
@@ -418,7 +501,7 @@ def email_customer_profile(
     if not agentmail_key:
         raise HTTPException(500, 'Email service not configured (AGENTMAIL_API_KEY missing)')
 
-    profile = get_customer_profile(account_id, user)
+    profile = get_customer_profile(account_id, _user=user)
     if 'error' in profile:
         raise HTTPException(422, profile['error'])
 
@@ -462,6 +545,19 @@ def _fmt_summary(r: dict) -> dict:
     }
 
 
+def _normalize_coverage(cov: Optional[str]) -> Optional[str]:
+    if not cov:
+        return cov
+    c = cov.strip().upper()
+    if c == 'B':
+        return 'Basic'
+    if c == 'PLUS':
+        return 'Plus'
+    if c == 'PREMIER':
+        return 'Premier'
+    return cov.strip().title()
+
+
 def _fmt_account(r: dict, base_url: str = '') -> dict:
     status = r.get('Member_Status__c', '')
     return {
@@ -474,7 +570,7 @@ def _fmt_account(r: dict, base_url: str = '') -> dict:
         'member_status':         status,
         'member_status_label':   MEMBER_STATUS.get(status, status),
         'member_since':          r.get('Account_Member_Since__c'),
-        'coverage':              r.get('ImportantActiveMemCoverage__c'),
+        'coverage':              _normalize_coverage(r.get('ImportantActiveMemCoverage__c')),
         'membership_expiry':     r.get('ImportantActiveMemExpiryDate__c'),
         'insurance_customer_id': r.get('Insuance_Customer_ID__c'),
         'insurance_since':       r.get('FinServ__InsuranceCustomerSince__c'),
@@ -496,10 +592,11 @@ def _fmt_account(r: dict, base_url: str = '') -> dict:
 
 def _fmt_membership(r: dict) -> dict:
     parts = [p.strip() for p in (r.get('Name') or '').split(' - ')]
+    level = parts[1] if len(parts) > 1 else None
     return {
         'id':           r.get('Id'),
         'name':         r.get('Name'),
-        'level':        parts[1] if len(parts) > 1 else None,
+        'level':        _normalize_coverage(level),
         'member_number': parts[0] if parts else None,
         'status':       r.get('Status'),
         'purchase_date': r.get('PurchaseDate'),
@@ -524,7 +621,7 @@ def _fmt_opp(r: dict, base_url: str = '') -> dict:
         'name':         r.get('Name'),
         'stage':        r.get('StageName'),
         'amount':       r.get('Amount'),
-        'commission':   r.get('Earned_Commission_Amount__c'),
+        'commission':   None,  # per-deal commission unreliable in SF; omitted
         'close_date':   r.get('CloseDate'),
         'created_date': (r.get('CreatedDate') or '')[:10],
         'record_type':  (r.get('RecordType') or {}).get('Name', 'Other'),

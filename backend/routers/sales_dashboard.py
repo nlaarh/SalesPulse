@@ -86,28 +86,59 @@ def _build_dashboard_payload(line: str, period: int, start_date, end_date, yoy_y
     from routers.advisor_targets import get_targets
     from routers.advisor_targets_achievement import get_target_achievement
 
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     try:
         summary = advisor_summary(line, period, start_date, end_date)
     except Exception as exc:
         raise HTTPException(status_code=503, detail='Salesforce data unavailable') from exc
 
     branch_default = {"branches": [], "period_months": [], "line": line}
-    return {
-        "summary": summary,
-        "leaderboard": _call_or({"advisors": []}, "leaderboard", advisor_leaderboard, line, period, start_date, end_date),
-        "insights": _call_or({"insights": []}, "insights", performance_insights, line, period, start_date, end_date),
-        "yoy": _call_or({}, "yoy", advisor_yoy, line, yoy_year),
-        "funnel": _call_or({}, "funnel", performance_funnel, line, period, start_date, end_date),
-        "slipping": _call_or({"deals": []}, "slipping", pipeline_slipping, line),
-        "leads_volume": _call_or({"by_source": []}, "leads_volume", leads_volume, line, period, start_date, end_date),
-        "close_speed": _call_or({}, "close_speed", agent_close_speed, line, period, start_date, end_date),
-        "targets": _call_or({"targets": [], "upload": None}, "targets", get_targets, user, db),
-        "achievement": _call_or(None, "achievement", get_target_achievement, line, None, start_date, end_date, user, db),
-        "branch_monthly": (
-            _call_or(branch_default, "branch_monthly", advisor_branch_monthly, line, period, start_date, end_date)
-            if line == 'Travel' else branch_default
-        ),
+
+    # SF tasks — all independent, run concurrently
+    sf_tasks = {
+        "leaderboard":  (advisor_leaderboard,     [line, period, start_date, end_date]),
+        "insights":     (performance_insights,    [line, period, start_date, end_date]),
+        "yoy":          (advisor_yoy,             [line, yoy_year]),
+        "funnel":       (performance_funnel,      [line, period, start_date, end_date]),
+        "slipping":     (pipeline_slipping,       [line]),
+        "leads_volume": (leads_volume,            [line, period, start_date, end_date]),
+        "close_speed":  (agent_close_speed,       [line, period, start_date, end_date]),
     }
+    if line == 'Travel':
+        sf_tasks["branch_monthly"] = (advisor_branch_monthly, [line, period, start_date, end_date])
+
+    defaults = {
+        "leaderboard":    {"advisors": []},
+        "insights":       {"insights": []},
+        "yoy":            {},
+        "funnel":         {},
+        "slipping":       {"deals": []},
+        "leads_volume":   {"by_source": []},
+        "close_speed":    {},
+        "targets":        {"targets": [], "upload": None},
+        "achievement":    None,
+        "branch_monthly": branch_default,
+    }
+    results = dict(defaults)
+
+    with ThreadPoolExecutor(max_workers=min(len(sf_tasks), 10)) as executor:
+        future_to_key = {
+            executor.submit(fn, *args): key
+            for key, (fn, args) in sf_tasks.items()
+        }
+        for future in as_completed(future_to_key):
+            key = future_to_key[future]
+            try:
+                results[key] = future.result()
+            except Exception as exc:
+                log.warning("dashboard component '%s' failed: %s", key, exc)
+
+    # DB-backed tasks — SQLAlchemy sessions are not thread-safe; run sequentially
+    results["targets"] = _call_or({"targets": [], "upload": None}, "targets", get_targets, user, db)
+    results["achievement"] = _call_or(None, "achievement", get_target_achievement, line, None, start_date, end_date, user, db)
+
+    return {"summary": summary, **results}
 
 
 @router.get("/api/sales/advisors/dashboard")

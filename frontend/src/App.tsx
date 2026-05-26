@@ -91,7 +91,7 @@ export default function App() {
                   <Route path="territory/:zip" element={<Suspense fallback={LazyFallback}><ZipDetail /></Suspense>} />
                   <Route path="census" element={<Suspense fallback={LazyFallback}><CensusData /></Suspense>} />
                   <Route path="growth-plan" element={
-                    <RequireRole roles={['admin', 'superadmin']}>
+                    <RequireRole roles={['admin', 'superadmin', 'executive']}>
                       <Suspense fallback={LazyFallback}><GrowthPlan /></Suspense>
                     </RequireRole>
                   } />

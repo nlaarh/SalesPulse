@@ -82,7 +82,7 @@ def _fmt_opp(r: dict, base_url: str = '') -> dict:
         'name':         r.get('Name'),
         'stage':        r.get('StageName'),
         'amount':       r.get('Amount'),
-        'commission':   r.get('Earned_Commission_Amount__c'),
+        'commission':   None,  # per-deal commission unreliable in SF; omitted
         'close_date':   r.get('CloseDate'),
         'created_date': (r.get('CreatedDate') or '')[:10],
         'record_type':  (r.get('RecordType') or {}).get('Name', 'Other'),

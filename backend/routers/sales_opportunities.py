@@ -206,7 +206,7 @@ def top_opportunities(
 
 
 @router.get("/api/sales/opportunities/{opp_id}")
-def opportunity_detail(opp_id: str):
+def opportunity_detail(opp_id: str, ai: bool = False):
     """Full detail for a single opportunity: fields + stage history + activity timeline + AI analysis."""
 
     def fetch():
@@ -285,7 +285,7 @@ def opportunity_detail(opp_id: str):
             'record_type': (opp.get('RecordType') or {}).get('Name', ''),
             'type': opp.get('Type', ''),
             'lead_source': opp.get('LeadSource', ''),
-            'commission': opp.get('Earned_Commission_Amount__c'),
+            'commission': None,  # per-deal commission unreliable in SF; use PBI totals for aggregate views
             'destination': opp.get('Destination_Region__c'),
             'trip_id': opp.get('Axis_Trip_ID__c'),
             'num_traveling': opp.get('Number_Traveling__c'),
@@ -358,23 +358,29 @@ def opportunity_detail(opp_id: str):
         state_sig = "_".join(state_parts).replace(" ", "_")
         ai_key = f"opp_ai_analysis_{opp_id}_{state_sig}"
 
-        def fetch_ai_analysis():
+        if ai:
+            log.info(f"Regenerating AI analysis for opportunity {opp_id}...")
             res = _ai_deal_analysis(result)
-            if not res:
-                raise ValueError("AI analysis returned empty or failed")
-            return res
-
-        try:
-            result['ai_analysis'] = cache.cached_query(
-                ai_key, fetch_ai_analysis,
-                ttl=3600,
-                disk_ttl=86400
-            )
-        except Exception as e:
-            log.warning(f"Failed to fetch/generate cached AI deal analysis: {e}")
-            result['ai_analysis'] = ''
+            if res:
+                cache.put(ai_key, res, ttl=3600)
+                cache.disk_put(ai_key, res, ttl=86400)
+                result['ai_analysis'] = res
+            else:
+                result['ai_analysis'] = ''
+        else:
+            cached_ai = cache.get(ai_key)
+            if cached_ai:
+                result['ai_analysis'] = cached_ai
+            else:
+                result['ai_analysis'] = ''
 
         return result
+
+    if ai:
+        res = fetch()
+        cache.put(f"opp_detail_{opp_id}", res, ttl=CACHE_TTL_SHORT)
+        cache.disk_put(f"opp_detail_{opp_id}", res, ttl=CACHE_TTL_HOUR)
+        return res
 
     return cache.cached_query(f"opp_detail_{opp_id}", fetch, ttl=CACHE_TTL_SHORT, disk_ttl=CACHE_TTL_HOUR)
 

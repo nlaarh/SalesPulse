@@ -59,6 +59,7 @@ def build_report_html(p: dict, start_date: str, end_date: str) -> str:
     line  = p.get('line', 'Travel')
     s     = p.get('summary', {})
     yoy   = p.get('yoy', {})
+    prior = p.get('prior', {})
     team  = p.get('team', {})
     months = p.get('months', [])
     top_opps = p.get('top_opportunities', [])
@@ -79,7 +80,7 @@ def build_report_html(p: dict, start_date: str, end_date: str) -> str:
         ('Revenue',    _fmt_currency(s.get('revenue'), True),
          rev_delta,    _delta_color(yoy.get('revenue_pct'))),
         ('Commission', _fmt_currency(s.get('commission'), True),
-         'PY: ' + _fmt_currency(s.get('prior_commission')), '#6366f1'),
+         'PY: ' + _fmt_currency(prior.get('commission')), '#6366f1'),
         ('Deals',      str(s.get('deals', 0)),
          deal_delta,   _delta_color(yoy.get('deals_pct'))),
         ('Win Rate',   f"{s.get('win_rate', 0):.1f}%",

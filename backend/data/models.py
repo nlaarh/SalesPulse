@@ -439,6 +439,27 @@ class RolePermission(Base):
         }
 
 
+class AdvisorAlias(Base):
+    """Lookup table for advisor name aliases (e.g. from PBI, targets, Salesforce)."""
+    __tablename__ = 'advisor_aliases'
+    __table_args__ = _table_args(
+        Index('ix_advisor_aliases_alias_name', 'alias_name', unique=True),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    alias_name = Column(String(255), nullable=False)  # Normalized raw name (lowercase, stripped)
+    canonical_name = Column(String(255), nullable=False, index=True)  # Clean target name (e.g. "Kevin Bloom")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'alias_name': self.alias_name,
+            'canonical_name': self.canonical_name,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 # ── Ensure all models are registered ─────────────────────────────────────────
 
 def register_all_models():

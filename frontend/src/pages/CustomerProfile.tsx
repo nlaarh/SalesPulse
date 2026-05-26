@@ -419,11 +419,11 @@ export default function CustomerProfile() {
         </div>
       )}
 
-      {/* Transactions */}
-      <ActivityTimeline transactions={transactions} leads={leads} />
-
       {/* AI Upsell */}
       {id && <UpsellPanel accountId={id} />}
+
+      {/* Transactions */}
+      <ActivityTimeline transactions={transactions} leads={leads} />
     </div>
   )
 }

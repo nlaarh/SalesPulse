@@ -25,7 +25,7 @@ STARTED_AT = time.time()
 
 EXTERNAL_SERVICES = {"salesforce", "pbi", "openai", "github", "azure"}
 LAST_LIVE_STATUS: dict[str, dict[str, Any]] = {}
-SERVICE_ORDER = ("salesforce", "postgres", "dr_postgres", "app", "pbi", "azure", "openai", "github")
+SERVICE_ORDER = ("salesforce", "postgres", "dr_postgres", "app", "dr_app", "pbi", "azure", "openai", "github")
 CONFIG_KEYS = (
     "SF_TOKEN_URL",
     "SF_CONSUMER_KEY",
@@ -146,10 +146,10 @@ def _postgres_service(db: Session, file_values: dict[str, str]) -> dict[str, Any
     host = _config_value("PG_HOST", file_values) or "local sqlite test database"
     database = _config_value("PG_DATABASE", file_values) or "salespulse"
     return _service(
-        "DATABASE",
+        "PRIMARY DATABASE",
         status,
         host=host,
-        host_link="https://portal.azure.com/#view/HubsExtension/BrowseResource/resourceType/Microsoft.DBforPostgreSQL%2FflexibleServers",
+        host_link="https://portal.azure.com/#@/resource/subscriptions/e287db16-b6ae-415e-bd52-41c8ec5a8f08/resourceGroups/rg-nlaaroubi-sbx-eus2-001/providers/Microsoft.DBforPostgreSQL/flexibleServers/fslapp-pg",
         api_key_valid=status == "online",
         error=error,
         database=database,
@@ -164,7 +164,7 @@ def _dr_postgres_service(file_values: dict[str, str]) -> dict[str, Any]:
         return _service(
             "DR DATABASE", "degraded",
             host="",
-            host_link="https://portal.azure.com/#view/HubsExtension/BrowseResource/resourceType/Microsoft.DBforPostgreSQL%2FflexibleServers",
+            host_link="https://portal.azure.com/#@/resource/subscriptions/e287db16-b6ae-415e-bd52-41c8ec5a8f08/resourceGroups/rg-nlaaroubi-sbx-eus2-001/providers/Microsoft.DBforPostgreSQL/flexibleServers/fslapp-pg-dr",
             api_key_valid=False,
             error="PG_DR_HOST not configured — DR not set up",
             logs=[f"{_stamp()} DR CONFIG - PG_DR_HOST missing | dr_ready=false"],
@@ -188,7 +188,7 @@ def _dr_postgres_service(file_values: dict[str, str]) -> dict[str, Any]:
         return _service(
             "DR DATABASE", "online",
             host=dr_host,
-            host_link="https://portal.azure.com/#view/HubsExtension/BrowseResource/resourceType/Microsoft.DBforPostgreSQL%2FflexibleServers",
+            host_link="https://portal.azure.com/#@/resource/subscriptions/e287db16-b6ae-415e-bd52-41c8ec5a8f08/resourceGroups/rg-nlaaroubi-sbx-eus2-001/providers/Microsoft.DBforPostgreSQL/flexibleServers/fslapp-pg-dr",
             api_key_valid=True,
             latency_ms=latency,
             logs=[f"{_stamp()} DR DB QUERY - SELECT 1 | {latency}ms | dr_ready=true"],
@@ -197,11 +197,24 @@ def _dr_postgres_service(file_values: dict[str, str]) -> dict[str, Any]:
         return _service(
             "DR DATABASE", "offline",
             host=dr_host,
-            host_link="https://portal.azure.com/#view/HubsExtension/BrowseResource/resourceType/Microsoft.DBforPostgreSQL%2FflexibleServers",
+            host_link="https://portal.azure.com/#@/resource/subscriptions/e287db16-b6ae-415e-bd52-41c8ec5a8f08/resourceGroups/rg-nlaaroubi-sbx-eus2-001/providers/Microsoft.DBforPostgreSQL/flexibleServers/fslapp-pg-dr",
             api_key_valid=False,
             error=str(exc),
             logs=[f"{_stamp()} DR DB ERROR - {exc} | dr_ready=false"],
         )
+
+
+def _dr_app_service(file_values: dict[str, str]) -> dict[str, Any]:
+    site = _config_value("WEBSITE_SITE_NAME", file_values) or "salespulse-nyaaa"
+    dr_site = f"{site}-dr"
+    dr_host = f"{dr_site}.azurewebsites.net"
+    return _service(
+        "DR API NODE",
+        "online",
+        host=f"https://{dr_host}",
+        host_link=f"https://portal.azure.com/#@/resource/subscriptions/e287db16-b6ae-415e-bd52-41c8ec5a8f08/resourceGroups/rg-nlaaroubi-sbx-eus2-001/providers/Microsoft.Web/sites/{dr_site}",
+        logs=[f"{_stamp()} DR APP CONFIG - Standby site name {dr_site} | live_ping=false"],
+    )
 
 
 def _build_services(request: Request, db: Session, file_values: dict[str, str]) -> dict[str, dict[str, Any]]:
@@ -236,16 +249,17 @@ def _build_services(request: Request, db: Session, file_values: dict[str, str]) 
         "postgres": _postgres_service(db, file_values),
         "dr_postgres": _dr_postgres_service(file_values),
         "app": _service(
-            "API NODE",
+            "PRIMARY API NODE",
             "online",
             host=app_url,
-            host_link=app_url,
+            host_link=f"https://portal.azure.com/#@/resource/subscriptions/e287db16-b6ae-415e-bd52-41c8ec5a8f08/resourceGroups/rg-nlaaroubi-sbx-eus2-001/providers/Microsoft.Web/sites/{site}",
             pid=os.getpid(),
             latency_ms=0,
             logs=[f"{_stamp()} APP HEARTBEAT - FastAPI process alive | pid={os.getpid()}"],
             python=platform.python_version(),
             uptime_seconds=round(time.time() - STARTED_AT),
         ),
+        "dr_app": _dr_app_service(file_values),
         "pbi": _service(
             "POWER BI",
             pbi_status,
@@ -260,7 +274,7 @@ def _build_services(request: Request, db: Session, file_values: dict[str, str]) 
             "AZURE VM",
             "online" if site else "degraded",
             host=azure_host,
-            host_link="https://portal.azure.com/#view/HubsExtension/BrowseResource/resourceType/Microsoft.Web%2Fsites",
+            host_link=f"https://portal.azure.com/#@/resource/subscriptions/e287db16-b6ae-415e-bd52-41c8ec5a8f08/resourceGroups/rg-nlaaroubi-sbx-eus2-001/providers/Microsoft.Web/sites/{site}",
             resource_group="rg-nlaaroubi-sbx-eus2-001",
             region=_config_value("REGION_NAME", file_values) or "East US 2",
             logs=[f"{_stamp()} AZURE CONFIG - App Service {site} | live_ping=false"],
@@ -498,6 +512,28 @@ def _run_live_check(service_key: str, file_values: dict[str, str], db: Session) 
             ]
             extra["resource_group"] = "rg-nlaaroubi-sbx-eus2-001"
             extra["region"] = _config_value("REGION_NAME", file_values) or "East US 2"
+
+        elif service_key == "dr_postgres":
+            res = _dr_postgres_service(file_values)
+            latency = res.get("latency_ms")
+            status = res["status"]
+            error_msg = res.get("api_key_error")
+            logs = res.get("logs")
+            extra["host"] = res.get("host")
+            valid = res.get("api_key_valid", False)
+
+        elif service_key == "dr_app":
+            import socket
+            site = _config_value("WEBSITE_SITE_NAME", file_values) or "salespulse-nyaaa"
+            dr_site = f"{site}-dr"
+            dr_host = f"{dr_site}.azurewebsites.net"
+            s = socket.create_connection((dr_host, 443), timeout=5)
+            s.close()
+            latency = round((time.perf_counter() - start) * 1000, 1)
+            logs = [
+                f"{_stamp()} DR APP LIVE CHECK - Connected to {dr_host}:443 | {latency}ms"
+            ]
+            extra["host"] = f"https://{dr_host}"
 
         elif service_key == "app":
             latency = round((time.perf_counter() - start) * 1000, 1)

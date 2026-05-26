@@ -30,12 +30,10 @@ def _migrate_roles():
         log.warning(f"Role migration skipped: {e}")
     finally:
         db.close()
-
-
 def init_db():
     """Create schema + tables + seed users. All in 'sales' schema on PG."""
     from data.connection import create_schema_if_needed, create_all_tables
-    from data.seed import seed_users
+    from data.seed import seed_users, seed_advisor_aliases
 
     create_schema_if_needed()
     create_all_tables()
@@ -46,6 +44,7 @@ def init_db():
     db = SessionLocal()
     try:
         seed_users(db)
+        seed_advisor_aliases(db)
     finally:
         db.close()
 

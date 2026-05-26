@@ -52,3 +52,43 @@ def seed_users(db: Session) -> None:
         db.commit()
     else:
         log.error("No users seeded — all SEED_PW_* env vars are missing. Set them in Azure App Service Configuration.")
+
+
+def seed_advisor_aliases(db: Session) -> None:
+    """Seed default advisor name aliases if the advisor_aliases table is empty."""
+    from data.models import AdvisorAlias
+    count = db.query(AdvisorAlias).count()
+    if count > 0:
+        log.info(f"Advisor aliases table has {count} rows — skipping seed")
+        return
+
+    default_aliases = {
+        "kevin fairbanks-bloom": "Kevin Bloom",
+        "bloom, kevin": "Kevin Bloom",
+        "fairbanks-bloom, kevin": "Kevin Bloom",
+        "michelle szalapak": "Michelle Szlapak",
+        "michelle a szlapak": "Michelle Szlapak",
+        "szalapak, michelle": "Michelle Szlapak",
+        "joanna voight": "Joanna Voigt",
+        "voight, joanna": "Joanna Voigt",
+        "joy kellner": "Joyce Foglia Kellner",
+        "kellner, joy": "Joyce Foglia Kellner",
+        "jacki nieman": "Jacqueline Nieman",
+        "nieman, jacki": "Jacqueline Nieman",
+        "beth steves": "Bethany Steves",
+        "steves, beth": "Bethany Steves",
+        "kelly harrienger": "Kelly Gonseth-Harrienger",
+        "harrienger, kelly": "Kelly Gonseth-Harrienger",
+        "cat mccarthy": "Catherine McCarthy",
+        "mccarthy, cat": "Catherine McCarthy",
+        "kim greene": "Kimberly Greene",
+        "greene, kim": "Kimberly Greene",
+    }
+
+    for alias, canonical in default_aliases.items():
+        db.add(AdvisorAlias(
+            alias_name=alias,
+            canonical_name=canonical
+        ))
+    db.commit()
+    log.info(f"Seeded {len(default_aliases)} default advisor name aliases")

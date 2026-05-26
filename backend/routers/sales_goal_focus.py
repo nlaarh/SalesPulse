@@ -1,7 +1,7 @@
 """Goal-gap opportunity focus endpoint for the main sales dashboard."""
 
 import calendar
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -20,7 +20,6 @@ from shared import (
     get_owner_map,
     is_sales_agent,
     line_filter_opp as _line_filter,
-    six_months_ago,
 )
 
 router = APIRouter()
@@ -57,10 +56,10 @@ def goal_focus_opportunities(
         return _empty_response(line, metric, target, actual, month_start, month_end)
 
     owner_map = get_owner_map()
-    cache_key = f"goal_focus_opps_{line}_{metric}_{advisor_name or 'company'}_{today.isoformat()}_{month_end.isoformat()}"
+    cache_key = f"goal_focus_opps_{line}_{metric}_{advisor_name or 'company'}_{today.isoformat()}"
     records = cache.cached_query(
         cache_key,
-        lambda: _fetch_focus_opps(line, metric, advisor_name, month_end, comm_rate, owner_map),
+        lambda: _fetch_focus_opps(line, metric, advisor_name, today, comm_rate, owner_map),
         ttl=CACHE_TTL_SHORT,
         disk_ttl=CACHE_TTL_HOUR,
     )
@@ -120,10 +119,13 @@ def _fetch_focus_opps(
     line: str,
     metric: str,
     advisor_name: Optional[str],
-    month_end: date,
+    today: date,
     comm_rate: float,
     owner_map: dict[str, str],
 ) -> list[dict]:
+    # 30 days back (catch recently overdue) + 90 days forward (3 months)
+    opp_start = (today - timedelta(days=30)).isoformat()
+    opp_end   = (today + timedelta(days=90)).isoformat()
     lf = _line_filter(line)
     records = sf_query_all(f"""
         SELECT Id, Name, Amount, StageName, Probability, ForecastCategory,
@@ -133,8 +135,8 @@ def _fetch_focus_opps(
         FROM Opportunity
         WHERE IsClosed = false AND {lf}
           AND Amount != null
-          AND CloseDate >= {six_months_ago()}
-          AND CloseDate <= {month_end.isoformat()}
+          AND CloseDate >= {opp_start}
+          AND CloseDate <= {opp_end}
         ORDER BY Amount DESC
         LIMIT 500
     """)

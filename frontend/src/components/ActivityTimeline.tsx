@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Clock, ExternalLink, Megaphone, GitMerge } from 'lucide-react'
+import { ChevronDown, Clock, ExternalLink, Megaphone, GitMerge } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { fmtDate, fmt$ } from '@/lib/formatters'
 
@@ -64,6 +64,7 @@ function leadStatusColor(status: string, converted: boolean) {
 
 export default function ActivityTimeline({ transactions, leads }: { transactions: Transaction[]; leads: Lead[] }) {
   const [filter, setFilter] = useState<'all' | 'opp' | 'lead'>('all')
+  const [collapsed, setCollapsed] = useState(false)
 
   const items = useMemo<TimelineItem[]>(() => {
     const opps: TimelineItem[] = transactions.map(t => ({
@@ -86,15 +87,18 @@ export default function ActivityTimeline({ transactions, leads }: { transactions
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-border flex items-center justify-between flex-wrap gap-2">
+      <div
+        className="px-5 py-3.5 border-b border-border flex items-center justify-between flex-wrap gap-2 cursor-pointer select-none"
+        onClick={() => setCollapsed(c => !c)}
+      >
         <div className="flex items-center gap-2">
           <Clock className="h-3.5 w-3.5 text-muted-foreground/60" />
           <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60">Activity Timeline</p>
           <span className="text-[10px] text-muted-foreground/40">{items.length} items</span>
         </div>
-        <div className="flex gap-1">
-          {(['all', 'opp', 'lead'] as const).map(f => (
-            <button key={f} onClick={() => setFilter(f)}
+        <div className="flex items-center gap-1">
+          {!collapsed && (['all', 'opp', 'lead'] as const).map(f => (
+            <button key={f} onClick={e => { e.stopPropagation(); setFilter(f) }}
               className={cn(
                 'px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors',
                 filter === f
@@ -104,10 +108,11 @@ export default function ActivityTimeline({ transactions, leads }: { transactions
               {f === 'all' ? `All (${oppCount + leadCount})` : f === 'opp' ? `Opportunities (${oppCount})` : `Leads (${leadCount})`}
             </button>
           ))}
+          <ChevronDown className={cn('h-3.5 w-3.5 text-muted-foreground/50 transition-transform ml-1', collapsed && 'rotate-180')} />
         </div>
       </div>
 
-      {items.length === 0 ? (
+      {!collapsed && (items.length === 0 ? (
         <p className="px-5 py-8 text-center text-[13px] text-muted-foreground/50">No activity found</p>
       ) : (
         <div className="relative px-5 py-4">
@@ -208,7 +213,7 @@ export default function ActivityTimeline({ transactions, leads }: { transactions
             ))}
           </div>
         </div>
-      )}
+      ))}
     </div>
   )
 }

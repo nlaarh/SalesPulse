@@ -32,6 +32,7 @@ REGION_FILTER = "Billing_Region__c IN ('Western','Rochester','Central')"
 ACTIVE_MEMBER = (
     "IsPersonAccount = true AND Member_Status__c = 'A'"
     " AND ImportantActiveMemExpiryDate__c >= TODAY"
+    " AND ImportantActiveMemCoverage__c IN ('B','PLUS','PREMIER')"
     " AND Out_of_Territory_Member__c = false"
 )
 MIN_MEMBERS = 10  # skip tiny noise zips on the map
@@ -123,12 +124,11 @@ def territory_map_data(
                 LIMIT 2000
             """,
 
-            # -- True total: all active members in the org --
-            members_total="""
+            # -- True total: all active members in the WCNY region --
+            members_total=f"""
                 SELECT COUNT(Id) cnt
                 FROM Account
-                WHERE IsPersonAccount = true
-                  AND Member_Status__c = 'A'
+                WHERE {NY_STATE} AND {REGION_FILTER} AND {ACTIVE_MEMBER}
             """,
 
             # -- Insurance customers (active members with insurance) --

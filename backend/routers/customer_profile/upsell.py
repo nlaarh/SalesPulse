@@ -91,6 +91,9 @@ def get_upsell_analysis(
             and (has_vehicle or has_auto)):
         eligible_products.append("Driver Safety Program (AAA mature driver course — member is 55+, has vehicle/insurance, course may qualify them for auto insurance discount)")
 
+    ers_calls_made = acct.get('ers_calls_made') or 0
+    ers_calls_available = acct.get('ers_calls_available') or 4
+
     # Build active products list
     active_products = []
     if is_member:
@@ -135,8 +138,6 @@ def get_upsell_analysis(
         for t in won_txns[:5]
     ) if won_txns else "No recent won transactions."
 
-    ers_calls_made = acct.get('ers_calls_made') or 0
-    ers_calls_available = acct.get('ers_calls_available') or 4
     ltv = acct.get('ltv') or 'Standard'
 
     # Reconstruct state signature to invalidate cache if the customer profile changes

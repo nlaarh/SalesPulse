@@ -9,7 +9,9 @@ import {
   clearMonthlyTargetSeeds,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { AlertCircle, ArrowLeft, Calculator, Check, Download, Loader2, Save, Search, Trash2, Upload } from 'lucide-react'
+import { AlertCircle, AlertTriangle, ArrowLeft, Calculator, Check, Download, Loader2, Save, Search, Trash2, Upload } from 'lucide-react'
+
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 import TargetSpreadsheetTable from './TargetSpreadsheetTable'
 import {
   buildDirtyTargetUpdates,
@@ -43,6 +45,7 @@ export default function TargetGrid({ line, onBack }: Props) {
   const [sortField, setSortField] = useState('prior_year_actual')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [growthPct, setGrowthPct] = useState(5)
+  const [showGrowthConfirm, setShowGrowthConfirm] = useState(false)
 
   const isMonthEditable = useCallback((month: number) => {
     if (year > currentYear) return true
@@ -95,6 +98,7 @@ export default function TargetGrid({ line, onBack }: Props) {
   }
 
   const applyGrowth = () => {
+    setShowGrowthConfirm(false)
     setAdvisors((prev) => prev.map((advisor) => ({
       ...advisor,
       months: advisor.months.map((month) => {
@@ -107,7 +111,7 @@ export default function TargetGrid({ line, onBack }: Props) {
         }
       }),
     })))
-    setSuccessMsg(`Applied +${growthPct}% growth to editable months. Click "Save Changes" to persist.`)
+    setSuccessMsg(`Applied +${growthPct}% growth to future months only. Click "Save Changes" to persist.`)
   }
 
   const handleExport = async () => {
@@ -209,13 +213,18 @@ export default function TargetGrid({ line, onBack }: Props) {
       <StatusMessage errorMsg={errorMsg} successMsg={successMsg} />
       <ControlPanel
         year={year}
+        currentYear={currentYear}
+        currentMonth={currentMonth}
         growthPct={growthPct}
         searchQuery={searchQuery}
         saving={saving}
         isDirty={isDirty}
         fileInputRef={fileInputRef}
+        showGrowthConfirm={showGrowthConfirm}
         onGrowthPctChange={setGrowthPct}
-        onApplyGrowth={applyGrowth}
+        onApplyGrowthClick={() => setShowGrowthConfirm(true)}
+        onConfirmGrowth={applyGrowth}
+        onCancelGrowth={() => setShowGrowthConfirm(false)}
         onSearchChange={setSearchQuery}
         onExport={handleExport}
         onImport={handleImport}
@@ -243,13 +252,18 @@ export default function TargetGrid({ line, onBack }: Props) {
 
 function ControlPanel({
   year,
+  currentYear,
+  currentMonth,
   growthPct,
   searchQuery,
   saving,
   isDirty,
   fileInputRef,
+  showGrowthConfirm,
   onGrowthPctChange,
-  onApplyGrowth,
+  onApplyGrowthClick,
+  onConfirmGrowth,
+  onCancelGrowth,
   onSearchChange,
   onExport,
   onImport,
@@ -257,6 +271,13 @@ function ControlPanel({
   onClearSeeds,
   onBack,
 }: any) {
+  const firstFutureMonth = year > currentYear ? 1 : currentMonth + 1
+  const futureMonthsLabel = year > currentYear
+    ? `all 12 months (Jan–Dec)`
+    : firstFutureMonth <= 12
+      ? `${MONTH_NAMES[firstFutureMonth - 1]}–Dec`
+      : 'no months remaining this year'
+
   return (
     <div className="card-premium flex flex-wrap items-center justify-between gap-4 px-5 py-3.5">
       <div className="flex flex-wrap items-center gap-4">
@@ -278,9 +299,24 @@ function ControlPanel({
             <input type="number" value={growthPct} onChange={(event) => onGrowthPctChange(Number(event.target.value) || 0)} className="w-10 bg-transparent text-center text-[12px] font-bold outline-none border-none text-foreground" />
             <span className="text-[11px] font-medium text-muted-foreground">%</span>
           </div>
-          <IconButton onClick={onApplyGrowth} title="Apply +% growth to all future month targets"><Calculator className="h-3.5 w-3.5" /></IconButton>
+          <IconButton onClick={onApplyGrowthClick} title="Apply +% growth to future months only"><Calculator className="h-3.5 w-3.5" /></IconButton>
         </div>
       </div>
+      {showGrowthConfirm && (
+        <div className="w-full mt-1 rounded-lg border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 flex flex-wrap items-center gap-3">
+          <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
+          <span className="text-[12px] text-foreground flex-1">
+            This will apply <strong>+{growthPct}%</strong> growth to <strong>future months only</strong> ({futureMonthsLabel}).
+            Current and prior months are locked and will not be changed.
+          </span>
+          <button onClick={onConfirmGrowth} className="rounded-lg bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground hover:opacity-90">
+            Yes, recalculate
+          </button>
+          <button onClick={onCancelGrowth} className="rounded-lg border border-border px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:bg-secondary">
+            Cancel
+          </button>
+        </div>
+      )}
 
       <div className="hidden xl:flex items-center gap-2 text-[11px] text-muted-foreground/80 bg-secondary/30 px-3 py-1.5 rounded-lg border border-border/50">
         <span className="font-semibold text-primary">Tip:</span>

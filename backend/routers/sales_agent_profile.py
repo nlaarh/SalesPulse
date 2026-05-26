@@ -172,35 +172,35 @@ def agent_profile(
         data['mo_rev_pri'] = sorted(mo_rev_pri_map.values(), key=lambda x: x['mo'])
 
         # ── PBI overlay: replace commission+sales with authoritative PBI data ──
-        from pbi_utils import PBI_COMMISSION_LINES, pbi_monthly_map, norm_name, overlay_pbi_on_month_map, pbi_period_totals, pbi_by_day, pbi_by_advisor
+        from pbi_utils import (
+            PBI_COMMISSION_LINES,
+            pbi_agent_monthly,
+            norm_name,
+            overlay_pbi_on_month_map,
+            pbi_agent_period_total,
+            pbi_active_agent_count,
+            pbi_by_day
+        )
         n_agents = None
         if line in PBI_COMMISSION_LINES:
             nk = norm_name(name)
-            pbi_cur = pbi_monthly_map(line, f"{cy}-01-01", f"{cy}-12-31")
-            pbi_pri = pbi_monthly_map(line, f"{py}-01-01", f"{py}-12-31")
+            pbi_cur = pbi_agent_monthly(line, name, f"{cy}-01-01", f"{cy}-12-31")
+            pbi_pri = pbi_agent_monthly(line, name, f"{py}-01-01", f"{py}-12-31")
             overlay_pbi_on_month_map(mo_rev_cur_map, pbi_cur, nk, cy)
             overlay_pbi_on_month_map(mo_rev_pri_map, pbi_pri, nk, py)
             data['mo_rev_cur'] = sorted(mo_rev_cur_map.values(), key=lambda x: x['mo'])
             data['mo_rev_pri'] = sorted(mo_rev_pri_map.values(), key=lambda x: x['mo'])
             # Recompute period totals from PBI using exact day ranges
-            curr_advs = pbi_by_advisor(line, str(sd), str(ed))
-            pri_advs = pbi_by_advisor(line, str(p_sd), str(p_ed))
-            p_comm_pbi = sum(a['commission'] for a in curr_advs if norm_name(a['name']) == nk)
-            p_rev_pbi = sum(a['sales'] for a in curr_advs if norm_name(a['name']) == nk)
-            pp_comm_pbi = sum(a['commission'] for a in pri_advs if norm_name(a['name']) == nk)
-            pp_rev_pbi = sum(a['sales'] for a in pri_advs if norm_name(a['name']) == nk)
+            p_comm_pbi, p_rev_pbi, _ = pbi_agent_period_total(line, name, str(sd), str(ed))
+            pp_comm_pbi, pp_rev_pbi, _ = pbi_agent_period_total(line, name, str(p_sd), str(p_ed))
 
             data['won_cur'] = [{'cnt': data['won_cur'][0]['cnt'] if data.get('won_cur') else 0,
                                  'rev': p_rev_pbi, 'comm': p_comm_pbi}]
             data['won_pri'] = [{'cnt': data['won_pri'][0]['cnt'] if data.get('won_pri') else 0,
                                  'rev': pp_rev_pbi, 'comm': pp_comm_pbi}]
 
-            # Count of agents in PBI with commission > 0
-            pbi_agent_comm = {}
-            for a in curr_advs:
-                if a['name']:
-                    pbi_agent_comm[a['name'].strip().lower()] = pbi_agent_comm.get(a['name'].strip().lower(), 0.0) + a['commission']
-            n_agents = sum(1 for comm in pbi_agent_comm.values() if comm > 0)
+            # Count of agents in PBI with commission > 0 for team averages
+            n_agents = pbi_active_agent_count(line, str(sd), str(ed))
 
             # ── PBI override for division-level team comparison bars ──
             # t_won / t_won_month / t_won_ytd came from SF; replace rev+comm with PBI totals.
@@ -399,7 +399,7 @@ def agent_profile(
             'current_year': cy, 'prior_year': py,
             'period_start': str(sd), 'period_end': str(ed),
             'prior_start': p_sd, 'prior_end': p_ed,
-            'has_separate_bookings': not is_insurance,
+            'has_separate_bookings': True,
             'summary': {
                 'revenue': revenue, 'commission': commission,
                 'deals': deals, 'win_rate': wr,

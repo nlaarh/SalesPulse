@@ -10,7 +10,7 @@ from data.models import (  # noqa: F401
     User, VALID_ROLES, VALID_DEPARTMENTS,
     UserSession, SESSION_TTL_HOURS,
     ActivityLog, VALID_CATEGORIES,
-    TargetUpload, AdvisorTarget, MonthlyAdvisorTarget,
+    TargetUpload, AdvisorTarget, MonthlyAdvisorTarget, AdvisorAlias,
     GeoCounty, GeoMeta, GeoZip, GeoVehicleRegistration,
     TerritoryZip, TerritoryCounty,
     AIAuditLog, ApiRequestMetric, ClientRenderMetric,

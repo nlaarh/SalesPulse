@@ -7,7 +7,7 @@ import { fmtDate } from '@/lib/formatters'
 
 export interface Product360 {
   membership: boolean; travel: boolean; insurance: boolean; medicare: boolean
-  driver: boolean; ers?: boolean; travel_insurance?: boolean
+  driver: boolean
 }
 
 const PRODUCTS = [

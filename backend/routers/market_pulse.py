@@ -304,13 +304,15 @@ def _fetch_membership_metrics(today: date) -> dict[str, int]:
         _exp_base = (
             f"IsPersonAccount = true AND Member_Status__c = 'A'"
             f" AND ImportantActiveMemExpiryDate__c >= {today.isoformat()}"
+            f" AND ImportantActiveMemCoverage__c IN ('B','PLUS','PREMIER')"
+            f" AND Out_of_Territory_Member__c = false"
+            f" AND Billing_Region__c IN ('Western','Rochester','Central')"
         )
         data = sf_parallel(
             turning_65=f"""
                 SELECT COUNT(Id) cnt
                 FROM Account
-                WHERE IsPersonAccount = true
-                  AND Member_Status__c = 'A'
+                WHERE {_exp_base}
                   AND PersonBirthdate != null
                   AND PersonBirthdate >= {birth_start.isoformat()}
                   AND PersonBirthdate <= {birth_end.isoformat()}
@@ -343,7 +345,10 @@ def _fetch_membership_metrics(today: date) -> dict[str, int]:
                 FROM Account
                 WHERE IsPersonAccount = true
                   AND Member_Status__c = 'A'
+                  AND Out_of_Territory_Member__c = false
+                  AND Billing_Region__c IN ('Western','Rochester','Central')
                   AND ImportantActiveMemCoverage__c = 'B'
+                  AND ImportantActiveMemExpiryDate__c >= {today.isoformat()}
             """,
         )
         _cnt = lambda k: (data.get(k, [{}])[0] or {}).get('cnt', 0) or 0
@@ -399,6 +404,9 @@ def market_pulse(
         _exp_base = (
             f"IsPersonAccount = true AND Member_Status__c = 'A'"
             f" AND ImportantActiveMemExpiryDate__c >= {today.isoformat()}"
+            f" AND ImportantActiveMemCoverage__c IN ('B','PLUS','PREMIER')"
+            f" AND Out_of_Territory_Member__c = false"
+            f" AND Billing_Region__c IN ('Western','Rochester','Central')"
         )
         data = sf_parallel(
             travel_rollup=f"""
@@ -421,7 +429,7 @@ def market_pulse(
             # Membership metrics — merged into same batch
             turning_65=f"""
                 SELECT COUNT(Id) cnt FROM Account
-                WHERE IsPersonAccount = true AND Member_Status__c = 'A'
+                WHERE {_exp_base}
                   AND PersonBirthdate != null
                   AND PersonBirthdate >= {birth_start.isoformat()}
                   AND PersonBirthdate <= {birth_end.isoformat()}
@@ -452,7 +460,10 @@ def market_pulse(
             basic_members=f"""
                 SELECT COUNT(Id) cnt FROM Account
                 WHERE IsPersonAccount = true AND Member_Status__c = 'A'
+                  AND Out_of_Territory_Member__c = false
+                  AND Billing_Region__c IN ('Western','Rochester','Central')
                   AND ImportantActiveMemCoverage__c = 'B'
+                  AND ImportantActiveMemExpiryDate__c >= {today.isoformat()}
             """,
         )
 

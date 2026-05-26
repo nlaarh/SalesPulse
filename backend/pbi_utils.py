@@ -185,10 +185,10 @@ def pbi_nbus_by_advisor(sd: str, ed: str) -> list[dict]:
     return result
 
 
-def pbi_by_advisor(line: str, sd: str, ed: str) -> list[dict]:
+def pbi_by_advisor(line: str, sd: str, ed: str, extra_filter: str = "") -> list[dict]:
     """Pre-aggregated advisor totals (no monthly breakdown). Used for leaderboard."""
     from pbi_client import travel_by_advisor, insurance_by_advisor
-    raw_rows = travel_by_advisor(sd, ed) if line == 'Travel' else insurance_by_advisor(sd, ed)
+    raw_rows = travel_by_advisor(sd, ed, extra_filter) if line == 'Travel' else insurance_by_advisor(sd, ed, extra_filter)
 
     id_map = get_pbi_advisor_id_map(line)
 
@@ -214,6 +214,115 @@ def pbi_by_advisor(line: str, sd: str, ed: str) -> list[dict]:
             "txns": r["txns"]
         })
     return resolved_rows
+
+
+def get_pbi_codes_for_agent(line: str, agent_name: str) -> list[str]:
+    """Get all PBI codes associated with a Salesforce Name."""
+    id_map = get_pbi_advisor_id_map(line)
+    agent_name_norm = norm_name(agent_name)
+    codes = []
+    for code, sf_name in id_map.items():
+        if norm_name(sf_name) == agent_name_norm:
+            codes.append(code)
+    return codes
+
+
+def _agent_dax_filter(line: str, name: str) -> str:
+    """Build DAX filter for a specific agent by codes (or name fallback)."""
+    codes = get_pbi_codes_for_agent(line, name)
+    table_name = "Travel Transactions f transformed" if line == 'Travel' else "insurance_transactions_f"
+    code_col = "Primary Advisor Teller Code" if line == 'Travel' else "inserted_by_code"
+    name_col = "Primary Advisor Full Name" if line == 'Travel' else "inserted_by_name"
+    
+    if codes:
+        code_list_str = ", ".join(f'"{c.upper()}"' for c in codes) + ", " + ", ".join(f'"{c.lower()}"' for c in codes)
+        return f"'{table_name}'[{code_col}] IN {{{code_list_str}}}"
+    else:
+        return f"'{table_name}'[{name_col}] = \"{name}\""
+
+
+def pbi_agent_monthly(line: str, name: str, sd: str, ed: str) -> dict:
+    """Pull PBI data (Travel or Insurance) grouped by advisor+day, collapsed to YYYY-MM for a single advisor.
+
+    Returns: {norm_name: {YYYY-MM: {commission, sales, _raw_name}}}
+    Cached for 1 hour in memory, 24 hours on disk.
+    """
+    key = f"pbi_agent_monthly_v1_{line}_{norm_name(name)}_{sd}_{ed}"
+    return cache.cached_query(key, lambda: _fetch_pbi_agent_monthly(line, name, sd, ed),
+                              ttl=3600, disk_ttl=86400)
+
+
+def _fetch_pbi_agent_monthly(line: str, name: str, sd: str, ed: str) -> dict:
+    if line == 'Travel':
+        from pbi_client import travel_by_advisor_day as pbi_fn
+    else:
+        from pbi_client import insurance_by_advisor_day as pbi_fn
+
+    extra_filter = _agent_dax_filter(line, name)
+    id_map = get_pbi_advisor_id_map(line)
+
+    result: dict = {}
+    for r in pbi_fn(sd, ed, extra_filter=extra_filter):
+        r_name = r['name']
+        code = r.get('code', '')
+
+        resolved_name = r_name
+        if code:
+            code_lower = code.lower().strip()
+            if code_lower in id_map:
+                resolved_name = id_map[code_lower]
+
+        if not resolved_name or is_pbi_noise(resolved_name):
+            continue
+        nk = norm_name(resolved_name)
+        month = r['date'][:7]
+        if not nk or len(month) != 7:
+            continue
+        if nk not in result:
+            result[nk] = {}
+        if month not in result[nk]:
+            result[nk][month] = {'commission': 0.0, 'sales': 0.0, '_raw_name': resolved_name}
+        result[nk][month]['commission'] += r['commission']
+        result[nk][month]['sales'] += r['sales']
+    return result
+
+
+def pbi_agent_period_total(line: str, name: str, sd: str, ed: str) -> tuple[float, float, int]:
+    """Fetch total commission, sales, and transactions for a single agent in a period."""
+    key = f"pbi_agent_period_total_v1_{line}_{norm_name(name)}_{sd}_{ed}"
+    return cache.cached_query(key, lambda: _fetch_pbi_agent_period_total(line, name, sd, ed),
+                              ttl=3600, disk_ttl=86400)
+
+
+def _fetch_pbi_agent_period_total(line: str, name: str, sd: str, ed: str) -> tuple[float, float, int]:
+    extra_filter = _agent_dax_filter(line, name)
+    rows = pbi_by_advisor(line, sd, ed, extra_filter=extra_filter)
+    
+    nk = norm_name(name)
+    comm_total = sales_total = txn_total = 0.0
+    for r in rows:
+        if norm_name(r['name']) == nk:
+            comm_total += r['commission']
+            sales_total += r['sales']
+            txn_total += r['txns']
+    return comm_total, sales_total, int(txn_total)
+
+
+def pbi_active_agent_count(line: str, sd: str, ed: str) -> int:
+    """Fetch the number of active agents (commission > 0) in the period."""
+    key = f"pbi_active_agent_count_v1_{line}_{sd}_{ed}"
+    return cache.cached_query(key, lambda: _fetch_pbi_active_agent_count(line, sd, ed),
+                              ttl=3600, disk_ttl=86400)
+
+
+def _fetch_pbi_active_agent_count(line: str, sd: str, ed: str) -> int:
+    rows = pbi_by_advisor(line, sd, ed)
+    pbi_agent_comm = {}
+    for a in rows:
+        if a['name']:
+            pbi_agent_comm[a['name'].strip().lower()] = pbi_agent_comm.get(a['name'].strip().lower(), 0.0) + a['commission']
+    return sum(1 for comm in pbi_agent_comm.values() if comm > 0)
+
 
 
 def pbi_by_day(line: str, sd: str, ed: str) -> list[dict]:

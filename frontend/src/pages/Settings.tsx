@@ -3,11 +3,10 @@ import { Navigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
 import {
-  AlertCircle, Check, ScrollText, Target, Zap, Database, Gauge,
+  AlertCircle, Check, ScrollText, Zap, Database, Gauge,
   HelpCircle, Bug, Users, Server,
 } from 'lucide-react'
 import ActivityLogsTable from '@/components/ActivityLogsTable'
-import TargetsTab from '@/pages/settings/TargetsTab'
 import AIConfigTab from '@/pages/settings/AIConfigTab'
 import DataSystemSection from '@/pages/settings/DataSystemSection'
 import PerformanceTab from '@/pages/settings/PerformanceTab'
@@ -20,13 +19,13 @@ const UserManagement = lazy(() => import('@/pages/admin/UserManagement'))
 
 // Settings = the admin home. Superadmin sees every tab; the 'admin' role sees
 // only the Users tab (user management is the one feature it owns).
-type SettingsTab = 'users' | 'logs' | 'targets' | 'ai' | 'performance' | 'help' | 'issues' | 'cache' | 'system'
+type SettingsTab = 'users' | 'logs' | 'ai' | 'performance' | 'help' | 'issues' | 'cache' | 'system'
 
 export default function Settings() {
   const { isAdmin, isAdminOrSuperadmin } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const urlTab = searchParams.get('tab') as SettingsTab | null
-  const defaultTab: SettingsTab = isAdmin ? 'targets' : 'users'
+  const defaultTab: SettingsTab = isAdmin ? 'logs' : 'users'
   const [tab, setTab] = useState<SettingsTab>(urlTab ?? defaultTab)
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
@@ -44,10 +43,9 @@ export default function Settings() {
   if (!isAdminOrSuperadmin) return <Navigate to="/dashboard" replace />
 
   // Tabs visible to the current role. Superadmin sees everything; admin sees Users only.
-  type TabSpec = { key: SettingsTab; label: string; icon: typeof Target }
+  type TabSpec = { key: SettingsTab; label: string; icon: typeof Users }
   const ALL_TABS: TabSpec[] = [
     { key: 'users', label: 'Users', icon: Users },
-    { key: 'targets', label: 'Advisor Targets', icon: Target },
     { key: 'logs', label: 'Activity Logs', icon: ScrollText },
     { key: 'performance', label: 'Performance', icon: Gauge },
     { key: 'ai', label: 'AI & Integrations', icon: Zap },
@@ -73,7 +71,7 @@ export default function Settings() {
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Settings</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {isAdmin
-              ? 'Targets, logs, integrations, user accounts, and system administration.'
+              ? 'Logs, integrations, user accounts, and system administration.'
               : 'Manage user accounts, roles, and active sessions.'}
           </p>
         </div>
@@ -101,7 +99,6 @@ export default function Settings() {
       {/* Tab content */}
       {tab === 'users' && <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading...</div>}><UserManagement embedded /></Suspense>}
       {tab === 'logs' && <ActivityLogsTable />}
-      {tab === 'targets' && <TargetsTab />}
       {tab === 'ai' && <AIConfigTab />}
       {tab === 'cache' && (
         <div className="space-y-4">
