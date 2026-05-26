@@ -41,7 +41,7 @@ export default function TargetsTab() {
       </div>
 
       <div className="card-premium p-6">
-        <TargetGrid line={line} onBack={() => navigate(-1)} />
+        <TargetGrid key={line} line={line} onBack={() => navigate(-1)} />
       </div>
     </div>
   )

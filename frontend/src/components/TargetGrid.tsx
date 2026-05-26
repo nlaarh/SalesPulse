@@ -30,7 +30,7 @@ export default function TargetGrid({ line, onBack }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [year] = useState(currentYear)
-  const [base] = useState<TargetBase>('commission')
+  const [base] = useState<TargetBase>(line.toLowerCase() === 'insurance' ? 'bookings' : 'commission')
   const [advisors, setAdvisors] = useState<AdvisorState[]>([])
   const [originalAdvisors, setOriginalAdvisors] = useState<AdvisorState[]>([])
   const [commRate, setCommRate] = useState(0.187)

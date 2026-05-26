@@ -169,7 +169,7 @@ export default function AgentDashboard() {
     dayLabel: string
     monthOfYear: number
   } | null>(null)
-  const [achBase, setAchBase] = useState<'commission' | 'bookings'>('commission')
+  const [achBase, setAchBase] = useState<'commission' | 'bookings'>(line?.toLowerCase() === 'insurance' ? 'bookings' : 'commission')
   const monthlyTarget = targetData?.monthlyTarget ?? null
   const c = useChartColors()
 

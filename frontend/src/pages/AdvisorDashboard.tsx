@@ -67,7 +67,7 @@ export default function AdvisorDashboard() {
   const [tab, setTab] = useState<Tab>('overview')
   const [targetMap, setTargetMap] = useState<Map<string, number>>(new Map())
   const [achievement, setAchievement] = useState<AchievementResponse | null>(null)
-  const [achBase, setAchBase] = useState<'commission' | 'bookings'>('commission')
+  const [achBase, setAchBase] = useState<'commission' | 'bookings'>(line.toLowerCase() === 'insurance' ? 'bookings' : 'commission')
 
   function switchAchBase(base: 'commission' | 'bookings') {
     setAchBase(base)

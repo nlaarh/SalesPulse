@@ -274,13 +274,13 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
           <div className="flex items-center gap-6 rounded-xl border border-border bg-secondary/10 px-6 py-5">
             <ProgressRing pct={pct} />
             <div className="flex-1 space-y-1.5">
-              <h3 className="text-[14px] font-semibold">Commission Target</h3>
+              <h3 className="text-[14px] font-semibold">{isInsurance ? 'Written Premium' : 'Commission'} Target</h3>
               <p className="text-[12px] text-muted-foreground">
                 Monthly target: <span className="font-semibold text-foreground">{formatCurrency(monthlyTarget, true)}</span>
                 {' · '}Period target: <span className="font-semibold text-foreground">{formatCurrency(targetData.totalTarget, true)}</span>
               </p>
               <p className="text-[12px] text-muted-foreground">
-                Commissions earned: <span className="font-semibold text-foreground">{formatCurrency(targetData.totalActual, true)}</span>
+                {isInsurance ? 'Written Premium' : 'Commissions'} earned: <span className="font-semibold text-foreground">{formatCurrency(targetData.totalActual, true)}</span>
               </p>
             </div>
           </div>
