@@ -9,7 +9,7 @@ import {
 import wcnyGeoJsonStatic from '@/data/wcny-counties.geojson.json'
 import type { FeatureCollection } from 'geojson'
 import { fetchProductReport, type ProductReportData, type ProductType } from '@/lib/api_product_report'
-import { fetchCanonicalCounts, fetchCoverageTiers, type CanonicalCountsResponse, type CoverageTiersResponse } from '@/lib/api_growth'
+import { fetchCanonicalCounts, fetchCoverageTiers, fetchTrends, type CanonicalCountsResponse, type CoverageTiersResponse, type TrendsResponse } from '@/lib/api_growth'
 
 import Hero from '@/components/growth/Hero'
 import SectionHeader from '@/components/growth/SectionHeader'
@@ -28,6 +28,10 @@ import InvestmentPriorityMatrix, { type MatrixPoint } from '@/components/growth/
 import ProductGrowthSection from '@/components/growth/ProductGrowthSection'
 import { type RetentionFactor } from '@/components/growth/RetentionFactors'
 import DataExplorer from '@/components/growth/DataExplorer'
+import RetentionTrends from '@/components/growth/RetentionTrends'
+import MemberDepthPanel from '@/components/growth/MemberDepthPanel'
+import IncomePenetrationScatter from '@/components/growth/IncomePenetrationScatter'
+import CompetitiveLandscape from '@/components/growth/CompetitiveLandscape'
 import SidebarTOC, { type TocItem } from '@/components/growth/SidebarTOC'
 import AINarrative from '@/components/growth/AINarrative'
 import { GROWTH_COLORS, fmt } from '@/components/growth/tokens'
@@ -168,6 +172,10 @@ const TOC_ITEMS: TocItem[] = [
   { id: 'market-health', label: 'Six Penetration Lenses', group: 'Cross-Product' },
   { id: 'product-opportunity', label: 'Product Opportunity Bars', group: 'Cross-Product' },
   { id: 'priority-matrix', label: 'Investment Priority Matrix', group: 'Cross-Product' },
+  { id: 'retention-trends', label: 'Retention & Growth Trends', group: 'Intelligence' },
+  { id: 'member-depth', label: 'Member Depth & ERS Health', group: 'Intelligence' },
+  { id: 'income-penetration', label: 'Income vs Penetration', group: 'Intelligence' },
+  { id: 'competitive', label: 'Competitive Landscape', group: 'Intelligence' },
   { id: 'membership', label: 'Membership Deep Dive', group: 'Per-Product' },
   { id: 'auto-insurance', label: 'Auto Insurance', group: 'Per-Product' },
   { id: 'home-insurance', label: 'Home Insurance', group: 'Per-Product' },
@@ -234,6 +242,14 @@ export default function GrowthPlan() {
     queryKey: ['growth-plan-coverage-tiers'],
     queryFn: fetchCoverageTiers,
     staleTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+  })
+
+  // Intelligence panels: retention trends, LTV depth, income×pen scatter, competitive
+  const { data: trendsData } = useQuery<TrendsResponse>({
+    queryKey: ['growth-plan-trends'],
+    queryFn: fetchTrends,
+    staleTime: Infinity,
     refetchOnWindowFocus: false,
   })
 
@@ -619,6 +635,93 @@ export default function GrowthPlan() {
                 action="Approve named-county investment allocations: GROW gets agent capacity + marketing budget; DEFEND gets retention program funding."
               />
             </section>
+
+            {/* ── Intelligence Panels (Retention, Depth, Income×Pen, Competitive) ── */}
+
+            {trendsData && (
+              <>
+                {/* ── Retention & Growth Trends ──────────────────── */}
+                <section id="retention-trends">
+                  <SectionHeader
+                    page="Intelligence"
+                    title="Retention & Growth Trends"
+                    subtitle="5-year membership flow + insurance policy momentum — are we growing or eroding?"
+                  />
+                  <IntroBlock
+                    shows="Left: membership acquired vs cancelled each year with net growth line. Right: insurance renewals, new business, and cancellations with retention % overlay."
+                    read="Acquired > cancelled = growing base. Rising renewals + flat cancellations = compounding insurance book. Retention % below 82% is the alarm threshold."
+                  />
+                  <RetentionTrends data={trendsData} />
+                  <PunchlineCard
+                    punchline="Retention above 82% means you're holding the base. Net membership growth requires acquired outpacing cancelled by >15K/year. Watch both numbers, not just total members."
+                    action="Set a monthly dashboard alert: if net membership goes negative for 2 consecutive months, trigger a cancel-save campaign immediately."
+                  />
+                </section>
+
+                {/* ── Member Depth: LTV + ERS ────────────────────── */}
+                <section id="member-depth">
+                  <SectionHeader
+                    page="Intelligence"
+                    title="Member Depth & ERS Health"
+                    subtitle="LTV tier distribution + roadside utilization as your best leading retention indicator"
+                  />
+                  <IntroBlock
+                    shows="Left: horizontal bars showing member count in each LTV tier (A=highest, E=lowest). Right: ERS utilization rate — what % of members called roadside in the last 12 months, and which counties are lowest (churn risk)."
+                    read="Tier C–E members haven't been activated. ERS utilization below 15% in a county signals members who don't perceive value — they will not renew. Low-utilization ZIPs are where your cancel-save and member engagement resources should go first."
+                  />
+                  {trendsData.ltv_distribution && trendsData.ers_summary && (
+                    <MemberDepthPanel
+                      ltv={trendsData.ltv_distribution}
+                      ers={trendsData.ers_summary}
+                    />
+                  )}
+                  <PunchlineCard
+                    punchline="Members who use ERS renew at materially higher rates. Low-utilization counties are not just low-engagement — they are pre-cancellation. Send a benefit reminder campaign to ZIPs below the average utilization rate."
+                    action="Pull the member list for the 3 lowest-utilization counties. Send a targeted 'Did you know?' ERS activation email. Measure 30-day click and 90-day renewal rate."
+                  />
+                </section>
+
+                {/* ── Income vs Penetration Scatter ──────────────── */}
+                {trendsData.county_income_pen.length > 0 && (
+                  <section id="income-penetration">
+                    <SectionHeader
+                      page="Intelligence"
+                      title="Income vs Membership Penetration"
+                      subtitle="Which high-income counties are under-served? That is where your marketing dollar works hardest."
+                    />
+                    <IntroBlock
+                      shows="Scatter plot: each bubble is a county. X-axis = median household income, Y-axis = membership penetration %, bubble size = total member count. Dashed lines = territory medians."
+                      read="Top-left (red) = high income, low penetration = highest ROI acquisition target. Top-right (teal) = high income, high penetration = defend with bundling and upsell. Bottom-left = monitor. Bottom-right = retain with value pricing."
+                    />
+                    <IncomePenetrationScatter data={trendsData.county_income_pen} />
+                    <PunchlineCard
+                      punchline="High-income, low-penetration counties generate more revenue per acquired member — lower price sensitivity, higher LTV, more cross-sell potential. These are not awareness gaps; they are acquisition resource allocation gaps."
+                      action="Name the top 3 high-income, low-penetration counties. Assign a targeted acquisition budget and a dedicated agent. Measure new members per $1K spent vs territory average."
+                    />
+                  </section>
+                )}
+
+                {/* ── Competitive Landscape ──────────────────────── */}
+                {trendsData.competitors.length > 0 && (
+                  <section id="competitive">
+                    <SectionHeader
+                      page="Intelligence"
+                      title="Competitive Landscape"
+                      subtitle="NY auto insurance market share + AAA/CSAA premium trajectory and complaint ratio"
+                    />
+                    <IntroBlock
+                      shows="Left: premium volume by carrier for the latest year (NY DFS data). Right: AAA/CSAA premium growth vs complaint count over time."
+                      read="AAA/CSAA's complaint ratio vs larger carriers is a credibility advantage. Flat or declining premium share signals pricing or distribution issues. Use this in agent training — AAA is not the biggest but it is among the most trusted."
+                    />
+                    <CompetitiveLandscape competitors={trendsData.competitors} />
+                    <PunchlineCard
+                      punchline="Market share is not the goal — profitable share in the right segments is. AAA/CSAA's niche in the member base is defensible if agents can articulate it. Erie's over-index in certain counties is the competitive pressure to watch."
+                      action="Build a one-page agent talking-point card: AAA vs Erie vs GEICO on price, complaint ratio, and bundled membership value. Distribute at the next all-agent meeting."
+                    />
+                  </section>
+                )}
+              </>
+            )}
 
             {/* ── 9-11. Per-Product Deep Dives ─────────────────── */}
             {/* Per product: penetration → growth opportunity → performance → churn */}
