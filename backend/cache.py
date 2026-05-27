@@ -29,7 +29,7 @@ PROTECTED_PREFIXES: tuple[str, ...] = (
 
 # ── L1: In-memory ────────────────────────────────────────────────────────────
 
-L1_MAX_ENTRIES = 2000  # entries (not bytes) — tuned for 500MB worst-case
+L1_MAX_ENTRIES = 5000  # entries (not bytes) — tuned for larger in-memory capacity
 _store: OrderedDict = OrderedDict()
 _lock = threading.Lock()
 

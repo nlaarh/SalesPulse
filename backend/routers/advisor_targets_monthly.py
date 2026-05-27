@@ -18,7 +18,7 @@ from activity_logger import log_activity
 from shared import get_owner_map
 from constants import CACHE_TTL_MEDIUM, CACHE_TTL_HOUR, CACHE_TTL_DAY, CACHE_TTL_12H
 from routers.advisor_targets_helpers import (
-    _get_comm_rate, _sf_advisors_with_bookings, _get_comm_rate_accurate,
+    _get_comm_rate, _get_comm_rate_accurate,
     _ensure_advisor_targets, _get_existing_advisor_targets, DEFAULT_SEED_GROWTH,
 )
 
@@ -58,54 +58,25 @@ def compute_estimates(
     most_recent = max(valid_years)
     comm_rate = _get_comm_rate_accurate(body.line, most_recent, cache, sf_query_all, WON_STAGES, lf)
 
-    # Fetch monthly actuals for each base year
-    owner_map = get_owner_map()
-    # advisor_lower -> { month -> [values across years] }
+    # Fetch monthly actuals for each base year (PBI for Travel/Insurance, Salesforce fallback)
     advisor_monthly_bookings: dict[str, dict[int, list[float]]] = {}
     advisor_yearly_totals: dict[str, list[float]] = {}
-
-    for yr in valid_years:
-        cache_key = f"estimate_monthly_{body.line}_{yr}"
-        def _fetch(y=yr):
-            rows = sf_query_all(f"""
-                SELECT OwnerId, CALENDAR_MONTH(CloseDate) mo,
-                       SUM(Amount) rev, SUM(Earned_Commission_Amount__c) comm
-                FROM Opportunity
-                WHERE {WON_STAGES} AND {lf}
-                  AND CloseDate >= {y}-01-01 AND CloseDate <= {y}-12-31
-                  AND Amount != null
-                GROUP BY OwnerId, CALENDAR_MONTH(CloseDate)
-            """)
-            return [{**r, 'Name': owner_map.get(r.get('OwnerId', ''), '')} for r in rows]
-        records = cache.cached_query(cache_key, _fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
-
-        yr_totals: dict[str, float] = {}
-        for r in records:
-            name = (r.get('Name') or '').strip().lower()
-            if not name:
-                continue
-            mo = r.get('mo', 0)
-            rev = r.get('rev', 0) or 0
-            advisor_monthly_bookings.setdefault(name, {}).setdefault(mo, []).append(rev)
-            yr_totals[name] = yr_totals.get(name, 0) + rev
-        for name, total in yr_totals.items():
-            advisor_yearly_totals.setdefault(name, []).append(total)
-
-    # Build averaged estimates
     all_names: dict[str, str] = {}
+
     for yr in valid_years:
-        recs = _sf_advisors_with_bookings(body.line, yr, cache, sf_query_all, WON_STAGES, lf)
-        for r in recs:
-            n = (r.get('Name') or '').strip()
-            if n:
-                all_names[n.lower()] = n
+        actuals_data = _get_advisor_monthly_actuals(body.line, yr, cache, sf_query_all, WON_STAGES, lf)
+        all_names.update(actuals_data['names'])
+        for name_lower, months in actuals_data['actuals'].items():
+            yr_total = 0.0
+            for mo, vals in months.items():
+                rev = vals['bookings']
+                advisor_monthly_bookings.setdefault(name_lower, {}).setdefault(mo, []).append(rev)
+                yr_total += rev
+            advisor_yearly_totals.setdefault(name_lower, []).append(yr_total)
 
     # Also include current year advisors
-    cur_recs = _sf_advisors_with_bookings(body.line, body.year, cache, sf_query_all, WON_STAGES, lf)
-    for r in cur_recs:
-        n = (r.get('Name') or '').strip()
-        if n:
-            all_names[n.lower()] = n
+    cur_actuals = _get_advisor_monthly_actuals(body.line, body.year, cache, sf_query_all, WON_STAGES, lf)
+    all_names.update(cur_actuals['names'])
 
     advisor_ids = _ensure_advisor_targets(db, list(all_names.values()), line=body.line)
 

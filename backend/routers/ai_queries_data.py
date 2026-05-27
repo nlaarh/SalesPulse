@@ -92,6 +92,27 @@ def fetch_advisor_rankings(line: str = "Travel") -> dict:
     cache_key = f"ai:advisors_{line}"
 
     def fetch():
+        if line in ('Travel', 'Insurance'):
+            from datetime import date, timedelta
+            from pbi_utils import pbi_by_advisor
+            ed = date.today().isoformat()
+            sd = (date.today() - timedelta(days=90)).isoformat()
+            try:
+                pbi_rows = pbi_by_advisor(line, sd, ed)
+            except Exception as e:
+                log.error(f"Failed to fetch PBI advisors for rankings: {e}")
+                pbi_rows = []
+            
+            pbi_rows.sort(key=lambda r: r.get('sales', 0.0), reverse=True)
+            advisors = []
+            for r in pbi_rows[:10]:
+                advisors.append({
+                    "name": r['name'],
+                    "deals_won": r.get('txns', 0),
+                    "revenue": r.get('sales', 0.0)
+                })
+            return {"advisors": advisors, "line": line}
+
         lf = _line_filter(line)
         query = f"""
             SELECT OwnerId, COUNT(Id) cnt, SUM(Amount) total
@@ -128,6 +149,42 @@ def fetch_revenue_trends(line: str = "Travel") -> dict:
     cache_key = f"ai:revenue_{line}"
 
     def fetch():
+        if line in ('Travel', 'Insurance'):
+            from datetime import date, timedelta
+            from pbi_utils import pbi_by_day
+            ed = date.today().isoformat()
+            sd = (date.today() - timedelta(days=365)).isoformat()
+            try:
+                pbi_rows = pbi_by_day(line, sd, ed)
+            except Exception as e:
+                log.error(f"Failed to fetch PBI by day for revenue trends: {e}")
+                pbi_rows = []
+            
+            monthly_agg = {}
+            for r in pbi_rows:
+                yr = int(r['date'][:4])
+                mo = int(r['date'][5:7])
+                key = (yr, mo)
+                if key not in monthly_agg:
+                    monthly_agg[key] = {"deals": 0, "revenue": 0.0}
+                monthly_agg[key]["deals"] += r.get('txns', 0)
+                monthly_agg[key]["revenue"] += r.get('sales', 0.0)
+            
+            months = []
+            total_rev = 0.0
+            total_deals = 0
+            for (yr, mo), data in sorted(monthly_agg.items()):
+                months.append({
+                    "year": yr,
+                    "month": mo,
+                    "deals": data["deals"],
+                    "revenue": data["revenue"]
+                })
+                total_rev += data["revenue"]
+                total_deals += data["deals"]
+            
+            return {"monthly": months, "total_revenue": total_rev, "total_deals": total_deals, "line": line}
+
         lf = _line_filter(line)
         from shared import WON_STAGES
         q = f"""
@@ -205,6 +262,63 @@ def fetch_win_rate_data(line: str = "Travel") -> dict:
 
     def fetch():
         lf = _line_filter(line)
+        if line in ('Travel', 'Insurance'):
+            from datetime import date, timedelta
+            from pbi_utils import pbi_by_day, pbi_by_advisor
+            ed = date.today().isoformat()
+            sd = (date.today() - timedelta(days=365)).isoformat()
+            
+            try:
+                pbi_day = pbi_by_day(line, sd, ed)
+                won_cnt = sum(r.get('txns', 0) for r in pbi_day)
+                won_rev = sum(r.get('sales', 0.0) for r in pbi_day)
+            except Exception as e:
+                log.error(f"Failed to fetch PBI day for win rate: {e}")
+                won_cnt = 0
+                won_rev = 0.0
+
+            try:
+                pbi_adv = pbi_by_advisor(line, sd, ed)
+                pbi_adv.sort(key=lambda r: r.get('sales', 0.0), reverse=True)
+                top_winners = []
+                for r in pbi_adv[:10]:
+                    top_winners.append({
+                        "name": r['name'],
+                        "deals": r.get('txns', 0),
+                        "revenue": r.get('sales', 0.0)
+                    })
+            except Exception as e:
+                log.error(f"Failed to fetch PBI advisor for win rate: {e}")
+                top_winners = []
+
+            lost_q = f"""
+                SELECT COUNT(Id) cnt, SUM(Amount) rev
+                FROM Opportunity
+                WHERE {lf} AND StageName = 'Closed Lost'
+                  AND CloseDate >= {sd}
+                  AND CloseDate <= {ed}
+            """
+            try:
+                lost_data = sf_query_all(lost_q)
+                lost_cnt = lost_data[0].get("cnt", 0) if lost_data else 0
+                lost_rev = lost_data[0].get("rev", 0) or 0 if lost_data else 0
+            except Exception as e:
+                log.error(f"Failed to fetch SF lost data for win rate: {e}")
+                lost_cnt = 0
+                lost_rev = 0.0
+
+            total = won_cnt + lost_cnt
+            win_rate = round(won_cnt / total * 100, 1) if total else 0
+
+            return {
+                "win_rate": win_rate,
+                "won_count": won_cnt, "won_revenue": won_rev,
+                "lost_count": lost_cnt, "lost_revenue": lost_rev,
+                "total_closed": total,
+                "top_winners": top_winners,
+                "line": line,
+            }
+
         from shared import WON_STAGES
         won_q = f"""
             SELECT COUNT(Id) cnt, SUM(Amount) rev
@@ -270,6 +384,62 @@ def fetch_funnel_data(line: str = "Travel") -> dict:
         lf_opp = _line_filter(line)
         lf_lead = line_filter_lead(line)
 
+        if line in ('Travel', 'Insurance'):
+            from datetime import date, timedelta
+            from pbi_utils import pbi_by_day
+            from sf_client import sf_parallel
+            ed = date.today().isoformat()
+            sd = (date.today() - timedelta(days=365)).isoformat()
+
+            leads_q = f"""
+                SELECT COUNT(Id) cnt FROM Lead
+                WHERE {lf_lead}
+                  AND CreatedDate >= {sd}T00:00:00Z
+            """
+            converted_q = f"""
+                SELECT COUNT(Id) cnt FROM Lead
+                WHERE {lf_lead} AND IsConverted = true
+                  AND ConvertedDate >= {sd} AND ConvertedDate <= {ed}
+            """
+            invoiced_q = f"""
+                SELECT COUNT(Id) cnt FROM Opportunity
+                WHERE {lf_opp} AND StageName IN {INVOICED_STAGES}
+                  AND CloseDate >= {sd} AND CloseDate <= {ed}
+            """
+            lost_q = f"""
+                SELECT COUNT(Id) cnt FROM Opportunity
+                WHERE {lf_opp} AND StageName = 'Closed Lost'
+                  AND CloseDate >= {sd} AND CloseDate <= {ed}
+            """
+            sf_data = sf_parallel(leads=leads_q, converted=converted_q,
+                                  invoiced=invoiced_q, lost=lost_q)
+
+            try:
+                pbi_day = pbi_by_day(line, sd, ed)
+                won = sum(r.get('txns', 0) for r in pbi_day)
+                won_rev = sum(r.get('sales', 0.0) for r in pbi_day)
+            except Exception as e:
+                log.error(f"Failed to fetch PBI day for funnel: {e}")
+                won = 0
+                won_rev = 0.0
+
+            leads = sf_data["leads"][0].get("cnt", 0) if sf_data["leads"] else 0
+            converted = sf_data["converted"][0].get("cnt", 0) if sf_data["converted"] else 0
+            invoiced = sf_data["invoiced"][0].get("cnt", 0) if sf_data["invoiced"] else 0
+            lost = sf_data["lost"][0].get("cnt", 0) if sf_data["lost"] else 0
+
+            return {
+                "leads": leads,
+                "converted": converted,
+                "conversion_rate": round(converted / leads * 100, 1) if leads else 0,
+                "invoiced": invoiced,
+                "won": won,
+                "won_revenue": won_rev,
+                "lost": lost,
+                "win_rate": round(won / (won + lost) * 100, 1) if (won + lost) else 0,
+                "line": line,
+            }
+
         leads_q = f"""
             SELECT COUNT(Id) cnt FROM Lead
             WHERE {lf_lead}
@@ -330,6 +500,79 @@ def fetch_general_metrics(line: str = "Travel") -> dict:
     def fetch():
         lf = _line_filter(line)
         from shared import WON_STAGES
+
+        if line in ('Travel', 'Insurance'):
+            from datetime import date, timedelta
+            from pbi_utils import pbi_by_day
+            from sf_client import sf_parallel
+            
+            today = date.today()
+            month_start = today.replace(day=1).isoformat()
+            today_iso = today.isoformat()
+            next_week = (today + timedelta(days=7)).isoformat()
+            
+            open_q = f"""
+                SELECT COUNT(Id) cnt, SUM(Amount) rev, AVG(Amount) avg_amt
+                FROM Opportunity
+                WHERE IsClosed = false AND {lf}
+                  AND Amount != null
+                  AND CloseDate >= TODAY AND CloseDate <= NEXT_N_MONTHS:12
+            """
+            top_wins_q = f"""
+                SELECT Name, Amount, CloseDate, OwnerId
+                FROM Opportunity
+                WHERE {lf} AND {WON_STAGES}
+                  AND CloseDate >= LAST_N_MONTHS:3 AND CloseDate <= TODAY
+                  AND Amount != null
+                ORDER BY Amount DESC
+                LIMIT 5
+            """
+            closing_q = f"""
+                SELECT COUNT(Id) cnt, SUM(Amount) rev
+                FROM Opportunity
+                WHERE IsClosed = false AND {lf}
+                  AND Amount != null
+                  AND CloseDate >= TODAY AND CloseDate <= {next_week}
+            """
+            
+            sf_data = sf_parallel(open_pipe=open_q, top_wins=top_wins_q, closing=closing_q)
+            
+            try:
+                pbi_day = pbi_by_day(line, month_start, today_iso)
+                won_this_month = sum(r.get('txns', 0) for r in pbi_day)
+                won_this_month_rev = sum(r.get('sales', 0.0) for r in pbi_day)
+            except Exception as e:
+                log.error(f"Failed to fetch PBI day for general metrics: {e}")
+                won_this_month = 0
+                won_this_month_rev = 0.0
+                
+            from shared import get_owner_map
+            owner_map = get_owner_map()
+            
+            open_d = sf_data["open_pipe"][0] if sf_data["open_pipe"] else {}
+            closing_d = sf_data["closing"][0] if sf_data["closing"] else {}
+            
+            top_wins = []
+            for r in sf_data.get("top_wins", []):
+                name = owner_map.get(r.get("OwnerId"), "Unknown")
+                top_wins.append({
+                    "deal": r.get("Name"),
+                    "amount": r.get("Amount") or 0,
+                    "close_date": r.get("CloseDate"),
+                    "advisor": name,
+                })
+                
+            return {
+                "open_deals": open_d.get("cnt", 0),
+                "open_pipeline_value": open_d.get("rev", 0) or 0,
+                "avg_deal_size": round(open_d.get("avg_amt", 0) or 0, 2),
+                "won_this_month": won_this_month,
+                "won_this_month_rev": won_this_month_rev,
+                "closing_this_week": closing_d.get("cnt", 0),
+                "closing_this_week_value": closing_d.get("rev", 0) or 0,
+                "top_recent_wins": top_wins,
+                "line": line,
+            }
 
         open_q = f"""
             SELECT COUNT(Id) cnt, SUM(Amount) rev, AVG(Amount) avg_amt

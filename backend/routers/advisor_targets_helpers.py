@@ -25,28 +25,6 @@ def _get_comm_rate(records: list) -> float:
     return comm_with / rev_with if rev_with > 0 else 0.187
 
 
-def _sf_advisors_with_bookings(line: str, year: int, cache_module, sf_query_all, WON_STAGES, lf):
-    """Get all advisors who had bookings in a given year from SF."""
-    key = f"sf_advisors_{line}_{year}"
-    def fetch():
-        # OwnerId avoids the User cross-object join in GROUP BY
-        rows = sf_query_all(f"""
-            SELECT OwnerId, SUM(Amount) rev, SUM(Earned_Commission_Amount__c) comm
-            FROM Opportunity
-            WHERE {WON_STAGES} AND {lf}
-              AND CloseDate >= {year}-01-01 AND CloseDate <= {year}-12-31
-              AND Amount != null
-            GROUP BY OwnerId
-        """)
-        owner_map = get_owner_map()
-        out = []
-        for r in rows:
-            name = owner_map.get(r.get('OwnerId', ''), '')
-            if name:
-                out.append({**r, 'Name': name})
-        return out
-    return cache_module.cached_query(key, fetch, ttl=CACHE_TTL_MEDIUM, disk_ttl=CACHE_TTL_12H)
-
 
 def _get_comm_rate_accurate(line: str, year: int, cache_module, sf_query_all, WON_STAGES, lf) -> float:
     """Get true commission rate. Uses PBI for Travel/Insurance (authoritative); SF for other lines."""

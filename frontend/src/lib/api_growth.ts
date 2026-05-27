@@ -76,10 +76,29 @@ export interface ZipTableResponse {
   total: number
 }
 
+export interface LtvDistribution {
+  ltv_a: number; ltv_b: number; ltv_c: number; ltv_d: number; ltv_e: number; total: number
+}
+
+export interface ErsSummary {
+  total_utilization_pct: number
+  total_ers_users: number
+  total_members: number
+  bottom_counties: { county: string; utilization_pct: number }[]
+  top_counties: { county: string; utilization_pct: number }[]
+}
+
+export interface CountyIncomePen {
+  county: string; median_income: number; mem_pen_pct: number; members: number; adults_18p: number
+}
+
 export interface TrendsResponse {
   membership_trend: Record<string, string>[]
   insurance_retention: Record<string, string>[]
   competitors: Record<string, string>[]
+  ltv_distribution: LtvDistribution
+  ers_summary: ErsSummary
+  county_income_pen: CountyIncomePen[]
 }
 
 export interface ProductSummary {

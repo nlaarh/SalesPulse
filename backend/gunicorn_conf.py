@@ -15,7 +15,7 @@ max_requests = 1000
 max_requests_jitter = 100
 
 timeout = 120
-keepalive = 30
+keepalive = 65
 preload_app = True   # load app once before forking — workers share read-only memory
 
 accesslog = "-"

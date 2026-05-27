@@ -49,7 +49,7 @@ def _log_sf_query(query: str, duration_ms: int, row_count: int | None, bytes_cou
 # ── Connection-pooled HTTP session ──────────────────────────────────────────
 
 _session = requests.Session()
-_adapter = HTTPAdapter(pool_connections=10, pool_maxsize=20, max_retries=3)
+_adapter = HTTPAdapter(pool_connections=30, pool_maxsize=50, max_retries=3)
 _session.mount('https://', _adapter)
 _session.mount('http://', _adapter)
 
@@ -105,11 +105,11 @@ def sf_instance_url() -> str:
 _rate_lock = threading.Lock()
 _call_times = []
 # Per worker. Keep conservative because each gunicorn worker has its own limiter.
-_RATE_LIMIT = int(os.getenv('SF_RATE_LIMIT_PER_MIN', '20'))
+_RATE_LIMIT = int(os.getenv('SF_RATE_LIMIT_PER_MIN', '100'))
 _RATE_WINDOW = 60
 # Max seconds to block-wait before giving up (for burst scenarios)
 _RATE_MAX_WAIT = 12
-_PARALLEL_QUERY_LIMIT_PER_REQUEST = int(os.getenv('SF_PARALLEL_QUERY_LIMIT_PER_REQUEST', '2'))
+_PARALLEL_QUERY_LIMIT_PER_REQUEST = int(os.getenv('SF_PARALLEL_QUERY_LIMIT_PER_REQUEST', '4'))
 
 
 class RateLimitExceeded(Exception):

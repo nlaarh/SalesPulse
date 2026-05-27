@@ -1,0 +1,15 @@
+=== POSTGRES DB UPLOADS ===
+Upload ID: 1, Filename: __sf_auto__, Line: Travel, Advisor Count: 322
+Upload ID: 2, Filename: __sf_auto__, Line: Insurance, Advisor Count: 55
+
+=== TRAVEL TARGETS BY YEAR (POSTGRES) ===
+Year 2025: Total Target Amount (Commission): 17,827,783.00, Total Target Bookings (Sales): 95,335,678.00
+Year 2026: Total Target Amount (Commission): 24,874,470.00, Total Target Bookings (Sales): 155,014,992.00
+
+USE_SQLITE: False
+PG_HOST: fslapp-pg.postgres.database.azure.com
+PG_DATABASE: fslapp
+PG_SCHEMA: sales
+PG_USER: nlaaroubi@nyaaa.com
+Total AdvisorTarget count: 377
+Total MonthlyAdvisorTarget count: 8184

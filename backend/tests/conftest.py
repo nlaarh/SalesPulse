@@ -26,6 +26,7 @@ os.environ.setdefault('SF_CONSUMER_SECRET','test-secret')
 os.environ.setdefault('SF_USERNAME',       'test@example.com')
 os.environ.setdefault('SF_PASSWORD',       'testpass')
 os.environ.setdefault('SF_SECURITY_TOKEN', 'testtoken')
+os.environ.setdefault('SF_RATE_LIMIT_PER_MIN', '20')
 os.environ.setdefault('SALESINSIGHT_CACHE_DIR', os.path.join(os.path.dirname(__file__), '.test_cache'))
 
 

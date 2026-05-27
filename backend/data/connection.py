@@ -9,6 +9,7 @@ Tests only: USE_SQLITE=1 for isolated unit tests.
 """
 
 import os
+import sys
 import logging
 import threading
 from sqlalchemy import create_engine, event
@@ -24,8 +25,9 @@ PG_SCHEMA = os.getenv('PG_SCHEMA', 'sales')
 PG_USER = os.getenv('PG_USER', 'nlaaroubi@nyaaa.com')
 PG_PORT = int(os.getenv('PG_PORT', '5432'))
 
-# Tests only: USE_SQLITE=1 for unit tests that don't need PG
-USE_SQLITE = os.getenv('USE_SQLITE', '').strip() in ('1', 'true', 'yes')
+# Do not use SQLite fallback except strictly for running isolated backend unit tests.
+IS_TESTING = 'pytest' in sys.modules or os.getenv('PYTEST_CURRENT_TEST') is not None
+USE_SQLITE = IS_TESTING
 
 if not os.getenv('PG_HOST') and not USE_SQLITE:
     log.warning("PG_HOST not set — using hardcoded default. Set PG_HOST explicitly in production.")
@@ -100,8 +102,9 @@ def _build_engine():
     eng = create_engine(
         url,
         pool_pre_ping=True,
-        pool_size=5,
-        max_overflow=10,
+        pool_size=20,
+        max_overflow=30,
+        pool_timeout=45,
         pool_recycle=3300,  # recycle every 55 min (token refresh cycle)
     )
 

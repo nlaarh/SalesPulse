@@ -88,7 +88,49 @@ export async function fetchMembershipUpgrades(
   return data as MembershipUpgradeInsights
 }
 
+// ── Medicare Eligibility Insights ─────────────────────────────────────────────
+
+export interface MedicareEligibilityCustomer {
+  account_id: string
+  account_name: string
+  phone: string
+  email: string
+  city: string
+  ltv: string
+  membership: string
+  age: number | null
+  birthdate: string | null
+  days_until_65: number
+  score: number
+  priority: 'high' | 'medium' | 'low'
+  reason: string
+  sf_link: string
+}
+
+export interface MedicareEligibilityInsights {
+  summary: {
+    total_eligible: number
+    high_priority_count: number
+    medium_priority_count: number
+    low_priority_count: number
+  }
+  customers: MedicareEligibilityCustomer[]
+  date_range: { start: string; end: string }
+}
+
+export async function fetchMedicareEligibility(
+  period = 12,
+  startDate?: string | null,
+  endDate?: string | null,
+): Promise<MedicareEligibilityInsights> {
+  const { data } = await api.get('/api/cross-sell/medicare-eligibility', {
+    params: withDates({ period }, startDate, endDate),
+  })
+  return data as MedicareEligibilityInsights
+}
+
 // ── Market Pulse ──────────────────────────────────────────────────────────────
+
 
 export interface MarketPulseAlert {
   type: 'travel_advisory' | 'medicare_enrollment' | 'medicare_turning_65' | 'seasonal' | 'membership'

@@ -363,6 +363,100 @@ def _load_competitive() -> list[dict]:
         return [row for row in csv.DictReader(f)]
 
 
+@lru_cache(maxsize=1)
+def _load_ltv_summary() -> dict:
+    """Aggregate LTV tier distribution across all territory ZIPs."""
+    path = DATA_DIR / "ltv_tenure_by_zip.csv"
+    if not path.exists():
+        return {}
+    territory = _load_territory_zips()
+    totals: dict[str, int] = {k: 0 for k in ('ltv_a', 'ltv_b', 'ltv_c', 'ltv_d', 'ltv_e')}
+    with path.open() as f:
+        for row in csv.DictReader(f):
+            if row['zip'] not in territory:
+                continue
+            for k in totals:
+                totals[k] += int(row.get(k, 0) or 0)
+    totals['total'] = sum(totals.values())
+    return totals
+
+
+@lru_cache(maxsize=1)
+def _load_ers_summary() -> dict:
+    """ERS utilization rate by territory ZIP, aggregated to county level."""
+    ers_path = DATA_DIR / "ers_by_zip.csv"
+    mem_path = DATA_DIR / "members_by_zip.csv"
+    if not ers_path.exists() or not mem_path.exists():
+        return {}
+
+    ers_by_zip: dict[str, int] = {}
+    with ers_path.open() as f:
+        for row in csv.DictReader(f):
+            ers_by_zip[row['zip']] = int(row.get('ers_unique_members_12mo', 0) or 0)
+
+    mem_by_zip: dict[str, int] = {}
+    with mem_path.open() as f:
+        for row in csv.DictReader(f):
+            mem_by_zip[row['zip']] = int(row.get('active_members', 0) or 0)
+
+    territory = _load_territory_zips()
+    county_agg: dict[str, dict[str, int]] = {}
+    total_ers = total_mem = 0
+
+    for z, ti in territory.items():
+        county = ti.get('county', '')
+        ers = ers_by_zip.get(z, 0)
+        mem = mem_by_zip.get(z, 0)
+        total_ers += ers
+        total_mem += mem
+        if county:
+            if county not in county_agg:
+                county_agg[county] = {'ers': 0, 'mem': 0}
+            county_agg[county]['ers'] += ers
+            county_agg[county]['mem'] += mem
+
+    county_rates = sorted(
+        [{'county': c, 'utilization_pct': round(d['ers'] / d['mem'] * 100, 1)}
+         for c, d in county_agg.items() if d['mem'] > 0],
+        key=lambda x: x['utilization_pct'],
+    )
+    return {
+        'total_utilization_pct': round(total_ers / total_mem * 100, 1) if total_mem else 0,
+        'total_ers_users': total_ers,
+        'total_members': total_mem,
+        'bottom_counties': county_rates[:5],
+        'top_counties': county_rates[-5:],
+    }
+
+
+def _county_income_pen() -> list[dict]:
+    """County-level median income vs membership penetration for scatter chart."""
+    rows = _build_zip_table()
+    county_agg: dict[str, dict] = {}
+    for r in rows:
+        c = r.get('county', '')
+        if not c:
+            continue
+        if c not in county_agg:
+            county_agg[c] = {'income_sum': 0.0, 'income_count': 0,
+                              'members': 0, 'adults_18p': 0}
+        d = county_agg[c]
+        d['members'] += r.get('active_members', 0)
+        d['adults_18p'] += r.get('adults_18p', 0)
+        inc = r.get('median_income', 0)
+        if inc > 0:
+            d['income_sum'] += inc
+            d['income_count'] += 1
+    out = []
+    for c, d in county_agg.items():
+        med_inc = d['income_sum'] / d['income_count'] if d['income_count'] else 0
+        pen = d['members'] / d['adults_18p'] * 100 if d['adults_18p'] else 0
+        out.append({'county': c, 'median_income': round(med_inc),
+                    'mem_pen_pct': round(pen, 1), 'members': d['members'],
+                    'adults_18p': d['adults_18p']})
+    return sorted(out, key=lambda x: x['members'], reverse=True)
+
+
 # ─── API Endpoints ───────────────────────────────────────────────────────
 
 @router.get("/api/growth/scorecard")
@@ -429,11 +523,14 @@ def zip_table(
 
 @router.get("/api/growth/trends")
 def trends(_user=Depends(get_current_user)):
-    """Membership trend + insurance retention for trend charts."""
+    """Membership trend + insurance retention + LTV + ERS + income-pen for insight panels."""
     return {
         "membership_trend": _load_membership_trend(),
         "insurance_retention": _load_insurance_retention(),
         "competitors": _load_competitive(),
+        "ltv_distribution": _load_ltv_summary(),
+        "ers_summary": _load_ers_summary(),
+        "county_income_pen": _county_income_pen(),
     }
 
 

@@ -634,3 +634,180 @@ def membership_upgrade_insights(
         }
 
     return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
+
+
+# ── Medicare Eligibility Cross-Sell ───────────────────────────────────────────
+
+def _score_medicare_candidate(ltv: str, membership: str) -> tuple[int, str]:
+    """Score a Medicare eligibility candidate 0-100 based on LTV and membership tier."""
+    # LTV score (0-50): A=50, B=40, C=30, D=20, E=10
+    ltv_scores = {'A': 50, 'B': 40, 'C': 30, 'D': 20, 'E': 10}
+    ltv_clean = (ltv or '').strip().upper()[:1]
+    ltv_score = ltv_scores.get(ltv_clean, 25)
+
+    # Membership score (0-50): Premier=50, Plus=40, Basic/Classic=20
+    mem_scores = {'PREMIER': 50, 'PLUS': 40, 'BASIC': 20, 'CLASSIC': 20, 'B': 20}
+    mem_clean = (membership or '').strip().upper()
+    mem_score = mem_scores.get(mem_clean, 20)
+
+    total = ltv_score + mem_score
+    if total >= 80:
+        priority = 'high'
+    elif total >= 50:
+        priority = 'medium'
+    else:
+        priority = 'low'
+
+    return total, priority
+
+
+def _build_medicare_reason(acct: dict, age: int, days_until_65: int) -> str:
+    """Build actionable reason for Medicare outreach."""
+    membership = acct.get('membership', '')
+    ltv = (acct.get('ltv', '') or '').upper()[:1]
+
+    parts = []
+    if days_until_65 > 0:
+        parts.append(f"Turns 65 in {days_until_65} days (IEP window opening soon)")
+    elif days_until_65 == 0:
+        parts.append("Turns 65 today! IEP window active")
+    else:
+        parts.append(f"Age {age} (within Medicare eligibility range)")
+
+    if membership:
+        parts.append(f"{membership} member")
+    if ltv:
+        parts.append(f"LTV {ltv}")
+
+    parts.append("Target for Medicare Specialist outreach")
+    return '. '.join(parts)
+
+
+@router.get("/api/cross-sell/medicare-eligibility")
+def medicare_eligibility_insights(
+    period: int = 12,
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+):
+    """Find active members turning 65 (aged 64-65) who do not have any Medicare opportunity."""
+    sd, ed = _resolve_dates(start_date, end_date, period)
+    key = f"medicare_eligibility_v1_{sd}_{ed}"
+
+    def fetch():
+        from datetime import date
+        today = date.today()
+
+        # Birthdate range for members turning 65 (currently aged 64 or 65)
+        # Born between 66 years ago and 64 years ago
+        birth_start = date(today.year - 66, today.month, today.day).isoformat()
+        birth_end = date(today.year - 64, today.month, today.day).isoformat()
+
+        _exp_base = (
+            f"IsPersonAccount = true AND Member_Status__c = 'A'"
+            f" AND Out_of_Territory_Member__c = false"
+            f" AND Billing_Region__c IN ('Western','Rochester','Central')"
+            f" AND ImportantActiveMemCoverage__c IN ('B','PLUS','PREMIER')"
+            f" AND ImportantActiveMemExpiryDate__c >= {today.isoformat()}"
+        )
+
+        OPP_RT_MEDICARE_ID = '012Pb0000006hIhIAI'
+        data = sf_parallel(
+            candidates=f"""
+                SELECT Id, Name, Phone, PersonEmail, BillingCity, LTV__c, PersonBirthdate,
+                       ImportantActiveMemCoverage__c, Account_Member_Since__c
+                FROM Account
+                WHERE {_exp_base}
+                  AND PersonBirthdate != null
+                  AND PersonBirthdate >= {birth_start}
+                  AND PersonBirthdate <= {birth_end}
+                LIMIT 2000
+            """,
+            medicare_opps=f"""
+                SELECT AccountId
+                FROM Opportunity
+                WHERE RecordTypeId = '{OPP_RT_MEDICARE_ID}'
+                  AND AccountId != null
+                LIMIT 5000
+            """
+        )
+
+        candidate_accounts = data.get('candidates', [])
+        medicare_opps = data.get('medicare_opps', [])
+
+        # Build set of AccountIds that already have Medicare opportunities
+        excluded_ids = {opp.get('AccountId') for opp in medicare_opps if opp.get('AccountId')}
+
+        # Filter and score candidates
+        eligible_candidates = []
+        for r in candidate_accounts:
+            aid = r['Id']
+            if aid in excluded_ids:
+                continue
+
+            bd_str = r.get('PersonBirthdate')
+            age = None
+            days_until_65 = 0
+            if bd_str:
+                try:
+                    born = date.fromisoformat(bd_str)
+                    age = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+                    # 65th birthday
+                    try:
+                        bday_65 = date(born.year + 65, born.month, born.day)
+                    except ValueError:
+                        bday_65 = date(born.year + 65, born.month, 28)
+                    days_until_65 = (bday_65 - today).days
+                except Exception:
+                    pass
+
+            raw_mem = (r.get('ImportantActiveMemCoverage__c') or '').strip().upper()
+            membership = {'PLUS': 'Plus', 'PREMIER': 'Premier', 'B': 'Basic',
+                          'BASIC': 'Basic', 'CLASSIC': 'Classic'}.get(raw_mem, raw_mem.title() if raw_mem else '')
+
+            score, priority = _score_medicare_candidate(r.get('LTV__c', ''), membership)
+
+            acct_info = {
+                'membership': membership,
+                'ltv': r.get('LTV__c', ''),
+            }
+
+            sf_base = sf_instance_url()
+            eligible_candidates.append({
+                'account_id': aid,
+                'account_name': r.get('Name', ''),
+                'phone': r.get('Phone', ''),
+                'email': r.get('PersonEmail', ''),
+                'city': r.get('BillingCity', ''),
+                'ltv': r.get('LTV__c', ''),
+                'membership': membership,
+                'age': age,
+                'birthdate': bd_str,
+                'days_until_65': days_until_65,
+                'score': score,
+                'priority': priority,
+                'reason': _build_medicare_reason(acct_info, age or 64, days_until_65),
+                'sf_link': f"{sf_base}/{aid}",
+            })
+
+        # Sort by score descending, then by days_until_65 ascending (closer to 65 first)
+        eligible_candidates.sort(key=lambda c: (-c['score'], c['days_until_65']))
+        top_candidates = eligible_candidates[:TOP_N]
+
+        # Tier breakdown counts
+        priority_counts = {'high': 0, 'medium': 0, 'low': 0}
+        for c in eligible_candidates:
+            priority_counts[c['priority']] += 1
+
+        return {
+            'summary': {
+                'total_eligible': len(eligible_candidates),
+                'high_priority_count': priority_counts['high'],
+                'medium_priority_count': priority_counts['medium'],
+                'low_priority_count': priority_counts['low'],
+            },
+            'customers': top_candidates,
+            'date_range': {'start': sd, 'end': ed},
+        }
+
+    return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
+

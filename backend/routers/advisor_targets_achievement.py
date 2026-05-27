@@ -15,7 +15,6 @@ from shared import get_owner_map
 
 from routers.advisor_targets_helpers import (
     _get_comm_rate_accurate,
-    _sf_advisors_with_bookings,
     _ensure_advisor_targets,
     _ensure_monthly_targets,
 )
