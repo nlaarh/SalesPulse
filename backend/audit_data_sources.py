@@ -16,7 +16,7 @@ Usage:
 import sys, json, requests, argparse, time
 from datetime import date
 
-API_BASE = "http://localhost:8002"
+API_BASE = "http://127.0.0.1:8002"
 TODAY    = date.today().isoformat()
 CY       = date.today().year
 
@@ -38,12 +38,17 @@ def pct(a, b):
     return abs(a - b) / b * 100
 
 def api(path, _auth=False, **p):
-    r = _SESSION.get(f"{API_BASE}{path}", params=p, timeout=90)
+    url = f"{API_BASE}{path}"
+    r = _SESSION.get(url, params=p, timeout=90)
     if r.status_code == 403 and _auth:
         warn(f"{path} requires auth (--token JWT); skipping")
         return None
     r.raise_for_status()
-    return r.json()
+    try:
+        return r.json()
+    except Exception as e:
+        print(f"Error parsing JSON from {r.url}. Status: {r.status_code}. Response: {r.text[:500]}")
+        raise e
 
 
 # ─── 1. Get advisor list from leaderboard (PBI) ───────────────────────────────
@@ -210,6 +215,8 @@ def main():
     try:
         lb_rows = get_advisors(line, sd, ed, args.top)
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         warn(f"Leaderboard error: {e}")
         lb_rows = []
 

@@ -14,14 +14,18 @@ def fetch_pipeline_health(line: str = "Travel") -> dict:
     cache_key = f"ai:pipeline_health_{line}"
 
     def fetch():
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        today_str = date.today().isoformat()
+        one_year_later = (date.today() + relativedelta(years=1)).isoformat()
         lf = _line_filter(line)
         pipeline_query = f"""
             SELECT StageName, COUNT(Id) cnt, SUM(Amount) total
             FROM Opportunity
             WHERE IsClosed = false AND {lf}
               AND Amount != null
-              AND CloseDate >= TODAY
-              AND CloseDate <= NEXT_N_MONTHS:12
+              AND CloseDate >= {today_str}
+              AND CloseDate <= {one_year_later}
             GROUP BY StageName
             ORDER BY COUNT(Id) DESC
         """
@@ -32,7 +36,7 @@ def fetch_pipeline_health(line: str = "Travel") -> dict:
             FROM Opportunity
             WHERE IsClosed = false AND {lf}
               AND Amount != null
-              AND CloseDate < TODAY
+              AND CloseDate < {today_str}
         """
         at_risk = sf_query_all(at_risk_query)
 
@@ -54,6 +58,9 @@ def fetch_at_risk_deals(line: str = "Travel") -> dict:
     cache_key = f"ai:at_risk_{line}"
 
     def fetch():
+        from datetime import date, timedelta
+        today_str = date.today().isoformat()
+        thirty_days_later = (date.today() + timedelta(days=30)).isoformat()
         lf = _line_filter(line)
         query = f"""
             SELECT Id, Name, Amount, CloseDate, StageName, Days_In_Stage__c,
@@ -61,7 +68,7 @@ def fetch_at_risk_deals(line: str = "Travel") -> dict:
             FROM Opportunity
             WHERE IsClosed = false AND {lf}
               AND Amount != null
-              AND CloseDate <= NEXT_N_DAYS:30
+              AND CloseDate <= {thirty_days_later}
             ORDER BY CloseDate ASC
             LIMIT 30
         """
@@ -92,16 +99,18 @@ def fetch_advisor_rankings(line: str = "Travel") -> dict:
     cache_key = f"ai:advisors_{line}"
 
     def fetch():
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        today_str = date.today().isoformat()
+        three_months_ago = (date.today() - relativedelta(months=3)).isoformat()
+
         if line in ('Travel', 'Insurance'):
-            from datetime import date, timedelta
             from pbi_utils import pbi_by_advisor
-            ed = date.today().isoformat()
-            sd = (date.today() - timedelta(days=90)).isoformat()
+            pbi_rows = []
             try:
-                pbi_rows = pbi_by_advisor(line, sd, ed)
+                pbi_rows = pbi_by_advisor(line, three_months_ago, today_str)
             except Exception as e:
                 log.error(f"Failed to fetch PBI advisors for rankings: {e}")
-                pbi_rows = []
             
             pbi_rows.sort(key=lambda r: r.get('sales', 0.0), reverse=True)
             advisors = []
@@ -118,7 +127,8 @@ def fetch_advisor_rankings(line: str = "Travel") -> dict:
             SELECT OwnerId, COUNT(Id) cnt, SUM(Amount) total
             FROM Opportunity
             WHERE IsWon = true AND {lf}
-              AND CloseDate >= LAST_N_MONTHS:3
+              AND CloseDate >= {three_months_ago}
+              AND CloseDate <= {today_str}
               AND Amount != null
             GROUP BY OwnerId
             ORDER BY SUM(Amount) DESC
@@ -149,13 +159,15 @@ def fetch_revenue_trends(line: str = "Travel") -> dict:
     cache_key = f"ai:revenue_{line}"
 
     def fetch():
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        today_str = date.today().isoformat()
+        twelve_months_ago = (date.today() - relativedelta(months=12)).isoformat()
+
         if line in ('Travel', 'Insurance'):
-            from datetime import date, timedelta
             from pbi_utils import pbi_by_day
-            ed = date.today().isoformat()
-            sd = (date.today() - timedelta(days=365)).isoformat()
             try:
-                pbi_rows = pbi_by_day(line, sd, ed)
+                pbi_rows = pbi_by_day(line, twelve_months_ago, today_str)
             except Exception as e:
                 log.error(f"Failed to fetch PBI by day for revenue trends: {e}")
                 pbi_rows = []
@@ -192,8 +204,8 @@ def fetch_revenue_trends(line: str = "Travel") -> dict:
                    COUNT(Id) cnt, SUM(Amount) rev
             FROM Opportunity
             WHERE {lf} AND {WON_STAGES}
-              AND CloseDate >= LAST_N_MONTHS:12
-              AND CloseDate <= TODAY
+              AND CloseDate >= {twelve_months_ago}
+              AND CloseDate <= {today_str}
               AND Amount != null
             GROUP BY CALENDAR_YEAR(CloseDate), CALENDAR_MONTH(CloseDate)
             ORDER BY CALENDAR_YEAR(CloseDate), CALENDAR_MONTH(CloseDate)
@@ -214,41 +226,77 @@ def fetch_revenue_trends(line: str = "Travel") -> dict:
 
 
 def fetch_forecasting_data(line: str = "Travel") -> dict:
-    """Open pipeline by stage + weighted forecast value."""
-    cache_key = f"ai:forecast_{line}"
+    """Open pipeline by quarter + weighted forecast value."""
+    cache_key = f"ai:forecast_qtr_{line}"
 
     def fetch():
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        today_str = date.today().isoformat()
+        six_months_later = (date.today() + relativedelta(months=6)).isoformat()
+        
         lf = _line_filter(line)
         q = f"""
-            SELECT StageName, COUNT(Id) cnt, SUM(Amount) rev, AVG(Probability) avg_prob
+            SELECT CALENDAR_YEAR(CloseDate) yr, CALENDAR_MONTH(CloseDate) mo,
+                   StageName, COUNT(Id) cnt, SUM(Amount) rev, AVG(Probability) avg_prob
             FROM Opportunity
             WHERE IsClosed = false AND {lf}
               AND Amount != null
-              AND CloseDate >= TODAY
-              AND CloseDate <= NEXT_N_MONTHS:6
-            GROUP BY StageName
-            ORDER BY SUM(Amount) DESC
+              AND CloseDate >= {today_str}
+              AND CloseDate <= {six_months_later}
+            GROUP BY CALENDAR_YEAR(CloseDate), CALENDAR_MONTH(CloseDate), StageName
+            ORDER BY CALENDAR_YEAR(CloseDate), CALENDAR_MONTH(CloseDate)
         """
         rows = sf_query_all(q)
-        stages = []
+        quarters = {}
         total_pipeline = 0
         weighted_total = 0
+        
         for r in rows:
+            yr = r.get("yr")
+            mo = r.get("mo")
+            stage = r.get("StageName")
+            cnt = r.get("cnt") or 0
             rev = r.get("rev") or 0
             prob = r.get("avg_prob") or 0
             weighted = rev * (prob / 100) if prob else 0
-            stages.append({
-                "stage": r.get("StageName"),
-                "deals": r.get("cnt", 0),
+            
+            total_pipeline += rev
+            weighted_total += weighted
+            
+            qtr = (mo - 1) // 3 + 1
+            key = (yr, qtr)
+            if key not in quarters:
+                quarters[key] = {
+                    "year": yr,
+                    "quarter": qtr,
+                    "label": f"{yr}-Q{qtr}",
+                    "deals": 0,
+                    "pipeline_value": 0.0,
+                    "weighted_value": 0.0,
+                    "stages": []
+                }
+            quarters[key]["deals"] += cnt
+            quarters[key]["pipeline_value"] += rev
+            quarters[key]["weighted_value"] += weighted
+            quarters[key]["stages"].append({
+                "stage": stage,
+                "deals": cnt,
                 "value": rev,
                 "avg_probability": round(prob, 1),
                 "weighted_value": round(weighted, 2),
             })
-            total_pipeline += rev
-            weighted_total += weighted
+            
+        quarters_list = []
+        for key in sorted(quarters.keys()):
+            q_data = quarters[key]
+            q_data["pipeline_value"] = round(q_data["pipeline_value"], 2)
+            q_data["weighted_value"] = round(q_data["weighted_value"], 2)
+            quarters_list.append(q_data)
+            
         return {
-            "stages": stages,
-            "total_pipeline": total_pipeline,
+            "quarters": quarters_list,
+            "total_pipeline": round(total_pipeline, 2),
             "weighted_forecast": round(weighted_total, 2),
             "line": line,
         }
@@ -320,27 +368,32 @@ def fetch_win_rate_data(line: str = "Travel") -> dict:
             }
 
         from shared import WON_STAGES
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        today_str = date.today().isoformat()
+        twelve_months_ago = (date.today() - relativedelta(months=12)).isoformat()
+
         won_q = f"""
             SELECT COUNT(Id) cnt, SUM(Amount) rev
             FROM Opportunity
             WHERE {lf} AND {WON_STAGES}
-              AND CloseDate >= LAST_N_MONTHS:12
-              AND CloseDate <= TODAY
+              AND CloseDate >= {twelve_months_ago}
+              AND CloseDate <= {today_str}
               AND Amount != null
         """
         lost_q = f"""
             SELECT COUNT(Id) cnt, SUM(Amount) rev
             FROM Opportunity
             WHERE {lf} AND StageName = 'Closed Lost'
-              AND CloseDate >= LAST_N_MONTHS:12
-              AND CloseDate <= TODAY
+              AND CloseDate >= {twelve_months_ago}
+              AND CloseDate <= {today_str}
         """
         top_q = f"""
             SELECT OwnerId, COUNT(Id) cnt, SUM(Amount) rev
             FROM Opportunity
             WHERE {lf} AND {WON_STAGES}
-              AND CloseDate >= LAST_N_MONTHS:12
-              AND CloseDate <= TODAY
+              AND CloseDate >= {twelve_months_ago}
+              AND CloseDate <= {today_str}
               AND Amount != null
             GROUP BY OwnerId
             ORDER BY SUM(Amount) DESC
@@ -440,31 +493,37 @@ def fetch_funnel_data(line: str = "Travel") -> dict:
                 "line": line,
             }
 
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        today_str = date.today().isoformat()
+        twelve_months_ago = (date.today() - relativedelta(months=12)).isoformat()
+        twelve_months_ago_dt = f"{twelve_months_ago}T00:00:00Z"
+
         leads_q = f"""
             SELECT COUNT(Id) cnt FROM Lead
             WHERE {lf_lead}
-              AND CreatedDate >= LAST_N_MONTHS:12
+              AND CreatedDate >= {twelve_months_ago_dt}
         """
         converted_q = f"""
             SELECT COUNT(Id) cnt FROM Lead
             WHERE {lf_lead} AND IsConverted = true
-              AND ConvertedDate >= LAST_N_MONTHS:12
+              AND ConvertedDate >= {twelve_months_ago} AND ConvertedDate <= {today_str}
         """
         invoiced_q = f"""
             SELECT COUNT(Id) cnt FROM Opportunity
             WHERE {lf_opp} AND StageName IN {INVOICED_STAGES}
-              AND CloseDate >= LAST_N_MONTHS:12 AND CloseDate <= TODAY
+              AND CloseDate >= {twelve_months_ago} AND CloseDate <= {today_str}
         """
         won_q = f"""
             SELECT COUNT(Id) cnt, SUM(Amount) rev FROM Opportunity
             WHERE {lf_opp} AND {WON_STAGES}
-              AND CloseDate >= LAST_N_MONTHS:12 AND CloseDate <= TODAY
+              AND CloseDate >= {twelve_months_ago} AND CloseDate <= {today_str}
               AND Amount != null
         """
         lost_q = f"""
             SELECT COUNT(Id) cnt FROM Opportunity
             WHERE {lf_opp} AND StageName = 'Closed Lost'
-              AND CloseDate >= LAST_N_MONTHS:12 AND CloseDate <= TODAY
+              AND CloseDate >= {twelve_months_ago} AND CloseDate <= {today_str}
         """
 
         from sf_client import sf_parallel
@@ -500,29 +559,32 @@ def fetch_general_metrics(line: str = "Travel") -> dict:
     def fetch():
         lf = _line_filter(line)
         from shared import WON_STAGES
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+
+        today = date.today()
+        today_str = today.isoformat()
+        first_of_month = today.replace(day=1).isoformat()
+        seven_days_later = (today + relativedelta(days=7)).isoformat()
+        three_months_ago = (today - relativedelta(months=3)).isoformat()
+        one_year_later = (today + relativedelta(years=1)).isoformat()
 
         if line in ('Travel', 'Insurance'):
-            from datetime import date, timedelta
             from pbi_utils import pbi_by_day
             from sf_client import sf_parallel
-            
-            today = date.today()
-            month_start = today.replace(day=1).isoformat()
-            today_iso = today.isoformat()
-            next_week = (today + timedelta(days=7)).isoformat()
             
             open_q = f"""
                 SELECT COUNT(Id) cnt, SUM(Amount) rev, AVG(Amount) avg_amt
                 FROM Opportunity
                 WHERE IsClosed = false AND {lf}
                   AND Amount != null
-                  AND CloseDate >= TODAY AND CloseDate <= NEXT_N_MONTHS:12
+                  AND CloseDate >= {today_str} AND CloseDate <= {one_year_later}
             """
             top_wins_q = f"""
                 SELECT Name, Amount, CloseDate, OwnerId
                 FROM Opportunity
                 WHERE {lf} AND {WON_STAGES}
-                  AND CloseDate >= LAST_N_MONTHS:3 AND CloseDate <= TODAY
+                  AND CloseDate >= {three_months_ago} AND CloseDate <= {today_str}
                   AND Amount != null
                 ORDER BY Amount DESC
                 LIMIT 5
@@ -532,13 +594,13 @@ def fetch_general_metrics(line: str = "Travel") -> dict:
                 FROM Opportunity
                 WHERE IsClosed = false AND {lf}
                   AND Amount != null
-                  AND CloseDate >= TODAY AND CloseDate <= {next_week}
+                  AND CloseDate >= {today_str} AND CloseDate <= {seven_days_later}
             """
             
             sf_data = sf_parallel(open_pipe=open_q, top_wins=top_wins_q, closing=closing_q)
             
             try:
-                pbi_day = pbi_by_day(line, month_start, today_iso)
+                pbi_day = pbi_by_day(line, first_of_month, today_str)
                 won_this_month = sum(r.get('txns', 0) for r in pbi_day)
                 won_this_month_rev = sum(r.get('sales', 0.0) for r in pbi_day)
             except Exception as e:
@@ -579,20 +641,20 @@ def fetch_general_metrics(line: str = "Travel") -> dict:
             FROM Opportunity
             WHERE IsClosed = false AND {lf}
               AND Amount != null
-              AND CloseDate >= TODAY AND CloseDate <= NEXT_N_MONTHS:12
+              AND CloseDate >= {today_str} AND CloseDate <= {one_year_later}
         """
         won_month_q = f"""
             SELECT COUNT(Id) cnt, SUM(Amount) rev
             FROM Opportunity
             WHERE {lf} AND {WON_STAGES}
-              AND CloseDate >= THIS_MONTH AND CloseDate <= TODAY
+              AND CloseDate >= {first_of_month} AND CloseDate <= {today_str}
               AND Amount != null
         """
         top_wins_q = f"""
             SELECT Name, Amount, CloseDate, OwnerId
             FROM Opportunity
             WHERE {lf} AND {WON_STAGES}
-              AND CloseDate >= LAST_N_MONTHS:3 AND CloseDate <= TODAY
+              AND CloseDate >= {three_months_ago} AND CloseDate <= {today_str}
               AND Amount != null
             ORDER BY Amount DESC
             LIMIT 5
@@ -602,7 +664,7 @@ def fetch_general_metrics(line: str = "Travel") -> dict:
             FROM Opportunity
             WHERE IsClosed = false AND {lf}
               AND Amount != null
-              AND CloseDate >= TODAY AND CloseDate <= NEXT_N_DAYS:7
+              AND CloseDate >= {today_str} AND CloseDate <= {seven_days_later}
         """
 
         from sf_client import sf_parallel
@@ -642,52 +704,84 @@ def fetch_general_metrics(line: str = "Travel") -> dict:
 
 
 def fetch_industry_data(line: str = "Travel") -> dict:
-    """Win/loss counts by Account.Industry (post-processed, no SUM(IF))."""
-    cache_key = f"ai:industry_{line}"
+    """Win/loss counts and YoY growth by Account.Industry."""
+    cache_key = f"ai:industry_growth_{line}"
 
     def fetch():
         lf = _line_filter(line)
         from shared import WON_STAGES
-        won_q = f"""
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+
+        today = date.today()
+        today_str = today.isoformat()
+        twelve_months_ago = (today - relativedelta(months=12)).isoformat()
+        twenty_four_months_ago = (today - relativedelta(months=24)).isoformat()
+
+        won_curr_q = f"""
             SELECT Account.Industry ind, COUNT(Id) cnt, SUM(Amount) rev
             FROM Opportunity
             WHERE {lf} AND {WON_STAGES}
-              AND CloseDate >= LAST_N_MONTHS:12 AND CloseDate <= TODAY
+              AND CloseDate >= {twelve_months_ago} AND CloseDate <= {today_str}
               AND Amount != null AND Account.Industry != null
             GROUP BY Account.Industry
-            ORDER BY SUM(Amount) DESC
         """
         lost_q = f"""
             SELECT Account.Industry ind, COUNT(Id) cnt
             FROM Opportunity
             WHERE {lf} AND StageName = 'Closed Lost'
-              AND CloseDate >= LAST_N_MONTHS:12 AND CloseDate <= TODAY
+              AND CloseDate >= {twelve_months_ago} AND CloseDate <= {today_str}
               AND Account.Industry != null
             GROUP BY Account.Industry
-            ORDER BY COUNT(Id) DESC
         """
-        from sf_client import sf_parallel
-        data = sf_parallel(won=won_q, lost=lost_q)
+        won_prior_q = f"""
+            SELECT Account.Industry ind, SUM(Amount) rev
+            FROM Opportunity
+            WHERE {lf} AND {WON_STAGES}
+              AND CloseDate >= {twenty_four_months_ago} AND CloseDate <= {twelve_months_ago}
+              AND Amount != null AND Account.Industry != null
+            GROUP BY Account.Industry
+        """
 
-        won_map = {r.get("ind", "Unknown"): r for r in data.get("won", [])}
-        lost_map = {r.get("ind", "Unknown"): r for r in data.get("lost", [])}
-        all_industries = set(won_map.keys()) | set(lost_map.keys())
+        from sf_client import sf_parallel
+        data = sf_parallel(won_curr=won_curr_q, lost=lost_q, won_prior=won_prior_q)
+
+        won_map = {r.get("ind", "Unknown"): r for r in data.get("won_curr", []) if r.get("ind")}
+        lost_map = {r.get("ind", "Unknown"): r for r in data.get("lost", []) if r.get("ind")}
+        prior_map = {r.get("ind", "Unknown"): r for r in data.get("won_prior", []) if r.get("ind")}
+
+        all_industries = set(won_map.keys()) | set(lost_map.keys()) | set(prior_map.keys())
 
         industries = []
         for ind in all_industries:
-            w = won_map.get(ind, {})
-            l = lost_map.get(ind, {})
-            won_cnt = w.get("cnt", 0)
-            lost_cnt = l.get("cnt", 0)
+            w_curr = won_map.get(ind, {})
+            l_curr = lost_map.get(ind, {})
+            w_prior = prior_map.get(ind, {})
+
+            won_cnt = w_curr.get("cnt", 0)
+            lost_cnt = l_curr.get("cnt", 0)
             total = won_cnt + lost_cnt
+
+            rev_curr = w_curr.get("rev", 0.0) or 0.0
+            rev_prior = w_prior.get("rev", 0.0) or 0.0
+
+            if rev_prior > 0:
+                yoy_growth = round((rev_curr - rev_prior) / rev_prior * 100, 1)
+            else:
+                yoy_growth = 100.0 if rev_curr > 0 else 0.0
+
             industries.append({
                 "industry": ind,
                 "won": won_cnt,
                 "lost": lost_cnt,
                 "total": total,
-                "revenue": w.get("rev", 0) or 0,
+                "revenue": round(rev_curr, 2),
+                "prior_revenue": round(rev_prior, 2),
+                "yoy_growth_pct": yoy_growth,
                 "win_rate": round(won_cnt / total * 100, 1) if total else 0,
             })
+
+        # Sort by current revenue DESC but LLM can read YoY growth percentage
         industries.sort(key=lambda x: x["revenue"], reverse=True)
         return {"industries": industries[:15], "line": line}
 

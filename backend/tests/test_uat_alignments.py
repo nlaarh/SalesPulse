@@ -122,6 +122,9 @@ def test_market_pulse_turning_65_query_alignment(api_client, auth_headers, monke
     """Verify that market_pulse turning_65 query uses the strict active membership filter."""
     from sf_client import sf_parallel
     
+    # Bypass cache to force sf_parallel execution
+    monkeypatch.setattr('cache.cached_query', lambda key, fetch_fn, *args, **kwargs: fetch_fn())
+    
     mock_data = {
         'travel_rollup': [],
         'medicare_count': [{'cnt': 10}],

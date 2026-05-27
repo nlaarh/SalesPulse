@@ -184,8 +184,8 @@ def agent_profile(
         n_agents = None
         if line in PBI_COMMISSION_LINES:
             nk = norm_name(name)
-            pbi_cur = pbi_agent_monthly(line, name, f"{cy}-01-01", f"{cy}-12-31")
-            pbi_pri = pbi_agent_monthly(line, name, f"{py}-01-01", f"{py}-12-31")
+            pbi_cur = pbi_agent_monthly(line, name, f"{cy}-01-01", str(ed))
+            pbi_pri = pbi_agent_monthly(line, name, f"{py}-01-01", str(p_ed))
             overlay_pbi_on_month_map(mo_rev_cur_map, pbi_cur, nk, cy)
             overlay_pbi_on_month_map(mo_rev_pri_map, pbi_pri, nk, py)
             data['mo_rev_cur'] = sorted(mo_rev_cur_map.values(), key=lambda x: x['mo'])

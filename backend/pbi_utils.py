@@ -144,6 +144,11 @@ def overlay_pbi_on_month_map(month_map: dict, pbi_data: dict, norm_key: str, yea
 
     Mutates month_map in place.  Adds missing months that exist in PBI but not SF.
     """
+    # Zero out existing Salesforce-based values first since PBI is the source of truth
+    for m in month_map.values():
+        m['comm'] = 0.0
+        m['rev'] = 0.0
+
     advisor_pbi = pbi_data.get(norm_key, {})
     for ym, pd in advisor_pbi.items():
         try:

@@ -6,6 +6,8 @@ from routers.ai_queries_data import (
     fetch_win_rate_data,
     fetch_funnel_data,
     fetch_general_metrics,
+    fetch_forecasting_data,
+    fetch_industry_data,
 )
 
 @pytest.fixture(autouse=True)
@@ -239,3 +241,44 @@ def test_fetch_general_metrics_sf_fallback(mock_pbi, mock_sf_for_ai):
     assert mock_parallel.call_count == 1
     assert res["won_this_month"] == 8
     assert res["won_this_month_rev"] == 15000.0
+
+
+def test_fetch_forecasting_data_qtr(mock_sf_for_ai):
+    """Verify forecasting data correctly partitions pipeline by quarter."""
+    mock_query_all, _ = mock_sf_for_ai
+    mock_query_all.return_value = [
+        {"yr": 2026, "mo": 10, "StageName": "Qualification", "cnt": 5, "rev": 50000.0, "avg_prob": 20.0},
+        {"yr": 2026, "mo": 11, "StageName": "Closed Won", "cnt": 2, "rev": 20000.0, "avg_prob": 100.0},
+    ]
+
+    res = fetch_forecasting_data("Travel")
+    assert res["total_pipeline"] == 70000.0
+    assert res["weighted_forecast"] == 30000.0  # (50000*0.2) + (20000*1.0) = 10000 + 20000 = 30000
+    assert len(res["quarters"]) == 1
+    q4 = res["quarters"][0]
+    assert q4["year"] == 2026
+    assert q4["quarter"] == 4
+    assert q4["label"] == "2026-Q4"
+    assert q4["deals"] == 7
+    assert q4["pipeline_value"] == 70000.0
+
+
+def test_fetch_industry_growth_yoy(mock_sf_for_ai):
+    """Verify industry growth correctly calculates YoY growth percentages."""
+    _, mock_parallel = mock_sf_for_ai
+    mock_parallel.return_value = {
+        "won_curr": [{"ind": "Technology", "cnt": 10, "rev": 100000.0}],
+        "lost": [{"ind": "Technology", "cnt": 5}],
+        "won_prior": [{"ind": "Technology", "rev": 50000.0}],
+    }
+
+    res = fetch_industry_data("Travel")
+    assert len(res["industries"]) == 1
+    tech = res["industries"][0]
+    assert tech["industry"] == "Technology"
+    assert tech["won"] == 10
+    assert tech["lost"] == 5
+    assert tech["revenue"] == 100000.0
+    assert tech["prior_revenue"] == 50000.0
+    assert tech["yoy_growth_pct"] == 100.0
+    assert tech["win_rate"] == 66.7
