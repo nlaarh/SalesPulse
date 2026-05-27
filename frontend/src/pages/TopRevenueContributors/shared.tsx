@@ -92,6 +92,35 @@ export function Pie3D({ data, height = 300, formatter }: {
     return { ...s, lx, ly: lyr, anchor, ax: ap.x, ay: ap.y }
   })
 
+  // Group labels by side and resolve overlaps
+  const leftSide = labels.filter(l => l.anchor === 'end').sort((a, b) => a.ly - b.ly)
+  const rightSide = labels.filter(l => l.anchor === 'start').sort((a, b) => a.ly - b.ly)
+
+  const minGap = 20
+  for (let i = 1; i < leftSide.length; i++) {
+    if (leftSide[i].ly < leftSide[i - 1].ly + minGap) {
+      leftSide[i].ly = leftSide[i - 1].ly + minGap
+    }
+  }
+  for (let i = leftSide.length - 2; i >= 0; i--) {
+    if (leftSide[i].ly > leftSide[i + 1].ly - minGap) {
+      leftSide[i].ly = leftSide[i + 1].ly - minGap
+    }
+  }
+
+  for (let i = 1; i < rightSide.length; i++) {
+    if (rightSide[i].ly < rightSide[i - 1].ly + minGap) {
+      rightSide[i].ly = rightSide[i - 1].ly + minGap
+    }
+  }
+  for (let i = rightSide.length - 2; i >= 0; i--) {
+    if (rightSide[i].ly > rightSide[i + 1].ly - minGap) {
+      rightSide[i].ly = rightSide[i + 1].ly - minGap
+    }
+  }
+
+  const resolvedLabels = [...leftSide, ...rightSide]
+
   return (
     <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" height="100%" style={{ overflow: 'visible' }}>
       {slices.filter(s => Math.sin((s.startAngle + s.endAngle) / 2) < 0).map((s, i) => (
@@ -109,7 +138,7 @@ export function Pie3D({ data, height = 300, formatter }: {
         </path>
       ))}
       <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={1} />
-      {labels.map((l, i) => (
+      {resolvedLabels.map((l, i) => (
         <g key={`lbl-${i}`}>
           <line x1={l.ax} y1={l.ay} x2={l.lx} y2={l.ly} stroke="currentColor" strokeWidth={0.8} opacity={0.4} />
           <text x={l.lx + (l.anchor === 'start' ? 4 : -4)} y={l.ly}
@@ -120,6 +149,17 @@ export function Pie3D({ data, height = 300, formatter }: {
         </g>
       ))}
     </svg>
+  )
+}
+
+export function ShareBar({ pct, color }: { pct: number; color: string }) {
+  return (
+    <div className="flex items-center justify-end gap-1.5">
+      <span className="tabular-nums text-[11px] font-semibold w-9 text-right">{pct.toFixed(1)}%</span>
+      <div className="w-20 h-1.5 rounded-full bg-secondary overflow-hidden">
+        <div className="h-full rounded-full" style={{ width: `${Math.min(pct * 4, 100)}%`, background: color }} />
+      </div>
+    </div>
   )
 }
 

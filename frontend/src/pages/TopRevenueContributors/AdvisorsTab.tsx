@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSales } from '@/contexts/SalesContext'
-import { fetchAdvisorLeaderboard, fetchBranchMonthly, type BranchMonthlyData } from '@/lib/api'
+import { fetchAdvisorLeaderboard, fetchBranchMonthly, fetchAdvisorSummary, type BranchMonthlyData } from '@/lib/api'
 import { useChartColors, tooltipStyle, ChartGradients, getGradUrl } from '@/lib/chart-theme'
 import { cn } from '@/lib/utils'
 import {
@@ -10,23 +10,12 @@ import {
 } from 'recharts'
 import { Loader2, Users, Building2, ChevronRight, Download, ArrowUp, ArrowDown } from 'lucide-react'
 import { exportToExcel } from '@/lib/exportExcel'
-import { fmt, fmtFull, fmtNum, Pie3D } from './shared'
+import { fmt, fmtFull, fmtNum, Pie3D, ShareBar } from './shared'
 
 /* ── Shared ─────────────────────────────────────────────────────────────────*/
 
 const ADV_COLORS = ['#6366f1','#06b6d4','#10b981','#f59e0b','#ef4444','#8b5cf6','#f97316','#14b8a6','#ec4899','#84cc16']
 const BRANCH_COLORS = ['#6366f1','#06b6d4','#10b981','#f59e0b','#ef4444','#8b5cf6','#f97316','#14b8a6']
-
-function ShareBar({ pct, color }: { pct: number; color: string }) {
-  return (
-    <div className="flex items-center justify-end gap-1.5">
-      <span className="tabular-nums text-[11px] font-semibold w-9 text-right">{pct.toFixed(1)}%</span>
-      <div className="w-20 h-1.5 rounded-full bg-secondary overflow-hidden">
-        <div className="h-full rounded-full" style={{ width: `${Math.min(pct * 4, 100)}%`, background: color }} />
-      </div>
-    </div>
-  )
-}
 
 /* ── AdvisorsTab ─────────────────────────────────────────────────────────── */
 
@@ -40,12 +29,22 @@ export function AdvisorsTab() {
   const [loading, setLoading] = useState(true)
   const [sortField, setSortField] = useState<AdvSort>('primary')
   const [sortAsc, setSortAsc] = useState(false)
+  const [overallTotal, setOverallTotal] = useState<number>(0)
 
   useEffect(() => {
     setLoading(true)
-    fetchAdvisorLeaderboard(line, period, startDate, endDate)
-      .then(d => setAdvisors(d.advisors ?? []))
-      .catch(() => setAdvisors([]))
+    Promise.all([
+      fetchAdvisorLeaderboard(line, period, startDate, endDate),
+      fetchAdvisorSummary(line, period, startDate, endDate),
+    ])
+      .then(([lbData, summaryData]) => {
+        setAdvisors(lbData.advisors ?? [])
+        setOverallTotal(summaryData?.commission || 0)
+      })
+      .catch(() => {
+        setAdvisors([])
+        setOverallTotal(0)
+      })
       .finally(() => setLoading(false))
   }, [line, period, startDate, endDate])
 
@@ -195,7 +194,7 @@ export function AdvisorsTab() {
             <tbody className="divide-y divide-border/50">
               {sorted.map((a, idx) => {
                 const val      = getVal(a)
-                const sharePct = totalPrimary > 0 ? (val / totalPrimary * 100) : 0
+                const sharePct = overallTotal > 0 ? (val / overallTotal * 100) : 0
                 const color    = ADV_COLORS[idx % ADV_COLORS.length]
                 return (
                   <tr
@@ -206,7 +205,7 @@ export function AdvisorsTab() {
                     <td className="px-5 py-3 text-muted-foreground font-mono text-xs">{idx + 1}</td>
                     <td className="px-5 py-3 font-medium text-primary">
                       <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
                         {a.name}
                       </div>
                     </td>
@@ -240,7 +239,9 @@ export function AdvisorsTab() {
                 <td className="px-5 py-3 text-right text-foreground tabular-nums text-[12px]">{fmtFull(totalPrimary)}</td>
                 <td className="px-5 py-3 text-right text-foreground tabular-nums text-[12px]">{fmtNum(totalDeals)}</td>
                 <td className="px-5 py-3 text-right text-muted-foreground tabular-nums text-[12px]">—</td>
-                <td className="px-5 py-3 text-right text-muted-foreground font-semibold text-[12px]">100%</td>
+                <td className="px-5 py-3 text-right text-muted-foreground font-semibold text-[12px]">
+                  {overallTotal > 0 ? `${(totalPrimary / overallTotal * 100).toFixed(1)}%` : '—'}
+                </td>
                 <td />
               </tr>
             </tfoot>
@@ -262,12 +263,22 @@ export function BranchesTab() {
   const [loading, setLoading] = useState(true)
   const [sortField, setSortField] = useState<BranchSort>('commission')
   const [sortAsc, setSortAsc] = useState(false)
+  const [overallTotal, setOverallTotal] = useState<number>(0)
 
   useEffect(() => {
     setLoading(true)
-    fetchBranchMonthly(line, period, startDate, endDate)
-      .then(d => setData(d))
-      .catch(() => setData(null))
+    Promise.all([
+      fetchBranchMonthly(line, period, startDate, endDate),
+      fetchAdvisorSummary(line, period, startDate, endDate),
+    ])
+      .then(([bmData, summaryData]) => {
+        setData(bmData)
+        setOverallTotal(summaryData?.commission || 0)
+      })
+      .catch(() => {
+        setData(null)
+        setOverallTotal(0)
+      })
       .finally(() => setLoading(false))
   }, [line, period, startDate, endDate])
 
@@ -416,7 +427,7 @@ export function BranchesTab() {
             <tbody className="divide-y divide-border/50">
               {sorted.map((b, i) => {
                 const commPct  = b.total_sales > 0 ? (b.total_commission / b.total_sales) * 100 : 0
-                const sharePct = totalComm > 0 ? (b.total_commission / totalComm) * 100 : 0
+                const sharePct = overallTotal > 0 ? (b.total_commission / overallTotal) * 100 : 0
                 const color    = BRANCH_COLORS[i % BRANCH_COLORS.length]
                 return (
                   <tr key={b.branch} className="hover:bg-muted/50 transition-colors">
@@ -448,7 +459,9 @@ export function BranchesTab() {
                 <td className="px-5 py-3 text-right text-muted-foreground tabular-nums text-[12px]">
                   {totalSales > 0 ? `${(totalComm / totalSales * 100).toFixed(1)}%` : '—'}
                 </td>
-                <td className="px-5 py-3 text-right text-muted-foreground font-semibold text-[12px]">100%</td>
+                <td className="px-5 py-3 text-right text-muted-foreground font-semibold text-[12px]">
+                  {overallTotal > 0 ? `${(totalComm / overallTotal * 100).toFixed(1)}%` : '—'}
+                </td>
               </tr>
             </tfoot>
           </table>

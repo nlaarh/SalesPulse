@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSales } from '@/contexts/SalesContext'
-import { fetchTopCustomers, type TopCustomer } from '@/lib/api'
+import { fetchTopCustomers, fetchAdvisorSummary, type TopCustomer } from '@/lib/api'
 import { useChartColors, tooltipStyle, ChartGradients } from '@/lib/chart-theme'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -9,7 +9,9 @@ import {
 } from 'recharts'
 import { Loader2, Users, ExternalLink, ArrowUp, ArrowDown, Download } from 'lucide-react'
 import { exportToExcel } from '@/lib/exportExcel'
-import { fmt, fmtFull, CustomerSearchBox } from './shared'
+import { fmt, fmtFull, fmtNum, CustomerSearchBox, ShareBar } from './shared'
+
+const CUST_COLORS = ['#6366f1','#06b6d4','#10b981','#f59e0b','#ef4444','#8b5cf6','#f97316','#14b8a6','#ec4899','#84cc16']
 
 type SortField = 'total_rev' | 'deal_count' | 'avg_deal'
 
@@ -23,12 +25,22 @@ export function CustomersTab() {
   const [topN, setTopN] = useState(25)
   const [sortField, setSortField] = useState<SortField>('total_rev')
   const [sortAsc, setSortAsc] = useState(false)
+  const [overallBookings, setOverallBookings] = useState<number>(0)
 
   useEffect(() => {
     setLoading(true)
-    fetchTopCustomers(line, topN, startDate, endDate)
-      .then(data => setCustomers(Array.isArray(data) ? data : []))
-      .catch(() => setCustomers([]))
+    Promise.all([
+      fetchTopCustomers(line, topN, startDate, endDate),
+      fetchAdvisorSummary(line, 12, startDate, endDate),
+    ])
+      .then(([custData, summaryData]) => {
+        setCustomers(Array.isArray(custData) ? custData : [])
+        setOverallBookings(summaryData?.sales || 0)
+      })
+      .catch(() => {
+        setCustomers([])
+        setOverallBookings(0)
+      })
       .finally(() => setLoading(false))
   }, [line, topN, startDate, endDate])
 
@@ -69,6 +81,9 @@ export function CustomersTab() {
       </div>
     )
   }
+
+  const totalBookings = useMemo(() => sorted.reduce((s, c) => s + c.total_rev, 0), [sorted])
+  const totalDeals    = useMemo(() => sorted.reduce((s, c) => s + c.deal_count, 0), [sorted])
 
   if (loading) return <div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
   if (!customers.length) return <div className="flex flex-col items-center justify-center h-64 text-muted-foreground"><Users className="w-12 h-12 mb-3 opacity-30" /><p>No customer data found</p></div>
@@ -116,9 +131,11 @@ export function CustomersTab() {
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
             Full Leaderboard — {sorted.length} customers
           </h2>
-          <button onClick={() => exportToExcel(sorted.map((c, i) => ({
-            Rank: i + 1, Customer: c.name, Advisor: c.advisor,
-            Bookings: c.total_rev, Deals: c.deal_count, 'Avg Deal': c.avg_deal,
+          <button onClick={() => exportToExcel(sorted.map((cust, i) => ({
+            Rank: i + 1, Customer: cust.name, Advisor: cust.advisor,
+            Bookings: cust.total_rev, 
+            'Share %': totalBookings > 0 ? parseFloat((cust.total_rev / totalBookings * 100).toFixed(2)) : 0,
+            Deals: cust.deal_count, 'Avg Deal': cust.avg_deal,
           })), `Top_Customers_${line}`)}
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
             <Download className="w-3.5 h-3.5" /> Excel
@@ -140,22 +157,49 @@ export function CustomersTab() {
                 <th className="px-5 py-3 text-right cursor-pointer hover:text-foreground select-none" onClick={() => toggleSort('avg_deal')}>
                   Avg Deal <SortIcon field="avg_deal" />
                 </th>
+                <th className="px-5 py-3 text-right">Share of Total</th>
                 <th className="px-5 py-3 w-12" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
-              {sorted.map((cust, idx) => (
-                <tr key={cust.account_id} className="hover:bg-muted/50 cursor-pointer transition-colors" onClick={() => navigate(`/customer/${cust.account_id}`)}>
-                  <td className="px-5 py-3 text-muted-foreground font-mono text-xs">{idx + 1}</td>
-                  <td className="px-5 py-3 font-medium text-foreground">{cust.name || cust.account_id}</td>
-                  <td className="px-5 py-3 text-[12px] text-muted-foreground">{cust.advisor || '—'}</td>
-                  <td className="px-5 py-3 text-right font-semibold text-foreground tabular-nums">{fmtFull(cust.total_rev)}</td>
-                  <td className="px-5 py-3 text-right text-muted-foreground tabular-nums">{cust.deal_count}</td>
-                  <td className="px-5 py-3 text-right text-muted-foreground tabular-nums">{fmt(cust.avg_deal)}</td>
-                  <td className="px-5 py-3 text-center"><ExternalLink className="w-3.5 h-3.5 text-muted-foreground/50" /></td>
-                </tr>
-              ))}
+              {sorted.map((cust, idx) => {
+                const sharePct = overallBookings > 0 ? (cust.total_rev / overallBookings * 100) : 0
+                const color = CUST_COLORS[idx % CUST_COLORS.length]
+                return (
+                  <tr key={cust.account_id} className="hover:bg-muted/50 cursor-pointer transition-colors" onClick={() => navigate(`/customer/${cust.account_id}`)}>
+                    <td className="px-5 py-3 text-muted-foreground font-mono text-xs">{idx + 1}</td>
+                    <td className="px-5 py-3 font-medium text-foreground">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
+                        {cust.name || cust.account_id}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-[12px] text-muted-foreground">{cust.advisor || '—'}</td>
+                    <td className="px-5 py-3 text-right font-semibold text-foreground tabular-nums">{fmtFull(cust.total_rev)}</td>
+                    <td className="px-5 py-3 text-right text-muted-foreground tabular-nums">{cust.deal_count}</td>
+                    <td className="px-5 py-3 text-right text-muted-foreground tabular-nums">{fmt(cust.avg_deal)}</td>
+                    <td className="px-5 py-3 text-right">
+                      <ShareBar pct={sharePct} color={color} />
+                    </td>
+                    <td className="px-5 py-3 text-center"><ExternalLink className="w-3.5 h-3.5 text-muted-foreground/50" /></td>
+                  </tr>
+                )
+              })}
             </tbody>
+            <tfoot>
+              <tr className="bg-muted/30 font-semibold border-t-2 border-border">
+                <td className="px-5 py-3" />
+                <td className="px-5 py-3 text-foreground text-[12px]">Total ({sorted.length} customers)</td>
+                <td className="px-5 py-3 text-muted-foreground text-[12px]">—</td>
+                <td className="px-5 py-3 text-right text-foreground tabular-nums text-[12px]">{fmtFull(totalBookings)}</td>
+                <td className="px-5 py-3 text-right text-foreground tabular-nums text-[12px]">{fmtNum(totalDeals)}</td>
+                <td className="px-5 py-3 text-right text-muted-foreground tabular-nums text-[12px]">—</td>
+                <td className="px-5 py-3 text-right text-muted-foreground font-semibold text-[12px]">
+                  {overallBookings > 0 ? `${(totalBookings / overallBookings * 100).toFixed(1)}%` : '—'}
+                </td>
+                <td />
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
