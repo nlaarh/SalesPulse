@@ -165,8 +165,74 @@ def _build_endpoint_list():
     return endpoints
 
 
+def _build_growth_endpoint_list():
+    """Growth intelligence endpoints — 30-day disk cache, warmed monthly."""
+    from routers.growth import build_zip_table_cached, load_trends_cached
+    from routers.growth_narrative import growth_narrative, NarrativeRequest
+
+    endpoints = [
+        ('growth_zip_table', build_zip_table_cached),
+        ('growth_trends', load_trends_cached),
+    ]
+
+    # Pre-generate AI narratives for all Growth Plan sections with minimal context.
+    # Warm context matches what GrowthPlan.tsx sends for each section.
+    narrative_sections = [
+        ('executive-summary',   {'rev_2025': 102_200_000, 'rev_2028': 120_500_000}),
+        ('membership',          {}),
+        ('auto-insurance',      {}),
+        ('home-insurance',      {}),
+        ('travel',              {}),
+        ('battery',             {}),
+        ('medicare-driver',     {}),
+        ('strategy-appendix',   {'rev_gap': 18_300_000}),
+    ]
+    for section, ctx in narrative_sections:
+        endpoints.append((
+            f'growth_narrative_{section}',
+            lambda s=section, c=ctx: growth_narrative(NarrativeRequest(section=s, context=c)),
+        ))
+    return endpoints
+
+
+def warm_growth_strategic(trigger='monthly'):
+    """Invalidate + regenerate all Strategic Insights caches.
+    Called on the 1st of the month at 3 AM — runs after the nightly warm.
+    """
+    import cache
+    import re
+
+    # Clear all growth_ prefixed disk cache entries so they regenerate fresh
+    cleared = 0
+    try:
+        for entry in cache._CACHE_DIR.glob('*.json'):
+            try:
+                import json as _json
+                payload = _json.loads(entry.read_text())
+                if re.match(r'^growth_', payload.get('key', '')):
+                    entry.unlink()
+                    cleared += 1
+            except Exception:
+                pass
+        log.info(f"Monthly growth cache flush: cleared {cleared} entries")
+    except Exception as e:
+        log.warning(f"Growth cache flush failed: {e}")
+
+    endpoints = _build_growth_endpoint_list()
+    summary = _run_warm_sequence(endpoints, trigger=trigger, sleep_between=3.0)
+    _persist_run(summary)
+    log.info(
+        f"Growth warm {trigger} complete: {summary['endpoints_success']}/"
+        f"{summary['endpoints_total']} ok in {summary['duration_ms']/1000:.1f}s"
+    )
+    return summary
+
+
 def warm_heavy_endpoints(trigger='nightly'):
-    """Top-level entry: build endpoint list, run sequentially, persist result."""
+    """Top-level entry: build endpoint list, run sequentially, persist result.
+    On the 1st of the month also runs warm_growth_strategic().
+    """
+    from datetime import datetime
     endpoints = _build_endpoint_list()
     summary = _run_warm_sequence(endpoints, trigger=trigger)
     _persist_run(summary)
@@ -174,4 +240,13 @@ def warm_heavy_endpoints(trigger='nightly'):
         f"Warm {trigger} complete: {summary['endpoints_success']}/"
         f"{summary['endpoints_total']} ok in {summary['duration_ms']/1000:.1f}s"
     )
+
+    # Monthly growth intelligence refresh — runs after the nightly warm on the 1st
+    if datetime.now().day == 1:
+        log.info("1st of month — triggering strategic intelligence refresh")
+        try:
+            warm_growth_strategic(trigger='monthly')
+        except Exception as e:
+            log.error(f"Monthly growth warm failed: {e}")
+
     return summary

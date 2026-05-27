@@ -194,6 +194,6 @@ def growth_narrative(body: NarrativeRequest):
                 'cached': False,
             }
 
-    # 6-hour TTL — re-generates a few times a day even with same inputs
-    result = cache.cached_query(cache_key, fetch, ttl=6 * 3600, disk_ttl=24 * 3600)
+    # In-memory 6h, disk 30 days — AI summary regenerated monthly by warmer
+    result = cache.cached_query(cache_key, fetch, ttl=6 * 3600, disk_ttl=30 * 86_400)
     return {**result, 'cached': True} if 'narrative' in result and result.get('narrative', '').startswith('_') is False else result

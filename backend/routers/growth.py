@@ -336,7 +336,9 @@ def _territory_totals(rows: list[dict]) -> dict:
 
 # ─── Trend Data ──────────────────────────────────────────────────────────
 
-@lru_cache(maxsize=1)
+GROWTH_DISK_TTL = 30 * 86_400   # 30 days — regenerated monthly by warmer
+
+
 def _load_membership_trend() -> list[dict]:
     path = DATA_DIR / "membership_trend_5yr.csv"
     if not path.exists():
@@ -345,7 +347,6 @@ def _load_membership_trend() -> list[dict]:
         return [row for row in csv.DictReader(f)]
 
 
-@lru_cache(maxsize=1)
 def _load_insurance_retention() -> list[dict]:
     path = DATA_DIR / "ins_retention_by_year.csv"
     if not path.exists():
@@ -354,7 +355,6 @@ def _load_insurance_retention() -> list[dict]:
         return [row for row in csv.DictReader(f)]
 
 
-@lru_cache(maxsize=1)
 def _load_competitive() -> list[dict]:
     path = DATA_DIR / "ny_carrier_market_dfs.csv"
     if not path.exists():
@@ -363,7 +363,6 @@ def _load_competitive() -> list[dict]:
         return [row for row in csv.DictReader(f)]
 
 
-@lru_cache(maxsize=1)
 def _load_ltv_summary() -> dict:
     """Aggregate LTV tier distribution across all territory ZIPs."""
     path = DATA_DIR / "ltv_tenure_by_zip.csv"
@@ -381,7 +380,6 @@ def _load_ltv_summary() -> dict:
     return totals
 
 
-@lru_cache(maxsize=1)
 def _load_ers_summary() -> dict:
     """ERS utilization rate by territory ZIP, aggregated to county level."""
     ers_path = DATA_DIR / "ers_by_zip.csv"
@@ -457,12 +455,41 @@ def _county_income_pen() -> list[dict]:
     return sorted(out, key=lambda x: x['members'], reverse=True)
 
 
+# ─── 30-day disk-cached public wrappers (used by endpoints + warmer) ────
+
+def build_zip_table_cached() -> list[dict]:
+    """Disk-cached ZIP table — survives restarts, refreshes monthly."""
+    import cache
+    return cache.cached_query(
+        'growth_zip_table_v2', _build_zip_table,
+        ttl=6 * 3600, disk_ttl=GROWTH_DISK_TTL,
+    )
+
+
+def load_trends_cached() -> dict:
+    """Disk-cached trends bundle — survives restarts, refreshes monthly."""
+    import cache
+    def _fetch():
+        return {
+            "membership_trend": _load_membership_trend(),
+            "insurance_retention": _load_insurance_retention(),
+            "competitors": _load_competitive(),
+            "ltv_distribution": _load_ltv_summary(),
+            "ers_summary": _load_ers_summary(),
+            "county_income_pen": _county_income_pen(),
+        }
+    return cache.cached_query(
+        'growth_trends_v2', _fetch,
+        ttl=6 * 3600, disk_ttl=GROWTH_DISK_TTL,
+    )
+
+
 # ─── API Endpoints ───────────────────────────────────────────────────────
 
 @router.get("/api/growth/scorecard")
 def scorecard(_user=Depends(get_current_user)):
     """Executive scorecard: territory totals + quadrant distribution."""
-    rows = _build_zip_table()
+    rows = build_zip_table_cached()
     totals = _territory_totals(rows)
 
     # Quadrant distribution
@@ -503,7 +530,7 @@ def zip_table(
     _user=Depends(get_current_user),
 ):
     """Full ZIP table with filtering and sorting."""
-    rows = _build_zip_table()
+    rows = build_zip_table_cached()
 
     if quadrant:
         rows = [r for r in rows if r.get("quadrant") == quadrant]
@@ -523,21 +550,14 @@ def zip_table(
 
 @router.get("/api/growth/trends")
 def trends(_user=Depends(get_current_user)):
-    """Membership trend + insurance retention + LTV + ERS + income-pen for insight panels."""
-    return {
-        "membership_trend": _load_membership_trend(),
-        "insurance_retention": _load_insurance_retention(),
-        "competitors": _load_competitive(),
-        "ltv_distribution": _load_ltv_summary(),
-        "ers_summary": _load_ers_summary(),
-        "county_income_pen": _county_income_pen(),
-    }
+    """Membership trend + insurance retention + LTV + ERS + income-pen. 30-day disk cache."""
+    return load_trends_cached()
 
 
 @router.get("/api/growth/products")
 def products(_user=Depends(get_current_user)):
     """Per-product opportunity summary."""
-    rows = _build_zip_table()
+    rows = build_zip_table_cached()
     products_summary = {}
     for prod in ["membership", "auto", "home", "travel"]:
         opp_field = f"opp_{prod}"
