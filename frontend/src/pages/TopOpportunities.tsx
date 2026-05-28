@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useSales } from '@/contexts/SalesContext'
 import { fetchTopOpportunities, fetchNarrative } from '@/lib/api'
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
@@ -8,7 +8,7 @@ import KPICard from '@/components/KPICard'
 import RichNarrative from '@/components/RichNarrative'
 import { Tip, TIPS } from '@/components/MetricTip'
 import {
-  Loader2, Sparkles, ChevronRight, Info, ExternalLink,
+  Loader2, Sparkles, ChevronRight, ChevronLeft, Search, Info, ExternalLink,
   BarChart3, Table2, DollarSign, Target, AlertTriangle, TrendingUp,
 } from 'lucide-react'
 import {
@@ -23,6 +23,7 @@ interface Opportunity {
   probability: number; forecast_category: string; close_date: string
   last_activity: string; push_count: number; owner: string; score: number
   reasons: string[]; writeup: string
+  account_name?: string; branch?: string; account_id?: string
 }
 
 type Tab = 'charts' | 'details' | 'summary'
@@ -211,81 +212,368 @@ function ChartsTab({ opps }: { opps: Opportunity[] }) {
    DETAILS TAB
    ════════════════════════════════════════════════════════════════════════════ */
 
+type OppSortField = 'rank' | 'score' | 'name' | 'customer' | 'agent' | 'amount' | 'due' | 'stage'
+
+/* ── Sort Header Helper ─────────────────────────────────────────────────── */
+
+function SortHeader<T extends string>({
+  field,
+  label,
+  sortField,
+  sortAsc,
+  onSort,
+  className,
+  style,
+}: {
+  field: T
+  label: string
+  sortField: T
+  sortAsc: boolean
+  onSort: (field: T) => void
+  className?: string
+  style?: React.CSSProperties
+}) {
+  const active = sortField === field
+  const isRight = className?.includes('text-right')
+  const isCenter = className?.includes('text-center')
+
+  return (
+    <th
+      onClick={() => onSort(field)}
+      className={cn(
+        'px-4 py-3 cursor-pointer select-none hover:bg-muted/40 transition-colors',
+        className
+      )}
+      style={style}
+    >
+      <div className={cn(
+        'flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60',
+        isRight && 'justify-end',
+        isCenter && 'justify-center'
+      )}>
+        <span>{label}</span>
+        <span className="text-[10px] opacity-70">
+          {active ? (sortAsc ? '▲' : '▼') : '↕'}
+        </span>
+      </div>
+    </th>
+  )
+}
+
 function DetailsTab({ opps, aiPowered, expanded, setExpanded }: {
   opps: Opportunity[]; aiPowered: boolean; expanded: string | null; setExpanded: (id: string | null) => void
 }) {
+  const [sortField, setSortField] = useState<OppSortField>('rank')
+  const [sortAsc, setSortAsc] = useState<boolean>(true)
+  const [search, setSearch] = useState<string>('')
+  const [page, setPage] = useState<number>(0)
+  const PAGE_SIZE = 25
+
+  // Reset page and search when opportunities list changes
+  useEffect(() => {
+    setPage(0)
+    setSearch('')
+  }, [opps])
+
+  const handleSort = (field: OppSortField) => {
+    if (sortField === field) {
+      setSortAsc(!sortAsc)
+    } else {
+      setSortField(field)
+      if (field === 'score' || field === 'amount') {
+        setSortAsc(false)
+      } else {
+        setSortAsc(true)
+      }
+    }
+    setPage(0)
+  }
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim()
+    if (!q) return opps
+    return opps.filter((o) => {
+      const oppName = (o.name || '').toLowerCase()
+      const customer = (o.account_name || 'unknown customer').toLowerCase()
+      const agent = (o.owner || '').toLowerCase()
+      const stage = (o.stage || '').toLowerCase()
+      return oppName.includes(q) || customer.includes(q) || agent.includes(q) || stage.includes(q)
+    })
+  }, [opps, search])
+
+  const sorted = useMemo(() => {
+    const list = [...filtered]
+    list.sort((a, b) => {
+      let valA: any = ''
+      let valB: any = ''
+      if (sortField === 'rank') {
+        valA = a.rank
+        valB = b.rank
+      } else if (sortField === 'score') {
+        valA = a.score
+        valB = b.score
+      } else if (sortField === 'name') {
+        valA = (a.name || '').toLowerCase()
+        valB = (b.name || '').toLowerCase()
+      } else if (sortField === 'customer') {
+        valA = (a.account_name || 'unknown customer').toLowerCase()
+        valB = (b.account_name || 'unknown customer').toLowerCase()
+      } else if (sortField === 'agent') {
+        valA = (a.owner || '').toLowerCase()
+        valB = (b.owner || '').toLowerCase()
+      } else if (sortField === 'amount') {
+        valA = a.amount
+        valB = b.amount
+      } else if (sortField === 'due') {
+        valA = a.close_date || ''
+        valB = b.close_date || ''
+      } else if (sortField === 'stage') {
+        valA = (a.stage || '').toLowerCase()
+        valB = (b.stage || '').toLowerCase()
+      }
+
+      if (valA < valB) return sortAsc ? -1 : 1
+      if (valA > valB) return sortAsc ? 1 : -1
+      return 0
+    })
+    return list
+  }, [filtered, sortField, sortAsc])
+
+  const totalPages = Math.ceil(sorted.length / PAGE_SIZE)
+  const pageData = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
   return (
     <div className="space-y-4">
-      {/* Score legend */}
-      <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
-        <span className="font-medium">Priority Score<Tip text={TIPS.priorityScore} /></span>
-        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" /> 80+ High</span>
-        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" /> 60-79 Medium</span>
-        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" /> &lt;60 Lower</span>
+      {/* Search & Score legend */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+          <span className="font-medium flex items-center gap-1">Priority Score<Tip text={TIPS.priorityScore} /></span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" /> 80+ High</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" /> 60-79 Medium</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" /> &lt;60 Lower</span>
+        </div>
+        <div className="relative">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground/50" />
+          <input
+            type="text"
+            placeholder="Search deals, customers, agents..."
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setPage(0)
+            }}
+            className="pl-9 pr-3 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary w-full sm:w-64 transition-all"
+          />
+        </div>
       </div>
 
-      <div className="space-y-2">
-        {opps.map((opp) => {
-          const isExpanded = expanded === opp.id
-          const days = daysFromNow(opp.close_date)
-          return (
-            <div key={opp.id} className={cn('card-premium transition-all duration-200', isExpanded && 'ring-1 ring-primary/20')}>
-              <button onClick={() => setExpanded(isExpanded ? null : opp.id)} className="flex w-full items-center gap-4 px-5 py-3.5 text-left">
-                <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[12px] font-bold', opp.rank <= 3 ? 'bg-primary/15 text-primary' : 'text-muted-foreground/50')}>{opp.rank}</span>
-                <div className="w-12 shrink-0">
-                  <span className={cn('tabular-nums text-[14px] font-bold', scoreColor(opp.score))}>{opp.score.toFixed(0)}</span>
-                  <div className="mt-0.5 h-1 w-full rounded-full bg-secondary">
-                    <div className={cn('h-1 rounded-full transition-all', scoreBg(opp.score))} style={{ width: `${opp.score}%` }} />
-                  </div>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-medium">{opp.name}</p>
-                  <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{opp.owner} &middot; {opp.stage} &middot; {opp.forecast_category}</p>
-                </div>
-                <span className="tabular-nums text-[14px] font-semibold">{formatCurrency(opp.amount, true)}</span>
-                <span className={cn('w-20 text-right text-[11px]', days != null && days <= 7 ? 'font-semibold text-amber-500' : 'text-muted-foreground')}>
-                  {fmtDate(opp.close_date)}
-                  {days != null && days <= 14 && <span className="block text-[10px]">{days <= 0 ? 'Overdue' : `${days}d left`}</span>}
-                </span>
-                <ChevronRight className={cn('h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform duration-200', isExpanded && 'rotate-90 text-primary')} />
-              </button>
+      <div className="card-premium overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-border bg-muted/10">
+                <SortHeader field="rank" label="Rank" sortField={sortField} sortAsc={sortAsc} onSort={handleSort} className="text-center w-16" />
+                <SortHeader field="score" label="Score" sortField={sortField} sortAsc={sortAsc} onSort={handleSort} className="text-center w-24" />
+                <SortHeader field="name" label="Opportunity" sortField={sortField} sortAsc={sortAsc} onSort={handleSort} className="text-left w-64" />
+                <SortHeader field="customer" label="Customer" sortField={sortField} sortAsc={sortAsc} onSort={handleSort} className="text-left w-48" />
+                <SortHeader field="agent" label="Agent" sortField={sortField} sortAsc={sortAsc} onSort={handleSort} className="text-left w-40" />
+                <SortHeader field="amount" label="Amount" sortField={sortField} sortAsc={sortAsc} onSort={handleSort} className="text-right w-32" />
+                <SortHeader field="due" label="Due Date" sortField={sortField} sortAsc={sortAsc} onSort={handleSort} className="text-right w-36" />
+                <SortHeader field="stage" label="Stage" sortField={sortField} sortAsc={sortAsc} onSort={handleSort} className="text-center w-36" />
+                <th className="px-4 py-3 w-12"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageData.length > 0 ? (
+                pageData.map((opp) => {
+                  const isExpanded = expanded === opp.id
+                  const days = daysFromNow(opp.close_date)
+                  return (
+                    <React.Fragment key={opp.id}>
+                      <tr
+                        onClick={() => setExpanded(isExpanded ? null : opp.id)}
+                        className={cn(
+                          'border-b border-border/30 transition-colors duration-150 hover:bg-secondary/40 cursor-pointer select-none',
+                          isExpanded && 'bg-secondary/20'
+                        )}
+                      >
+                        {/* Rank */}
+                        <td className="px-4 py-3 text-center">
+                          <span className={cn('flex h-7 w-7 items-center justify-center rounded-lg text-[12px] font-bold mx-auto', opp.rank <= 3 ? 'bg-primary/15 text-primary' : 'text-muted-foreground/50')}>
+                            {opp.rank}
+                          </span>
+                        </td>
 
-              {isExpanded && (
-                <div className="animate-expand border-t border-border px-5 py-4">
-                  <div className="rounded-lg bg-secondary/30 px-4 py-3">
-                    <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                      {aiPowered ? <><Sparkles className="h-3 w-3 text-primary" /> AI Analysis</> : <><Info className="h-3 w-3" /> Analysis</>}
-                    </div>
-                    <p className="mt-1.5 text-[12px] leading-relaxed text-foreground/90">{opp.writeup}</p>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-x-8 gap-y-2 text-[11px] lg:grid-cols-4">
-                    <DetailItem label="Probability" value={`${opp.probability}%`} />
-                    <DetailItem label="Push Count" value={String(opp.push_count)} warn={opp.push_count >= 3} />
-                    <DetailItem label="Last Activity" value={fmtDate(opp.last_activity)} />
-                    <DetailItem label="Amount" value={formatCurrency(opp.amount)} />
-                    <DetailItem label="Stage" value={opp.stage} />
-                    <DetailItem label="Forecast" value={opp.forecast_category} />
-                    <DetailItem label="Close Date" value={fmtDate(opp.close_date)} />
-                    <DetailItem label="Owner" value={opp.owner} />
-                  </div>
-                  {opp.reasons.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {opp.reasons.map((r, i) => (
-                        <span key={i} className="rounded-md bg-secondary/50 px-2 py-0.5 text-[10px] text-muted-foreground">{r}</span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="mt-3">
-                    <a href={`https://aaawcny.my.salesforce.com/${opp.id}`} target="_blank" rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-3 py-1.5 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20">
-                      <ExternalLink className="h-3 w-3" />Open in Salesforce &middot; {formatCurrency(opp.amount, true)}
-                    </a>
-                  </div>
-                </div>
+                        {/* Priority Score */}
+                        <td className="px-4 py-3 text-center">
+                          <div className="w-16 mx-auto">
+                            <span className={cn('tabular-nums text-[14px] font-bold', scoreColor(opp.score))}>
+                              {opp.score.toFixed(0)}
+                            </span>
+                            <div className="mt-0.5 h-1 w-full rounded-full bg-secondary">
+                              <div className={cn('h-1 rounded-full transition-all', scoreBg(opp.score))} style={{ width: `${opp.score}%` }} />
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Opportunity Name */}
+                        <td className="px-4 py-3 text-[13px] font-medium text-foreground">
+                          <div className="truncate max-w-[200px]" title={opp.name}>
+                            {opp.name}
+                          </div>
+                        </td>
+
+                        {/* Customer */}
+                        <td className="px-4 py-3 text-[13px] text-muted-foreground">
+                          <div className="truncate max-w-[150px]" title={opp.account_name || 'Unknown Customer'}>
+                            {opp.account_name || 'Unknown Customer'}
+                          </div>
+                        </td>
+
+                        {/* Agent */}
+                        <td className="px-4 py-3 text-[13px] text-muted-foreground">
+                          <div className="truncate max-w-[120px]" title={opp.owner}>
+                            {opp.owner}
+                          </div>
+                        </td>
+
+                        {/* Amount */}
+                        <td className="px-4 py-3 text-[14px] font-semibold text-right tabular-nums text-foreground">
+                          {formatCurrency(opp.amount, true)}
+                        </td>
+
+                        {/* Due Date */}
+                        <td className={cn('px-4 py-3 text-right text-[11px] tabular-nums', days != null && days <= 7 ? 'font-semibold text-amber-500' : 'text-muted-foreground')}>
+                          <div>{fmtDate(opp.close_date)}</div>
+                          {days != null && days <= 14 && (
+                            <span className="block text-[10px] opacity-85">
+                              {days <= 0 ? 'Overdue' : `${days}d left`}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Stage */}
+                        <td className="px-4 py-3 text-center">
+                          <span className="inline-flex items-center rounded-full bg-secondary/50 px-2 py-0.5 text-[10px] text-muted-foreground font-medium">
+                            {opp.stage}
+                          </span>
+                        </td>
+
+                        {/* Expansion Chevron */}
+                        <td className="px-4 py-3 text-center">
+                          <ChevronRight className={cn('h-4 w-4 text-muted-foreground/40 transition-transform duration-200 mx-auto', isExpanded && 'rotate-90 text-primary')} />
+                        </td>
+                      </tr>
+
+                      {isExpanded && (
+                        <tr key={`${opp.id}-expanded`} className="bg-muted/5 border-b border-border/30">
+                          <td colSpan={9} className="px-5 py-4">
+                            <div className="animate-expand rounded-xl border border-border bg-card p-4 space-y-4 shadow-inner">
+                              <div className="rounded-lg bg-secondary/30 px-4 py-3">
+                                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                                  {aiPowered ? <><Sparkles className="h-3 w-3 text-primary" /> AI Analysis</> : <><Info className="h-3 w-3" /> Analysis</>}
+                                </div>
+                                <p className="mt-1.5 text-[12px] leading-relaxed text-foreground/90">{opp.writeup}</p>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-[11px] lg:grid-cols-4">
+                                <DetailItem label="Probability" value={`${opp.probability}%`} />
+                                <DetailItem label="Push Count" value={String(opp.push_count)} warn={opp.push_count >= 3} />
+                                <DetailItem label="Last Activity" value={fmtDate(opp.last_activity)} />
+                                <DetailItem label="Amount" value={formatCurrency(opp.amount)} />
+                                <DetailItem label="Stage" value={opp.stage} />
+                                <DetailItem label="Forecast" value={opp.forecast_category} />
+                                <DetailItem label="Close Date" value={fmtDate(opp.close_date)} />
+                                <DetailItem label="Owner" value={opp.owner} />
+                              </div>
+
+                              {opp.reasons && opp.reasons.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {opp.reasons.map((r, i) => (
+                                    <span key={i} className="rounded-md bg-secondary/50 px-2 py-0.5 text-[10px] text-muted-foreground">{r}</span>
+                                  ))}
+                                </div>
+                              )}
+
+                              <div className="pt-1">
+                                <a
+                                  href={`https://aaawcny.my.salesforce.com/${opp.id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-3 py-1.5 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20"
+                                >
+                                  <ExternalLink className="h-3.5 w-3.5" />Open in Salesforce &middot; {formatCurrency(opp.amount, true)}
+                                </a>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  )
+                })
+              ) : (
+                <tr>
+                  <td colSpan={9} className="px-5 py-8 text-center text-muted-foreground text-[13px]">
+                    No opportunities found matching search criteria.
+                  </td>
+                </tr>
               )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination footer */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-muted/10">
+            <p className="text-xs text-muted-foreground">
+              Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="p-1.5 rounded-md hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-muted-foreground hover:text-foreground"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                let pageNum: number
+                if (totalPages <= 7) {
+                  pageNum = i
+                } else if (page < 3) {
+                  pageNum = i
+                } else if (page > totalPages - 4) {
+                  pageNum = totalPages - 7 + i
+                } else {
+                  pageNum = page - 3 + i
+                }
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setPage(pageNum)}
+                    className={cn(
+                      'w-8 h-8 rounded-md text-xs font-medium transition-colors',
+                      page === pageNum
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:bg-muted'
+                    )}
+                  >
+                    {pageNum + 1}
+                  </button>
+                )
+              })}
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                disabled={page === totalPages - 1}
+                className="p-1.5 rounded-md hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-muted-foreground hover:text-foreground"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
             </div>
-          )
-        })}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -156,15 +156,16 @@ def leads_time_to_convert(
             LIMIT 1500
         """)
 
-        from datetime import datetime
+        from datetime import date
         days_list = []
         for r in records:
             try:
-                created = datetime.fromisoformat(r['CreatedDate'].replace('+0000', '+00:00'))
-                converted = datetime.fromisoformat(r['ConvertedDate'].replace('+0000', '+00:00'))
+                created = date.fromisoformat(r['CreatedDate'][:10])
+                converted = date.fromisoformat(r['ConvertedDate'][:10])
                 days = (converted - created).days
                 days_list.append({"days": days, "source": r.get('LeadSource')})
-            except Exception:
+            except Exception as e:
+                log.warning(f"Failed parsing TTC dates for record {r}: {e}")
                 continue
 
         if not days_list:
@@ -340,3 +341,91 @@ def agent_close_speed(
         return {"agents": agents, "line": line, "period": period}
 
     return cache.cached_query(key, fetch, ttl=CACHE_TTL_HOUR, disk_ttl=CACHE_TTL_DAY)
+
+
+@router.get("/api/sales/leads/list")
+def list_leads(
+    line: str = "Travel",
+    source: Optional[str] = None,
+    status: Optional[str] = None,
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    limit: int = 500,
+):
+    """Retrieve list of leads with details for drilldown, sorting and pagination."""
+    if line not in VALID_LINES:
+        line = 'Travel'
+
+    lf = _line_filter(line)
+    where_clauses = [lf]
+
+    if source:
+        # Source drilldown: use a wide window so old leads that converted recently still appear.
+        # source-effectiveness uses ConvertedDate; list_leads uses CreatedDate — they diverge.
+        from datetime import date
+        wide_sd = f"{date.today().year - 5}-01-01"
+        wide_ed = str(date.today())
+        where_clauses.append(f"CreatedDate >= {wide_sd}T00:00:00Z")
+        where_clauses.append(f"CreatedDate <= {wide_ed}T23:59:59Z")
+    else:
+        sd, ed = _resolve_dates(start_date, end_date, 12)
+        where_clauses.append(f"CreatedDate >= {sd}T00:00:00Z")
+        where_clauses.append(f"CreatedDate <= {ed}T23:59:59Z")
+
+    if source:
+        escaped_source = source.replace("'", "\\'")
+        where_clauses.append(f"LeadSource = '{escaped_source}'")
+    if status:
+        escaped_status = status.replace("'", "\\'")
+        where_clauses.append(f"Status = '{escaped_status}'")
+        
+    where_str = " AND ".join(where_clauses)
+    
+    query = f"""
+        SELECT Id, Name, Status, LeadSource, CreatedDate, OwnerId, IsConverted, ConvertedDate,
+               ConvertedOpportunityId, ConvertedOpportunity.Name, ConvertedOpportunity.Amount
+        FROM Lead
+        WHERE {where_str}
+        ORDER BY CreatedDate DESC
+        LIMIT {limit}
+    """
+    
+    records = sf_query_all(query)
+    
+    from shared import get_owner_map
+    owner_map = get_owner_map()
+    
+    leads = []
+    for r in records:
+        opp_amount = None
+        opp_name = None
+        opp_id = r.get('ConvertedOpportunityId')
+        opp_data = r.get('ConvertedOpportunity')
+        if isinstance(opp_data, dict):
+            opp_amount = opp_data.get('Amount')
+            opp_name = opp_data.get('Name')
+            
+        owner_name = owner_map.get(r.get('OwnerId', ''), '')
+            
+        leads.append({
+            'id': r.get('Id', ''),
+            'name': r.get('Name', ''),
+            'status': r.get('Status', ''),
+            'source': r.get('LeadSource', ''),
+            'created_date': r.get('CreatedDate', ''),
+            'owner': owner_name,
+            'is_converted': r.get('IsConverted', False),
+            'converted_date': r.get('ConvertedDate'),
+            'opp_id': opp_id or '',
+            'opp_name': opp_name or '',
+            'opp_amount': opp_amount,
+        })
+        
+    # Filter to whitelisted sales agents
+    leads = [l for l in leads if not l['owner'] or is_sales_agent(l['owner'], line)]
+    
+    return {
+        'leads': leads,
+        'total': len(leads),
+        'line': line,
+    }
