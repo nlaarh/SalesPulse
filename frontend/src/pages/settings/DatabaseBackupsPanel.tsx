@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Cloud, Database, FileText, RefreshCw, ShieldAlert } from 'lucide-react'
+import { Cloud, Database, ExternalLink, FileText, RefreshCw, ShieldAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatBytes } from './systemHealthTypes'
 import type { DbBackup } from './systemHealthTypes'
@@ -46,14 +46,27 @@ export default function DatabaseBackupsPanel(props: Props) {
               Point-in-time snapshots and restore from local files or Azure Cloud backups.
             </p>
           </div>
-          <button
-            onClick={onCreateBackup}
-            disabled={creatingBackup || restoringBackup}
-            className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2 text-[12px] font-semibold text-primary transition hover:bg-primary/20 disabled:opacity-50"
-          >
-            <RefreshCw className={cn('h-3.5 w-3.5', creatingBackup && 'animate-spin')} />
-            {creatingBackup ? 'Creating…' : 'Create Snapshot'}
-          </button>
+          <div className="flex items-center gap-2">
+            <a
+              href="https://portal.azure.com/#resource/subscriptions/e287db16-b6ae-415e-bd52-41c8ec5a8f08/resourceGroups/rg-nlaaroubi-sbx-eus2-001/providers/Microsoft.DBforPostgreSQL/flexibleServers/fslapp-pg/backupAndRestore"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3.5 py-2 text-[12px] font-semibold text-cyan-500 transition hover:bg-cyan-500/20"
+              title="Open Azure Portal → fslapp-pg → Backup & Restore"
+            >
+              <Cloud className="h-3.5 w-3.5" />
+              Azure Portal
+              <ExternalLink className="h-3 w-3 opacity-60" />
+            </a>
+            <button
+              onClick={onCreateBackup}
+              disabled={creatingBackup || restoringBackup}
+              className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2 text-[12px] font-semibold text-primary transition hover:bg-primary/20 disabled:opacity-50"
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', creatingBackup && 'animate-spin')} />
+              {creatingBackup ? 'Creating…' : 'Create Snapshot'}
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 overflow-x-auto">
@@ -104,13 +117,27 @@ export default function DatabaseBackupsPanel(props: Props) {
                     {backup.size_bytes !== null ? formatBytes(backup.size_bytes!) : 'Cloud Managed'}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => onOpenRestore(backup.filename)}
-                      disabled={creatingBackup || restoringBackup}
-                      className="rounded border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[11px] font-bold text-rose-500 transition hover:bg-rose-500/20 disabled:opacity-50"
-                    >
-                      Restore
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      {backup.type === 'azure' && (
+                        <a
+                          href="https://portal.azure.com/#resource/subscriptions/e287db16-b6ae-415e-bd52-41c8ec5a8f08/resourceGroups/rg-nlaaroubi-sbx-eus2-001/providers/Microsoft.DBforPostgreSQL/flexibleServers/fslapp-pg/backupAndRestore"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Restore this snapshot in Azure Portal"
+                          className="inline-flex items-center gap-1 rounded border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-bold text-cyan-500 transition hover:bg-cyan-500/20"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Azure
+                        </a>
+                      )}
+                      <button
+                        onClick={() => onOpenRestore(backup.filename)}
+                        disabled={creatingBackup || restoringBackup}
+                        className="rounded border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[11px] font-bold text-rose-500 transition hover:bg-rose-500/20 disabled:opacity-50"
+                      >
+                        Restore
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

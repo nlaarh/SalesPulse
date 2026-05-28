@@ -9,9 +9,9 @@ import {
   clearMonthlyTargetSeeds,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { AlertCircle, AlertTriangle, ArrowLeft, Calculator, Check, Download, Loader2, Save, Search, Trash2, Upload } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Check, Download, Loader2, Save, Search, Trash2, Upload } from 'lucide-react'
 
-const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+// Unused: const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 import TargetSpreadsheetTable from './TargetSpreadsheetTable'
 import {
   buildDirtyTargetUpdates,
@@ -44,8 +44,6 @@ export default function TargetGrid({ line, onBack }: Props) {
   const isFullscreen = true
   const [sortField, setSortField] = useState('prior_year_actual')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
-  const [growthPct, setGrowthPct] = useState(5)
-  const [showGrowthConfirm, setShowGrowthConfirm] = useState(false)
 
   const isMonthEditable = useCallback((month: number) => {
     if (year > currentYear) return true
@@ -97,22 +95,6 @@ export default function TargetGrid({ line, onBack }: Props) {
     }
   }
 
-  const applyGrowth = () => {
-    setShowGrowthConfirm(false)
-    setAdvisors((prev) => prev.map((advisor) => ({
-      ...advisor,
-      months: advisor.months.map((month) => {
-        if (!isMonthEditable(month.month)) return month
-        const grownVal = Math.round(getGrowthBase(month, base) * (1 + growthPct / 100))
-        return {
-          ...month,
-          target: base === 'commission' ? grownVal : Math.round(grownVal * commRate),
-          target_bookings: base === 'bookings' ? grownVal : Math.round(grownVal / commRate),
-        }
-      }),
-    })))
-    setSuccessMsg(`Applied +${growthPct}% growth to future months only. Click "Save Changes" to persist.`)
-  }
 
   const handleExport = async () => {
     setErrorMsg('')
@@ -213,18 +195,10 @@ export default function TargetGrid({ line, onBack }: Props) {
       <StatusMessage errorMsg={errorMsg} successMsg={successMsg} />
       <ControlPanel
         year={year}
-        currentYear={currentYear}
-        currentMonth={currentMonth}
-        growthPct={growthPct}
         searchQuery={searchQuery}
         saving={saving}
         isDirty={isDirty}
         fileInputRef={fileInputRef}
-        showGrowthConfirm={showGrowthConfirm}
-        onGrowthPctChange={setGrowthPct}
-        onApplyGrowthClick={() => setShowGrowthConfirm(true)}
-        onConfirmGrowth={applyGrowth}
-        onCancelGrowth={() => setShowGrowthConfirm(false)}
         onSearchChange={setSearchQuery}
         onExport={handleExport}
         onImport={handleImport}
@@ -252,18 +226,10 @@ export default function TargetGrid({ line, onBack }: Props) {
 
 function ControlPanel({
   year,
-  currentYear,
-  currentMonth,
-  growthPct,
   searchQuery,
   saving,
   isDirty,
   fileInputRef,
-  showGrowthConfirm,
-  onGrowthPctChange,
-  onApplyGrowthClick,
-  onConfirmGrowth,
-  onCancelGrowth,
   onSearchChange,
   onExport,
   onImport,
@@ -271,13 +237,6 @@ function ControlPanel({
   onClearSeeds,
   onBack,
 }: any) {
-  const firstFutureMonth = year > currentYear ? 1 : currentMonth + 1
-  const futureMonthsLabel = year > currentYear
-    ? `all 12 months (Jan–Dec)`
-    : firstFutureMonth <= 12
-      ? `${MONTH_NAMES[firstFutureMonth - 1]}–Dec`
-      : 'no months remaining this year'
-
   return (
     <div className="card-premium flex flex-wrap items-center justify-between gap-4 px-5 py-3.5">
       <div className="flex flex-wrap items-center gap-4">
@@ -292,31 +251,7 @@ function ControlPanel({
           <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Year</span>
           <span className="bg-secondary/50 border border-border px-3 py-1.5 rounded-lg text-[13px] font-bold text-foreground">{year}</span>
         </div>
-        <div className="h-5 w-px bg-border/60" />
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Growth</span>
-          <div className="flex items-center rounded-lg border border-border bg-secondary/50 px-2 py-1 focus-within:ring-2 focus-within:ring-primary/20">
-            <input type="number" value={growthPct} onChange={(event) => onGrowthPctChange(Number(event.target.value) || 0)} className="w-10 bg-transparent text-center text-[12px] font-bold outline-none border-none text-foreground" />
-            <span className="text-[11px] font-medium text-muted-foreground">%</span>
-          </div>
-          <IconButton onClick={onApplyGrowthClick} title="Apply +% growth to future months only"><Calculator className="h-3.5 w-3.5" /></IconButton>
-        </div>
       </div>
-      {showGrowthConfirm && (
-        <div className="w-full mt-1 rounded-lg border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 flex flex-wrap items-center gap-3">
-          <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
-          <span className="text-[12px] text-foreground flex-1">
-            This will apply <strong>+{growthPct}%</strong> growth to <strong>future months only</strong> ({futureMonthsLabel}).
-            Current and prior months are locked and will not be changed.
-          </span>
-          <button onClick={onConfirmGrowth} className="rounded-lg bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground hover:opacity-90">
-            Yes, recalculate
-          </button>
-          <button onClick={onCancelGrowth} className="rounded-lg border border-border px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:bg-secondary">
-            Cancel
-          </button>
-        </div>
-      )}
 
       <div className="hidden xl:flex items-center gap-2 text-[11px] text-muted-foreground/80 bg-secondary/30 px-3 py-1.5 rounded-lg border border-border/50">
         <span className="font-semibold text-primary">Tip:</span>
@@ -388,11 +323,6 @@ function downloadBlob(blob: Blob, filename: string) {
   window.URL.revokeObjectURL(url)
 }
 
-function getGrowthBase(month: any, base: TargetBase) {
-  const current = base === 'bookings' ? month.bookings_actual : month.actual
-  const prior = base === 'bookings' ? month.bookings_actual_py : month.actual_py
-  return prior > 0 ? prior : current > 0 ? current : base === 'bookings' ? month.target_bookings : month.target
-}
 
 function toTargetMonth(month: any, targetValue: number, base: TargetBase, commRate: number) {
   return {

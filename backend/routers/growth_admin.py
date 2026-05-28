@@ -14,19 +14,21 @@ Source tables:
   - dev_gold_catalog.business_intelligence.crm_account
 """
 from __future__ import annotations
-import csv
 import json
 import os
 import shutil
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Depends, BackgroundTasks, UploadFile, File
 from dotenv import load_dotenv
 
 from auth import require_admin
+from routers.growth_queries import (
+    _territory_zips,
+    ALL_DATASETS, DATASET_CSV_MAP,
+)
 
 router = APIRouter(tags=["growth-admin"])
 
@@ -36,224 +38,15 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 BACKUP_DIR = SEED_DIR / "growth_backups"
 BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
-# Load .env from project root
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-# Track refresh status
 _refresh_status = {"running": False, "last_run": None, "last_error": None, "results": {}}
 
-
-def _get_conn():
-    """Create Databricks SQL connection."""
-    from databricks import sql
-    host = os.environ.get("DATABRICKS_HOST", "").replace("https://", "")
-    token = os.environ.get("DATABRICKS_TOKEN", "")
-    http_path = os.environ.get("DATABRICKS_HTTP_PATH", "")
-    if not all([host, token, http_path]):
-        raise RuntimeError("DATABRICKS_HOST, DATABRICKS_TOKEN, DATABRICKS_HTTP_PATH must be set")
-    return sql.connect(server_hostname=host, http_path=http_path, access_token=token)
+# Datasets whose refresh function takes no zips argument (global territory-wide)
+_NO_ZIP_DATASETS = {"membership_trend"}
 
 
-def _run_query(query: str) -> list[dict]:
-    with _get_conn() as conn:
-        cur = conn.cursor()
-        cur.execute(query)
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, r)) for r in cur.fetchall()]
-
-
-def _save_csv(rows: list[dict], name: str) -> int:
-    path = DATA_DIR / name
-    if not rows:
-        path.write_text("")
-        return 0
-    with path.open("w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        w.writeheader()
-        w.writerows(rows)
-    return len(rows)
-
-
-def _territory_zips() -> list[str]:
-    """Get territory ZIPs from pre-exported JSON."""
-    path = DATA_DIR / "territory_zips.json"
-    if path.exists():
-        with path.open() as f:
-            return list(json.load(f).keys())
-    return []
-
-
-def _zip_in_clause(zips: list[str]) -> str:
-    return "(" + ",".join(f"'{z}'" for z in zips) + ")"
-
-
-# ─── Refresh Queries ─────────────────────────────────────────────────────
-
-def _refresh_members(zips: list[str]) -> int:
-    in_clause = _zip_in_clause(zips)
-    today = date.today().isoformat()
-    q = f"""
-    WITH latest AS (
-      SELECT  membership_unique_id,
-              LPAD(customer_address_postal_code, 5, '0') AS zip,
-              membership_card_expiry_date,
-              membership_effective_date,
-              membership_status_code,
-              ROW_NUMBER() OVER (
-                  PARTITION BY membership_unique_id
-                  ORDER BY record_create_date DESC, membership_effective_date DESC
-              ) AS rn
-      FROM    dev_bronze_catalog.legacy_datawarehouse.membership_consolidated
-      WHERE   customer_address_state IN ('NY','New York','NEW YORK')
-        AND   customer_address_region IN ('WESTERN','ROCHESTER','CENTRAL')
-        AND   source LIKE 'MEMBERS%'
-    )
-    SELECT  zip,
-            COUNT(*) AS total_members,
-            SUM(CASE WHEN membership_status_code = 'A' THEN 1 ELSE 0 END) AS active_members,
-            SUM(CASE WHEN membership_card_expiry_date >= DATE('{today}') THEN 1 ELSE 0 END) AS card_unexpired,
-            SUM(CASE WHEN membership_card_expiry_date < DATE('{today}') THEN 1 ELSE 0 END) AS expired_members,
-            ROUND(AVG(DATEDIFF(DATE('{today}'), membership_effective_date) / 365.0), 2) AS avg_tenure_yrs
-    FROM    latest
-    WHERE   rn = 1 AND zip IN {in_clause}
-    GROUP BY 1 ORDER BY 3 DESC
-    """
-    return _save_csv(_run_query(q), "members_by_zip.csv")
-
-
-def _refresh_insurance(zips: list[str]) -> int:
-    in_clause = _zip_in_clause(zips)
-    today = date.today().isoformat()
-    q = f"""
-    WITH active_pol AS (
-        SELECT pol.fk_client_id, UPPER(TRIM(pol.cd_policy_line_type_code)) AS line
-        FROM   dev_silver_catalog.data_warehouse.insurance_policies_f pol
-        WHERE  pol.expiration_date >= DATE('{today}') OR pol.expiration_date IS NULL
-    ),
-    client_zip AS (
-        SELECT acc.fk_client_id, LPAD(crm.`Billing Postal Code`, 5, '0') AS zip
-        FROM   dev_silver_catalog.data_warehouse.insurance_client_accounts_f acc
-        JOIN   dev_gold_catalog.business_intelligence.crm_account crm
-               ON crm.`Account Member ID` = acc.primary_contact_member_number
-        WHERE  acc.active_flag = 'Y'
-          AND  crm.`Billing State` IN ('NY','New York','NEW YORK')
-    )
-    SELECT  cz.zip,
-            COUNT(DISTINCT CASE WHEN ap.line = 'AUTO' THEN ap.fk_client_id END) AS auto_customers,
-            COUNT(DISTINCT CASE WHEN ap.line = 'HOME' THEN ap.fk_client_id END) AS home_customers,
-            COUNT(DISTINCT CASE WHEN ap.line = 'PUMB' THEN ap.fk_client_id END) AS umbrella_customers,
-            COUNT(DISTINCT ap.fk_client_id) AS total_customers
-    FROM    client_zip cz
-    JOIN    active_pol ap ON ap.fk_client_id = cz.fk_client_id
-    WHERE   cz.zip IN {in_clause}
-    GROUP BY 1 ORDER BY 5 DESC
-    """
-    return _save_csv(_run_query(q), "insurance_by_zip.csv")
-
-
-def _refresh_travel(zips: list[str]) -> int:
-    in_clause = _zip_in_clause(zips)
-    cutoff = (date.today() - timedelta(days=365 * 3)).isoformat()
-    q = f"""
-    WITH txn AS (
-        SELECT  customer_identifier,
-                COUNT(*) AS txn_count,
-                SUM(CAST(NULLIF(sales_amount,'') AS DOUBLE)) AS revenue
-        FROM    dev_silver_catalog.data_warehouse.travel_store_transactions_f
-        WHERE   transaction_date >= '{cutoff}' AND customer_identifier IS NOT NULL
-        GROUP BY 1
-    ),
-    cust_zip AS (
-        SELECT  `Account Member ID` AS member_id, LPAD(`Billing Postal Code`, 5, '0') AS zip
-        FROM    dev_gold_catalog.business_intelligence.crm_account
-        WHERE   `Billing State` IN ('NY','New York','NEW YORK')
-          AND   `Record Type Name` = 'Person Account' AND `Account Member ID` IS NOT NULL
-    )
-    SELECT  cz.zip,
-            COUNT(DISTINCT t.customer_identifier) AS travel_customers_3yr,
-            SUM(t.txn_count) AS travel_transactions_3yr,
-            ROUND(SUM(t.revenue), 0) AS travel_revenue_3yr
-    FROM    cust_zip cz JOIN txn t ON t.customer_identifier = cz.member_id
-    WHERE   cz.zip IN {in_clause}
-    GROUP BY 1 ORDER BY 2 DESC
-    """
-    return _save_csv(_run_query(q), "travel_by_zip.csv")
-
-
-def _refresh_battery(zips: list[str]) -> int:
-    in_clause = _zip_in_clause(zips)
-    cutoff = (date.today() - timedelta(days=365 * 3)).isoformat()
-    q = f"""
-    WITH bat AS (
-        SELECT customer_unique_id, LOWER(COALESCE(test_result,'')) AS result
-        FROM   dev_silver_catalog.data_warehouse.battery_test_transactions_f
-        WHERE  test_date >= DATE('{cutoff}') AND customer_unique_id IS NOT NULL
-    ),
-    cust_zip AS (
-        SELECT `Account Member ID` AS member_id, LPAD(`Billing Postal Code`, 5, '0') AS zip
-        FROM   dev_gold_catalog.business_intelligence.crm_account
-        WHERE  `Billing State` IN ('NY','New York','NEW YORK')
-          AND  `Record Type Name` = 'Person Account' AND `Account Member ID` IS NOT NULL
-    )
-    SELECT  cz.zip,
-            COUNT(*) AS battery_tests_3yr,
-            COUNT(DISTINCT b.customer_unique_id) AS unique_battery_customers_3yr
-    FROM    cust_zip cz JOIN bat b ON b.customer_unique_id = cz.member_id
-    WHERE   cz.zip IN {in_clause}
-    GROUP BY 1 ORDER BY 2 DESC
-    """
-    return _save_csv(_run_query(q), "battery_by_zip.csv")
-
-
-def _refresh_ers(zips: list[str]) -> int:
-    in_clause = _zip_in_clause(zips)
-    cutoff = (date.today() - timedelta(days=365)).isoformat()
-    q = f"""
-    WITH ers AS (
-        SELECT MemberNumber, CallNumber
-        FROM   dev_silver_catalog.data_warehouse.ers_calls_details
-        WHERE  ServiceDate >= TIMESTAMP('{cutoff}') AND MemberNumber IS NOT NULL
-    ),
-    cust_zip AS (
-        SELECT `Account Member ID` AS member_id, LPAD(`Billing Postal Code`, 5, '0') AS zip
-        FROM   dev_gold_catalog.business_intelligence.crm_account
-        WHERE  `Billing State` IN ('NY','New York','NEW YORK')
-          AND  `Record Type Name` = 'Person Account' AND `Account Member ID` IS NOT NULL
-    )
-    SELECT  cz.zip,
-            COUNT(*) AS ers_calls_12mo,
-            COUNT(DISTINCT e.MemberNumber) AS ers_unique_members_12mo
-    FROM    cust_zip cz JOIN ers e ON e.MemberNumber = cz.member_id
-    WHERE   cz.zip IN {in_clause}
-    GROUP BY 1 ORDER BY 2 DESC
-    """
-    return _save_csv(_run_query(q), "ers_by_zip.csv")
-
-
-def _refresh_ltv(zips: list[str]) -> int:
-    in_clause = _zip_in_clause(zips)
-    q = f"""
-    SELECT
-      LPAD(`Billing Postal Code`, 5, '0') AS zip,
-      COUNT(*) AS active_members,
-      SUM(CASE WHEN UPPER(LEFT(LTV,1)) = 'A' THEN 1 ELSE 0 END) AS ltv_a,
-      SUM(CASE WHEN UPPER(LEFT(LTV,1)) = 'B' THEN 1 ELSE 0 END) AS ltv_b,
-      SUM(CASE WHEN UPPER(LEFT(LTV,1)) = 'C' THEN 1 ELSE 0 END) AS ltv_c,
-      SUM(CASE WHEN UPPER(LEFT(LTV,1)) = 'D' THEN 1 ELSE 0 END) AS ltv_d,
-      SUM(CASE WHEN UPPER(LEFT(LTV,1)) = 'E' THEN 1 ELSE 0 END) AS ltv_e,
-      ROUND(AVG(try_cast(MPI AS DOUBLE)), 3) AS avg_mpi,
-      ROUND(AVG(try_cast(REGEXP_EXTRACT(Tenure, '([0-9]+)', 1) AS DOUBLE)), 2) AS avg_tenure_yrs
-    FROM dev_gold_catalog.business_intelligence.crm_account
-    WHERE `Billing State` IN ('NY','New York','NEW YORK')
-      AND `Record Type Name` = 'Person Account'
-      AND `Member Status` = 'A'
-      AND LPAD(`Billing Postal Code`, 5, '0') IN {in_clause}
-    GROUP BY 1 ORDER BY 2 DESC
-    """
-    return _save_csv(_run_query(q), "ltv_tenure_by_zip.csv")
-
-
-# ─── Background Refresh Task ─────────────────────────────────────────────
+# ─── Helpers ─────────────────────────────────────────────────────────────
 
 def _backup_current_data():
     """Backup existing CSVs to timestamped folder before overwriting."""
@@ -265,15 +58,33 @@ def _backup_current_data():
     backup_path.mkdir(parents=True, exist_ok=True)
     for f in existing_csvs:
         shutil.copy2(f, backup_path / f.name)
-    # Also copy any JSON data files
     for f in DATA_DIR.glob("*.json"):
         shutil.copy2(f, backup_path / f.name)
-    # Keep only last 10 backups to avoid filling disk
     all_backups = sorted(BACKUP_DIR.iterdir(), reverse=True)
     for old in all_backups[10:]:
         if old.is_dir():
             shutil.rmtree(old)
     return stamp
+
+
+def _clear_disk_cache():
+    """Clear all growth_ prefixed disk cache entries so next request regenerates from fresh CSVs."""
+    import re as _re
+    try:
+        import cache as _cache
+        import json as _json
+        cleared = 0
+        for entry in _cache._CACHE_DIR.glob('*.json'):
+            try:
+                payload = _json.loads(entry.read_text())
+                if _re.match(r'^growth_', payload.get('key', '')):
+                    entry.unlink()
+                    cleared += 1
+            except Exception:
+                pass
+        return cleared
+    except Exception:
+        return 0
 
 
 def _do_refresh():
@@ -283,7 +94,6 @@ def _do_refresh():
     _refresh_status["results"] = {}
     _refresh_status["last_error"] = None
 
-    # Backup existing data before overwriting
     backup_stamp = _backup_current_data()
     if backup_stamp:
         _refresh_status["results"]["_backup"] = {"folder": backup_stamp, "status": "ok"}
@@ -294,19 +104,10 @@ def _do_refresh():
         _refresh_status["last_error"] = "No territory ZIPs found in territory_zips.json"
         return
 
-    datasets = [
-        ("members", _refresh_members),
-        ("insurance", _refresh_insurance),
-        ("travel", _refresh_travel),
-        ("battery", _refresh_battery),
-        ("ers", _refresh_ers),
-        ("ltv", _refresh_ltv),
-    ]
-
-    for name, fn in datasets:
+    for name, fn in ALL_DATASETS:
         try:
             start = time.time()
-            count = fn(zips)
+            count = fn() if name in _NO_ZIP_DATASETS else fn(zips)
             elapsed = round(time.time() - start, 1)
             _refresh_status["results"][name] = {"rows": count, "seconds": elapsed, "status": "ok"}
         except Exception as e:
@@ -315,9 +116,12 @@ def _do_refresh():
     _refresh_status["running"] = False
     _refresh_status["last_run"] = date.today().isoformat()
 
-    # Clear the LRU cache on the growth router so next request uses fresh data
+    # Clear LRU cache so growth router re-reads CSVs on next request
     from routers.growth import _build_zip_table
     _build_zip_table.cache_clear()
+
+    # Clear disk cache so next HTTP request regenerates from fresh CSVs (not 30-day stale)
+    _clear_disk_cache()
 
 
 # ─── API Endpoints ───────────────────────────────────────────────────────
@@ -369,10 +173,9 @@ def trigger_refresh(background_tasks: BackgroundTasks, _user=Depends(require_adm
 async def upload_census(file: UploadFile = File(...), _user=Depends(require_admin)):
     """
     Upload a new Census_Data_CustomerSeg_Vehicles.xlsx to refresh demographic data.
-    
+
     This data comes from US Census Bureau (population, age, housing, income)
     and NY DMV (registered vehicles). Updated annually.
-    Parses the Excel and writes to census_segments.json.
     """
     import openpyxl
     from io import BytesIO
@@ -380,7 +183,6 @@ async def upload_census(file: UploadFile = File(...), _user=Depends(require_admi
     content = await file.read()
     wb = openpyxl.load_workbook(BytesIO(content), data_only=True, read_only=True)
 
-    # Find the data sheet
     sheet_name = None
     for name in wb.sheetnames:
         if "census" in name.lower() or "custseg" in name.lower():
@@ -416,12 +218,10 @@ async def upload_census(file: UploadFile = File(...), _user=Depends(require_admi
     if not data:
         return {"status": "error", "message": "No data found in uploaded file"}
 
-    # Write to census_segments.json
     out_path = SEED_DIR / "census_segments.json"
     with out_path.open("w") as f:
         json.dump(data, f)
 
-    # Also update territory_zips.json if we got new territory info
     territory = {}
     for z, rec in data.items():
         territory[z] = {
@@ -434,10 +234,10 @@ async def upload_census(file: UploadFile = File(...), _user=Depends(require_admi
     with terr_path.open("w") as f:
         json.dump(territory, f)
 
-    # Clear caches
     from routers.growth import _build_zip_table, _load_census
     _build_zip_table.cache_clear()
     _load_census.cache_clear()
+    _clear_disk_cache()
 
     return {
         "status": "ok",
@@ -451,10 +251,11 @@ async def upload_census(file: UploadFile = File(...), _user=Depends(require_admi
 REFRESH_SOURCES = {
     "members": {"fn": "_refresh_members", "label": "Membership (Databricks)", "source": "databricks"},
     "insurance": {"fn": "_refresh_insurance", "label": "Insurance Policies (Databricks)", "source": "databricks"},
-    "travel": {"fn": "_refresh_travel", "label": "Travel Transactions (Databricks)", "source": "databricks"},
-    "battery": {"fn": "_refresh_battery", "label": "Battery & ERS (Databricks)", "source": "databricks"},
-    "ers": {"fn": "_refresh_ers", "label": "ERS Calls (Databricks)", "source": "databricks"},
+    "travel": {"fn": "_refresh_travel", "label": "Travel Transactions 12mo (Databricks)", "source": "databricks"},
+    "battery": {"fn": "_refresh_battery", "label": "Battery Tests 12mo (Databricks)", "source": "databricks"},
+    "ers": {"fn": "_refresh_ers", "label": "ERS Calls 12mo (Databricks)", "source": "databricks"},
     "ltv": {"fn": "_refresh_ltv", "label": "LTV & Tenure (Databricks)", "source": "databricks"},
+    "membership_trend": {"fn": "_refresh_membership_trend", "label": "Membership Trend 5yr (Databricks)", "source": "databricks"},
     "census": {"fn": None, "label": "Census & DMV (Upload)", "source": "upload"},
 }
 
@@ -464,19 +265,11 @@ def list_refresh_sources(_user=Depends(require_admin)):
     """List all available data sources with their last refresh times."""
     sources = []
     for key, info in REFRESH_SOURCES.items():
-        # Check file modification time
         if key == "census":
             path = SEED_DIR / "census_segments.json"
         else:
-            csv_map = {
-                "members": "members_by_zip.csv",
-                "insurance": "insurance_by_zip.csv",
-                "travel": "travel_by_zip.csv",
-                "battery": "battery_by_zip.csv",
-                "ers": "ers_by_zip.csv",
-                "ltv": "ltv_tenure_by_zip.csv",
-            }
-            path = DATA_DIR / csv_map.get(key, "")
+            csv_name = DATASET_CSV_MAP.get(key, "")
+            path = DATA_DIR / csv_name if csv_name else Path("/dev/null")
 
         last_modified = None
         row_count = 0
@@ -484,7 +277,7 @@ def list_refresh_sources(_user=Depends(require_admin)):
             last_modified = time.strftime("%Y-%m-%d %H:%M", time.localtime(path.stat().st_mtime))
             if path.suffix == ".csv":
                 with path.open() as f:
-                    row_count = sum(1 for _ in f) - 1  # minus header
+                    row_count = sum(1 for _ in f) - 1
             elif path.suffix == ".json":
                 with path.open() as f:
                     row_count = len(json.load(f))
@@ -522,29 +315,22 @@ def refresh_single_source(source_key: str, background_tasks: BackgroundTasks, _u
     if not has_databricks:
         return {"status": "error", "message": "Databricks credentials not configured"}
 
-    fn_map = {
-        "members": _refresh_members,
-        "insurance": _refresh_insurance,
-        "travel": _refresh_travel,
-        "battery": _refresh_battery,
-        "ers": _refresh_ers,
-        "ltv": _refresh_ltv,
-    }
+    fn_map = {name: fn for name, fn in ALL_DATASETS}
 
     def _do_single():
         global _refresh_status
         _refresh_status["running"] = True
         _refresh_status["results"] = {}
-        # Backup before single source refresh too
         _backup_current_data()
         zips = _territory_zips()
-        if not zips:
+        if not zips and source_key not in _NO_ZIP_DATASETS:
             _refresh_status["running"] = False
             _refresh_status["last_error"] = "No territory ZIPs"
             return
         try:
             start_t = time.time()
-            count = fn_map[source_key](zips)
+            fn = fn_map[source_key]
+            count = fn() if source_key in _NO_ZIP_DATASETS else fn(zips)
             elapsed = round(time.time() - start_t, 1)
             _refresh_status["results"][source_key] = {"rows": count, "seconds": elapsed, "status": "ok"}
         except Exception as e:
@@ -553,6 +339,7 @@ def refresh_single_source(source_key: str, background_tasks: BackgroundTasks, _u
         _refresh_status["last_run"] = date.today().isoformat()
         from routers.growth import _build_zip_table
         _build_zip_table.cache_clear()
+        _clear_disk_cache()
 
     background_tasks.add_task(_do_single)
     return {"status": "started", "message": f"Refreshing '{info['label']}'. Check /api/growth/data-status for progress."}

@@ -181,9 +181,9 @@ def _build_zip_table() -> list[dict]:
         auto_cust = _f(i.get("auto_customers"))
         home_cust = _f(i.get("home_customers"))
         ins_cust = _f(i.get("total_customers"))
-        travel_cust = _f(t.get("travel_customers_3yr"))
-        travel_rev = _f(t.get("travel_revenue_3yr"))
-        battery_cust = _f(b.get("unique_battery_customers_3yr"))
+        travel_cust = _f(t.get("travel_customers_12mo"))
+        travel_rev = _f(t.get("travel_revenue_12mo"))
+        battery_cust = _f(b.get("unique_battery_customers_12mo"))
         ers_calls = _f(e.get("ers_calls_12mo"))
 
         # Penetration metrics

@@ -489,8 +489,8 @@ def _build_travel(year_from: int, year_to: int) -> dict:
     for z in tz_set:
         t = travel.get(z, {})
         m = members.get(z, {})
-        cust = _f(t.get("travel_customers_3yr"))
-        revenue = _f(t.get("travel_revenue_3yr"))
+        cust = _f(t.get("travel_customers_12mo"))
+        revenue = _f(t.get("travel_revenue_12mo"))
         active = _f(m.get("active_members"))
         total_travel += cust
         total_active_members += active
@@ -562,8 +562,8 @@ def _build_battery(year_from: int, year_to: int) -> dict:
     for z in tz_set:
         b = battery.get(z, {})
         c = census.get(z, {})
-        cust = _f(b.get("unique_battery_customers_3yr"))
-        tests = _f(b.get("battery_tests_3yr"))
+        cust = _f(b.get("unique_battery_customers_12mo"))
+        tests = _f(b.get("battery_tests_12mo"))
         vehicles = _f(c.get("vehicles_3plus_yrs"))
         total_battery += cust
         total_vehicles_3yr += vehicles

@@ -6,8 +6,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
 import {
   Users, GitBranch, Megaphone, Table2, Target, DollarSign,
-  Sun, Moon, Calendar, Command, Radio, Map, BarChart3,
-  ArrowRight, X, Settings, LogOut, Lightbulb, RefreshCw,
+  Sun, Moon, Command, Radio, Map, BarChart3,
+  Settings, LogOut, Lightbulb, RefreshCw,
   TrendingUp,
 } from 'lucide-react'
 import SalesPulseLogo from '@/components/SalesPulseLogo'
@@ -19,48 +19,38 @@ import ImpersonationBanner from '@/components/ImpersonationBanner'
 // import AIAssistantChat from '@/components/AIAssistantChat'
 
 const APP_VERSION = __APP_VERSION__
-import DateRangeSummary from '@/components/DateRangeSummary'
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 
 const NAV_ANALYTICS = [
-  { to: '/dashboard', label: 'Sales Performance', icon: Users, desc: 'Bookings, pipeline & team' },
-  { to: '/revenue', label: 'Top Revenue Contributors', icon: DollarSign, desc: 'Customers, destinations & regions' },
-  { to: '/monthly', label: 'Monthly Report', icon: Table2, desc: 'Agent or branch monthly breakdown' },
-  { to: '/projection', label: 'Advisor Targets', icon: Target, desc: 'Stretch goals & thresholds' },
-  { to: '/pipeline', label: 'Pipeline & Forecast', icon: GitBranch, desc: 'Stages, velocity & risk' },
-  { to: '/opportunities', label: 'Top Opportunities', icon: Target, desc: 'AI-scored deal ranking' },
-  { to: '/leads', label: 'Lead Funnel', icon: Megaphone, desc: 'Conversion & sources' },
-  { to: '/insights', label: 'Cross-Sell Insights', icon: Lightbulb, desc: 'Who to call & why' },
-  { to: '/territory', label: 'Territory Map', icon: Map, desc: 'Penetration heatmap' },
+  { to: '/dashboard', label: 'Advisor Performance', icon: Users, desc: 'Bookings, pipeline & team' },
+  { to: '/revenue', label: 'Revenue Contributions', icon: DollarSign, desc: 'Customers, destinations & regions' },
+  { to: '/monthly', label: 'Monthly Breakdown', icon: Table2, desc: 'Agent or branch monthly breakdown' },
+  { to: '/projection', label: 'Manage Targets', icon: Target, desc: 'Stretch goals & thresholds' },
+  { to: '/pipeline', label: 'Sales Pipeline', icon: GitBranch, desc: 'Stages, velocity & risk' },
+  { to: '/opportunities', label: 'AI-Ranked Deals', icon: Target, desc: 'AI-scored deal ranking' },
+  { to: '/leads', label: 'Lead Funnel & Conversion', icon: Megaphone, desc: 'Conversion & sources' },
+  { to: '/insights', label: 'Cross-Sell Opportunities', icon: Lightbulb, desc: 'Who to call & why' },
+  { to: '/territory', label: 'Market Penetration Map', icon: Map, desc: 'Penetration heatmap' },
 ]
 
-// Note: `Strategic Insights` is admin/superadmin-only — filtered at render time.
+// Note: `Strategic Growth Plan` is admin/superadmin-only — filtered at render time.
 const NAV_EXTERNAL = [
-  { to: '/growth-plan', label: 'Strategic Insights', icon: TrendingUp, desc: 'Board-grade growth plan with maps & analysis', adminOnly: true },
-  { to: '/census', label: 'Census Data', icon: BarChart3, desc: 'Population & demographics' },
-  { to: '/market-pulse', label: 'Market Pulse', icon: Radio, desc: 'Advisories & intelligence' },
+  { to: '/growth-plan', label: 'Strategic Growth Plan', icon: TrendingUp, desc: 'Board-grade growth plan with maps & analysis', adminOnly: true },
+  { to: '/census', label: 'Market Demographics', icon: BarChart3, desc: 'Population & demographics' },
+  { to: '/market-pulse', label: 'Advisories & Alerts', icon: Radio, desc: 'Advisories & intelligence' },
 ] as const
 
 const LINES = ['Travel', 'Insurance', 'All'] as const
 
-const PRESETS = [
-  { key: 'month' as const, label: '1M', title: 'Last month' },
-  { key: 'quarter' as const, label: '3M', title: 'Last 3 months' },
-  { key: '6m' as const, label: '6M', title: 'Last 6 months' },
-  { key: 'ytd' as const, label: 'YTD', title: 'Year to date' },
-  { key: 'year' as const, label: '1Y', title: 'Last 12 months' },
-  { key: 'last-year' as const, label: 'PY', title: 'Prior year' },
-]
-
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 
 export default function Layout() {
-  const { line, setLine, viewMode, setViewMode, startDate, endDate, setDateRange } = useSales()
+  const { line, setLine } = useSales()
   const { isDark, toggle } = useTheme()
   const { user, logout, isAdminOrSuperadmin } = useAuth()
-  // Filter nav entries that are tagged adminOnly (e.g. Strategic Insights)
+  // Filter nav entries that are tagged adminOnly (e.g. Strategic Growth Plan)
   // so managers don't see them. Backend remains authoritative.
   const externalNav = NAV_EXTERNAL.filter(
     (n) => !('adminOnly' in n && n.adminOnly) || isAdminOrSuperadmin || user?.role === 'executive',
@@ -102,53 +92,11 @@ export default function Layout() {
   const effectiveLine = (user?.role === 'travel_manager' || user?.role === 'travel_director') ? 'Travel'
     : user?.role === 'insurance_manager' ? 'Insurance'
     : line
-  const [showCustom, setShowCustom] = useState(false)
-  const [tempStart, setTempStart] = useState(startDate || '')
-  const [tempEnd, setTempEnd] = useState(endDate || '')
-
   // Force line for role-locked users
   useEffect(() => {
     if ((user?.role === 'travel_manager' || user?.role === 'travel_director') && line !== 'Travel') setLine('Travel')
     if (user?.role === 'insurance_manager' && line !== 'Insurance') setLine('Insurance')
   }, [user?.role, line, setLine])
-
-  // Sync temp dates when custom mode opens or context changes
-  useEffect(() => {
-    if (viewMode === 'custom') {
-      setShowCustom(true)
-      setTempStart(startDate || '')
-      setTempEnd(endDate || '')
-    }
-  }, [viewMode, startDate, endDate])
-
-  const handlePresetClick = (key: typeof PRESETS[number]['key']) => {
-    setShowCustom(false)
-    setViewMode(key)
-  }
-
-  const handleCustomToggle = () => {
-    if (showCustom) {
-      // Closing custom — revert to year
-      setShowCustom(false)
-      setViewMode('year')
-    } else {
-      setShowCustom(true)
-      // Pre-fill with last 30 days if empty
-      if (!tempStart || !tempEnd) {
-        const now = new Date()
-        const past = new Date(now)
-        past.setDate(past.getDate() - 30)
-        setTempStart(past.toISOString().split('T')[0])
-        setTempEnd(now.toISOString().split('T')[0])
-      }
-    }
-  }
-
-  const applyCustomRange = () => {
-    if (tempStart && tempEnd) {
-      setDateRange(tempStart, tempEnd)
-    }
-  }
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -296,110 +244,6 @@ export default function Layout() {
           )}
         </nav>
 
-        {/* Filters */}
-        <div className="space-y-4 border-t border-sidebar-border p-4">
-          {/* Date Range Section */}
-          <div className="space-y-2">
-            <span className="block text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/70">
-              Time period
-            </span>
-
-            {/* Preset Chips */}
-            <div className="grid grid-cols-3 gap-1">
-              {PRESETS.map((p) => (
-                <button
-                  key={p.key}
-                  title={p.title}
-                  onClick={() => handlePresetClick(p.key)}
-                  className={cn(
-                    'rounded-md py-1.5 text-[11px] font-semibold transition-all duration-200',
-                    viewMode === p.key && !showCustom
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground',
-                  )}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Custom Range Toggle */}
-            <button
-              onClick={handleCustomToggle}
-              className={cn(
-                'flex w-full items-center justify-center gap-1.5 rounded-md py-1.5',
-                'text-[11px] font-medium transition-all duration-200',
-                showCustom
-                  ? 'bg-primary/10 text-primary border border-primary/20'
-                  : 'bg-secondary/50 text-muted-foreground border border-transparent hover:bg-secondary hover:text-foreground',
-              )}
-            >
-              <Calendar className="h-3 w-3" />
-              Custom Range
-              {showCustom && <X className="h-3 w-3 ml-1 opacity-60" />}
-            </button>
-
-            {/* Custom Date Inputs */}
-            {showCustom && (
-              <div className="animate-enter space-y-2 rounded-lg border border-border bg-secondary/30 p-3">
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-medium text-muted-foreground/80">From</label>
-                  <div className="relative">
-                    <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
-                    <input
-                      type="date"
-                      value={tempStart}
-                      onChange={(e) => setTempStart(e.target.value)}
-                      className={cn(
-                        'w-full rounded-md border border-border bg-card py-1.5 pl-8 pr-2.5',
-                        'text-[12px] font-medium text-foreground',
-                        'outline-none transition-all duration-200',
-                        'focus:border-primary/40 focus:ring-1 focus:ring-primary/20',
-                      )}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center justify-center">
-                  <ArrowRight className="h-3 w-3 text-muted-foreground/40" />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-medium text-muted-foreground/80">To</label>
-                  <div className="relative">
-                    <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
-                    <input
-                      type="date"
-                      value={tempEnd}
-                      onChange={(e) => setTempEnd(e.target.value)}
-                      className={cn(
-                        'w-full rounded-md border border-border bg-card py-1.5 pl-8 pr-2.5',
-                        'text-[12px] font-medium text-foreground',
-                        'outline-none transition-all duration-200',
-                        'focus:border-primary/40 focus:ring-1 focus:ring-primary/20',
-                      )}
-                    />
-                  </div>
-                </div>
-                <button
-                  onClick={applyCustomRange}
-                  disabled={!tempStart || !tempEnd}
-                  className={cn(
-                    'mt-1 flex w-full items-center justify-center gap-1.5 rounded-md py-1.5',
-                    'text-[11px] font-semibold transition-all duration-200',
-                    tempStart && tempEnd
-                      ? 'bg-primary text-primary-foreground hover:opacity-90'
-                      : 'bg-secondary/60 text-muted-foreground/40 cursor-not-allowed',
-                  )}
-                >
-                  Apply Range
-                </button>
-              </div>
-            )}
-
-            {/* Active Range Summary */}
-            <DateRangeSummary viewMode={viewMode} startDate={startDate} endDate={endDate} />
-          </div>
-
-        </div>{/* end filters */}
         </div>{/* end scrollable wrapper */}
 
         {/* User info + Logout */}

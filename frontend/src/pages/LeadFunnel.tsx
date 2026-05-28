@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useSales } from '@/contexts/SalesContext'
 import {
   fetchLeadsVolume,
@@ -11,7 +12,7 @@ import KPICard from '@/components/KPICard'
 import { Tip, TIPS } from '@/components/MetricTip'
 import {
   Megaphone, Target, Clock, Zap, Loader2,
-  BarChart3, Table2, Sparkles,
+  BarChart3, Table2, Sparkles, ChevronRight,
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -73,7 +74,7 @@ export default function LeadFunnel() {
       <div className="animate-enter flex items-end justify-between">
         <div>
           <p className="text-[12px] font-medium text-muted-foreground">{line} Division &middot; {periodLabel}</p>
-          <h1 className="mt-0.5 text-2xl font-bold tracking-tight">Lead Conversion Funnel</h1>
+          <h1 className="mt-0.5 text-2xl font-bold tracking-tight">Lead Funnel & Conversion</h1>
         </div>
         <div className="flex gap-1 rounded-lg border border-border bg-secondary/30 p-1">
           {TABS.map((t) => {
@@ -221,25 +222,32 @@ function ChartsTab({ totalLeads, totalConverted, convRate, expiredRate, volume, 
    ════════════════════════════════════════════════════════════════════════════ */
 
 function DetailsTab({ sourceEff, timeToConvert, c }: { sourceEff: any; timeToConvert: any; c: ReturnType<typeof useChartColors> }) {
+  const navigate = useNavigate()
+
   return (
     <div className="space-y-6">
       {/* Source Effectiveness Table */}
       <div className="card-premium animate-enter overflow-hidden">
         <div className="border-b border-border px-6 py-4">
           <h2 className="text-sm font-semibold tracking-tight">Source Effectiveness<Tip text={TIPS.sourceEffectiveness} /></h2>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Click any source row to view its leads</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-border">
-                {['Source', 'Leads', 'Conv %', 'Avg Opp $'].map(h => (
+              <tr className="border-b border-border text-left">
+                {['Source', 'Leads', 'Conv %', 'Avg Opp $', ''].map(h => (
                   <th key={h} className={cn('px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60', h === 'Source' ? 'text-left' : 'text-right')}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {(sourceEff?.sources ?? []).slice(0, 20).map((s: any) => (
-                <tr key={s.source} className="border-b border-border/30 transition-colors duration-150 hover:bg-secondary/50">
+                <tr
+                  key={s.source}
+                  onClick={() => navigate(`/leads/source/${encodeURIComponent(s.source || '')}`)}
+                  className="border-b border-border/30 transition-colors duration-150 hover:bg-secondary/50 cursor-pointer select-none group"
+                >
                   <td className="px-6 py-3 text-[13px] font-medium">{s.source || '(blank)'}</td>
                   <td className="tabular-nums px-6 py-3 text-right text-[13px] text-muted-foreground">{formatNumber(s.total)}</td>
                   <td className="px-6 py-3 text-right">
@@ -248,6 +256,9 @@ function DetailsTab({ sourceEff, timeToConvert, c }: { sourceEff: any; timeToCon
                     </span>
                   </td>
                   <td className="tabular-nums px-6 py-3 text-right text-[13px] text-muted-foreground">{formatCurrency(s.avg_opp_value ?? 0, true)}</td>
+                  <td className="px-4 py-3 text-right text-muted-foreground/30 group-hover:text-primary/50 transition-colors">
+                    <ChevronRight className="h-4 w-4 inline-block" />
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -133,7 +133,7 @@ def _build_endpoint_list():
     from routers.sales_leads import leads_volume, agent_close_speed
     from routers.territory_map import territory_map_data
     from routers.market_pulse import market_pulse
-    from routers.cross_sell import cross_sell_insights
+    from routers.cross_sell import cross_sell_insights, membership_upgrade_insights, medicare_eligibility_insights
 
     # IMPORTANT: FastAPI endpoints use Query(None) as default for optional params.
     # When called directly (not via HTTP), Python passes the Query object, not None.
@@ -161,6 +161,10 @@ def _build_endpoint_list():
         lambda: market_pulse(period=6, start_date=None, end_date=None)))
     endpoints.append(('cross_sell',
         lambda: cross_sell_insights(period=12, start_date=None, end_date=None)))
+    endpoints.append(('cross_sell_membership_upgrades',
+        lambda: membership_upgrade_insights(period=12, start_date=None, end_date=None)))
+    endpoints.append(('cross_sell_medicare_eligibility',
+        lambda: medicare_eligibility_insights(period=12, start_date=None, end_date=None)))
 
     return endpoints
 
@@ -196,13 +200,22 @@ def _build_growth_endpoint_list():
 
 
 def warm_growth_strategic(trigger='monthly'):
-    """Invalidate + regenerate all Strategic Insights caches.
+    """Pull fresh Databricks data, then invalidate + regenerate all Strategic Insights caches.
     Called on the 1st of the month at 3 AM — runs after the nightly warm.
     """
     import cache
     import re
 
-    # Clear all growth_ prefixed disk cache entries so they regenerate fresh
+    # Step 1: Pull fresh data from Databricks before regenerating caches
+    try:
+        from routers.growth_admin import _do_refresh
+        log.info("Monthly growth warm: pulling fresh Databricks data")
+        _do_refresh()
+        log.info("Monthly growth warm: Databricks refresh complete")
+    except Exception as e:
+        log.warning(f"Monthly growth warm: Databricks refresh failed (cached data will be used): {e}")
+
+    # Step 2: Clear all growth_ prefixed disk cache entries so they regenerate fresh
     cleared = 0
     try:
         for entry in cache._CACHE_DIR.glob('*.json'):
