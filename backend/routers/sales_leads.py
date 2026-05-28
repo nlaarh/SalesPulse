@@ -375,6 +375,7 @@ def list_leads(
     if source:
         escaped_source = source.replace("'", "\\'")
         where_clauses.append(f"LeadSource = '{escaped_source}'")
+        where_clauses.append("Status NOT IN ('Closed', 'Closed Lost')")
     if status:
         escaped_status = status.replace("'", "\\'")
         where_clauses.append(f"Status = '{escaped_status}'")

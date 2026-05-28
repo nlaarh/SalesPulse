@@ -1,3 +1,4 @@
+import { useState, useMemo } from 'react'
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
 import { fmtDate } from '@/lib/formatters'
 import { Tip, TIPS } from '@/components/MetricTip'
@@ -11,9 +12,47 @@ interface DetailsTabProps {
   slipping: any
 }
 
+type PastDueSortField = 'name' | 'owner' | 'stage' | 'amount' | 'days_overdue' | 'days_since_activity' | 'close_date'
+
 /* ── Component ────────────────────────────────────────────────────────────── */
 
 export default function DetailsTab({ stages, slipping }: DetailsTabProps) {
+  const [sortField, setSortField] = useState<PastDueSortField>('days_overdue')
+  const [sortAsc, setSortAsc] = useState(false)
+
+  const handleSort = (field: PastDueSortField) => {
+    if (sortField === field) { setSortAsc(a => !a); return }
+    setSortField(field)
+    setSortAsc(field === 'name' || field === 'owner' || field === 'stage' || field === 'close_date')
+  }
+
+  const sortedDeals = useMemo(() => {
+    const deals = [...(slipping?.deals ?? [])]
+    deals.sort((a: any, b: any) => {
+      const va = a[sortField] ?? (typeof a[sortField] === 'number' ? 0 : '')
+      const vb = b[sortField] ?? (typeof b[sortField] === 'number' ? 0 : '')
+      if (va < vb) return sortAsc ? -1 : 1
+      if (va > vb) return sortAsc ? 1 : -1
+      return 0
+    })
+    return deals
+  }, [slipping?.deals, sortField, sortAsc])
+
+  const SortTh = ({ field, label, right = false }: { field: PastDueSortField; label: string; right?: boolean }) => (
+    <th
+      onClick={() => handleSort(field)}
+      className={cn(
+        'cursor-pointer select-none px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60 hover:text-muted-foreground transition-colors',
+        right ? 'text-right' : 'text-left'
+      )}
+    >
+      {label}{' '}
+      <span className="opacity-60 text-[9px]">
+        {sortField === field ? (sortAsc ? '▲' : '▼') : '↕'}
+      </span>
+    </th>
+  )
+
   return (
     <div className="space-y-6">
       {/* Pipeline by Stage Table */}
@@ -101,15 +140,17 @@ export default function DetailsTab({ stages, slipping }: DetailsTabProps) {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
-                  {['Deal', 'Owner', 'Stage', 'Amount', 'Days Overdue', 'Last Activity', 'Close Date'].map(h => (
-                    <th key={h} className={cn('px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60', h === 'Deal' || h === 'Owner' ? 'text-left' : 'text-right')}>
-                      {h}
-                    </th>
-                  ))}
+                  <SortTh field="name" label="Deal" />
+                  <SortTh field="owner" label="Owner" />
+                  <SortTh field="stage" label="Stage" right />
+                  <SortTh field="amount" label="Amount" right />
+                  <SortTh field="days_overdue" label="Days Overdue" right />
+                  <SortTh field="days_since_activity" label="Last Activity" right />
+                  <SortTh field="close_date" label="Close Date" right />
                 </tr>
               </thead>
               <tbody>
-                {slipping.deals.slice(0, 15).map((d: any) => (
+                {sortedDeals.map((d: any) => (
                   <tr key={d.id} className="border-b border-border/30 transition-colors duration-150 hover:bg-secondary/50">
                     <td className="max-w-[200px] truncate px-5 py-3 text-[13px] font-medium">{d.name}</td>
                     <td className="px-5 py-3 text-[13px] text-muted-foreground">{d.owner}</td>
