@@ -17,7 +17,6 @@ export default function CompetitiveLandscape({ competitors }: Props) {
 
   const carriers = rows.map((r) => r.carrier)
   const premiums = rows.map((r) => Number(r.ny_auto_premium_m))
-  const complaints = rows.map((r) => Number(r.total_complaints))
   const maxPrem = Math.max(...premiums)
 
   // Highlight AAA/CSAA

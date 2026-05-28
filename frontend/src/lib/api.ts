@@ -295,6 +295,33 @@ export async function fetchAgentCloseSpeed(
   return data
 }
 
+export interface LeadItem {
+  id: string
+  name: string
+  status: string
+  source: string
+  created_date: string
+  owner: string
+  is_converted: boolean
+  converted_date: string | null
+  opp_id: string
+  opp_name: string
+  opp_amount: number | null
+}
+
+export async function fetchLeadsList(
+  line = 'Travel',
+  source?: string | null,
+  status?: string | null,
+  startDate?: string | null,
+  endDate?: string | null,
+): Promise<{ leads: LeadItem[]; total: number; line: string }> {
+  const { data } = await api.get('/api/sales/leads/list', {
+    params: withDates({ line, source, status }, startDate, endDate),
+  })
+  return data
+}
+
 // ── AI Narratives ─────────────────────────────────────────────────────────
 
 export async function fetchNarrative(

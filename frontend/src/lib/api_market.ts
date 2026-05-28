@@ -71,8 +71,12 @@ export interface MembershipUpgradeInsights {
   summary: {
     total_upgradeable: number
     upgrade_value: number
+    total_needs_membership: number
+    needs_membership_value: number
     by_tier: Record<string, number>
   }
+  upgrades: MembershipUpgradeCustomer[]
+  needs_membership: MembershipUpgradeCustomer[]
   customers: MembershipUpgradeCustomer[]
   date_range: { start: string; end: string }
 }
