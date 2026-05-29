@@ -143,7 +143,8 @@ def _enrich_accounts(account_ids: list[str]) -> dict[str, dict]:
         ids_csv = ','.join(f"'{aid}'" for aid in batch)
         batch_queries[f"batch_{i}"] = (
             f"SELECT Id, Name, Phone, PersonEmail, BillingCity, LTV__c, "
-            f"PersonBirthdate, ImportantActiveMemCoverage__c, Account_Member_Since__c, Type "
+            f"PersonBirthdate, ImportantActiveMemCoverage__c, Account_Member_Since__c, Type, "
+            f"Member_Status__c, ImportantActiveMemExpiryDate__c "
             f"FROM Account WHERE Id IN ({ids_csv})"
         )
 
@@ -165,10 +166,32 @@ def _enrich_accounts(account_ids: list[str]) -> dict[str, dict]:
                 age = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
             except Exception:
                 pass
+
+        # Determine if they are currently an active member
+        status = r.get('Member_Status__c')
+        expiry = r.get('ImportantActiveMemExpiryDate__c')
+        is_active_member = False
+        if status == 'A' and expiry:
+            try:
+                exp_date = date.fromisoformat(expiry)
+                if exp_date >= today:
+                    is_active_member = True
+            except Exception:
+                pass
+
         # Normalize membership level
         raw_mem = (r.get('ImportantActiveMemCoverage__c') or '').strip().upper()
         membership = {'PLUS': 'Plus', 'PREMIER': 'Premier', 'B': 'Basic',
                       'BASIC': 'Basic', 'CLASSIC': 'Classic'}.get(raw_mem, raw_mem.title() if raw_mem else '')
+
+        # If they are active member but have no tier, default to 'Basic'
+        if is_active_member and not membership:
+            membership = 'Basic'
+
+        # If they are NOT an active member, treat them as non-member (empty tier)
+        if not is_active_member:
+            membership = ''
+
         # Calculate tenure in years
         tenure = None
         ms = r.get('Account_Member_Since__c')
@@ -248,116 +271,45 @@ def cross_sell_insights(
             """,
             # Travel customers in last 3 years - restricted to current period insurance accounts to prevent limit-based omission
             travel_customers_3yr=f"""
-                SELECT AccountId
-                FROM Opportunity
-                WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
-                  AND {WON_STAGES}
-                  AND CloseDate >= {three_yr_ago}
-                  AND AccountId IN (
-                      SELECT Id FROM Account
-                      WHERE Id IN (
-                          SELECT AccountId FROM Opportunity
-                          WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
-                            AND {WON_STAGES}
-                            AND CloseDate >= {sd} AND CloseDate <= {ed}
-                            AND Amount != null
-                      )
-                  )
-            """,
-            # Insurance opp holders - restricted to current period travel accounts to prevent limit-based omission
-            ins_opp_alltime=f"""
-                SELECT AccountId
-                FROM Opportunity
-                WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
-                  AND {WON_STAGES}
-                  AND CloseDate >= {five_yr_ago}
-                  AND AccountId IN (
-                      SELECT Id FROM Account
-                      WHERE Id IN (
-                          SELECT AccountId FROM Opportunity
-                          WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
-                            AND {WON_STAGES}
-                            AND CloseDate >= {sd} AND CloseDate <= {ed}
-                            AND Amount != null
-                      )
-                  )
-            """,
-            # True totals for dashboard summary cards
-            true_travel_rev=f"""
-                SELECT SUM(Amount) total FROM Opportunity
-                WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
-                  AND {WON_STAGES}
-                  AND CloseDate >= {sd} AND CloseDate <= {ed}
-                  AND Amount != null
-            """,
-            true_insurance_rev=f"""
-                SELECT SUM(Amount) total FROM Opportunity
-                WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
-                  AND {WON_STAGES}
-                  AND CloseDate >= {sd} AND CloseDate <= {ed}
-                  AND Amount != null
-            """,
-            true_travel_custs=f"""
-                SELECT COUNT_DISTINCT(AccountId) cnt FROM Opportunity
-                WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
-                  AND {WON_STAGES}
-                  AND CloseDate >= {sd} AND CloseDate <= {ed}
-                  AND Amount != null
-            """,
-            true_insurance_custs=f"""
-                SELECT COUNT_DISTINCT(AccountId) cnt FROM Opportunity
-                WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
-                  AND {WON_STAGES}
-                  AND CloseDate >= {sd} AND CloseDate <= {ed}
-                  AND Amount != null
-            """,
-            true_both_custs=f"""
-                SELECT COUNT(Id) cnt FROM Account
+                SELECT Id FROM Account
                 WHERE Id IN (
-                    SELECT AccountId FROM Opportunity
-                    WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
-                      AND {WON_STAGES}
-                      AND CloseDate >= {sd} AND CloseDate <= {ed}
-                      AND Amount != null
-                ) AND (
-                    Insuance_Customer_ID__c != null OR Id IN (
-                        SELECT AccountId FROM Opportunity
-                        WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
-                          AND {WON_STAGES}
-                          AND CloseDate >= {sd} AND CloseDate <= {ed}
-                          AND Amount != null
-                    )
-                )
-            """,
-            true_needs_ins_custs=f"""
-                SELECT COUNT(Id) cnt FROM Account
-                WHERE Id IN (
-                    SELECT AccountId FROM Opportunity
-                    WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
-                      AND {WON_STAGES}
-                      AND CloseDate >= {sd} AND CloseDate <= {ed}
-                      AND Amount != null
-                ) AND Insuance_Customer_ID__c = null AND Id NOT IN (
-                    SELECT AccountId FROM Opportunity
-                    WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
-                      AND {WON_STAGES}
-                      AND CloseDate >= {five_yr_ago}
-                )
-            """,
-            true_needs_travel_custs=f"""
-                SELECT COUNT(Id) cnt FROM Account
-                WHERE Id IN (
-                    SELECT AccountId FROM Opportunity
-                    WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
-                      AND {WON_STAGES}
-                      AND CloseDate >= {sd} AND CloseDate <= {ed}
-                      AND Amount != null
-                ) AND Id NOT IN (
                     SELECT AccountId FROM Opportunity
                     WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
                       AND {WON_STAGES}
                       AND CloseDate >= {three_yr_ago}
+                ) AND Id IN (
+                    SELECT AccountId FROM Opportunity
+                    WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
+                      AND {WON_STAGES}
+                      AND CloseDate >= {sd} AND CloseDate <= {ed}
+                      AND Amount != null
                 )
+            """,
+            # Insurance opp holders - restricted to current period travel accounts to prevent limit-based omission
+            ins_opp_alltime=f"""
+                SELECT Id FROM Account
+                WHERE Id IN (
+                    SELECT AccountId FROM Opportunity
+                    WHERE RecordTypeId = '{OPP_RT_INSURANCE_ID}'
+                      AND {WON_STAGES}
+                      AND CloseDate >= {five_yr_ago}
+                ) AND Id IN (
+                    SELECT AccountId FROM Opportunity
+                    WHERE RecordTypeId = '{OPP_RT_TRAVEL_ID}'
+                      AND {WON_STAGES}
+                      AND CloseDate >= {sd} AND CloseDate <= {ed}
+                      AND Amount != null
+                )
+            """,
+            # True totals for dashboard summary cards (consolidated to 1 query)
+            true_totals_combined=f"""
+                SELECT RecordTypeId, SUM(Amount) total, COUNT_DISTINCT(AccountId) cnt
+                FROM Opportunity
+                WHERE RecordTypeId IN ('{OPP_RT_TRAVEL_ID}', '{OPP_RT_INSURANCE_ID}')
+                  AND {WON_STAGES}
+                  AND CloseDate >= {sd} AND CloseDate <= {ed}
+                  AND Amount != null
+                GROUP BY RecordTypeId
             """,
         )
 
@@ -374,11 +326,11 @@ def cross_sell_insights(
         # ── Build TRUE product ownership sets (all-time, not just current period) ──
         # Someone IS an insurance customer if they have Insurance_Customer_ID OR any insurance opp ever
         ins_customer_by_id = {r.get('Id') for r in data.get('ins_customers_alltime', []) if r.get('Id')}
-        ins_opp_ever = {r.get('AccountId') for r in data.get('ins_opp_alltime', []) if r.get('AccountId')}
+        ins_opp_ever = {r.get('Id') or r.get('AccountId') for r in data.get('ins_opp_alltime', []) if r.get('Id') or r.get('AccountId')}
         true_ins_customers = ins_customer_by_id | ins_opp_ever | set(ins_by_acct.keys())
 
         # Someone IS a travel customer if they have a travel opp in the last 3 years
-        true_travel_customers = {r.get('AccountId') for r in data.get('travel_customers_3yr', []) if r.get('AccountId')}
+        true_travel_customers = {r.get('Id') or r.get('AccountId') for r in data.get('travel_customers_3yr', []) if r.get('Id') or r.get('AccountId')}
         true_travel_customers |= set(travel_by_acct.keys())
 
         # Medicare detection uses ImportantActiveMemCoverage__c from _enrich_accounts
@@ -449,24 +401,40 @@ def cross_sell_insights(
         ]
 
         # True counts and sums from the database
-        _val = lambda key, field='total': (data.get(key, [{}])[0] or {}).get(field, 0) or 0
-        _cnt = lambda key: (data.get(key, [{}])[0] or {}).get('cnt', 0) or 0
+        combined_rows = data.get('true_totals_combined', []) or []
+        true_t_rev = 0.0
+        true_i_rev = 0.0
+        true_t_custs = 0
+        true_i_custs = 0
+        for r in combined_rows:
+            rt_id = r.get('RecordTypeId')
+            if rt_id == OPP_RT_TRAVEL_ID:
+                true_t_rev = r.get('total') or 0.0
+                true_t_custs = r.get('cnt') or 0
+            elif rt_id == OPP_RT_INSURANCE_ID:
+                true_i_rev = r.get('total') or 0.0
+                true_i_custs = r.get('cnt') or 0
 
-        true_t_rev = _val('true_travel_rev')
-        true_i_rev = _val('true_insurance_rev')
-        true_t_custs = _cnt('true_travel_custs')
-        true_i_custs = _cnt('true_insurance_custs')
-        true_b_custs = _cnt('true_both_custs')
-        true_n_ins_custs = _cnt('true_needs_ins_custs')
-        true_n_trv_custs = _cnt('true_needs_travel_custs')
+        # Python-side set arithmetic for remaining counts (100% accurate)
+        ins_customer_by_id = {r.get('Id') for r in data.get('ins_customers_alltime', []) if r.get('Id')}
+        ins_opp_ever = {r.get('Id') or r.get('AccountId') for r in data.get('ins_opp_alltime', []) if r.get('Id') or r.get('AccountId')}
+
+        # Customers with both products
+        both_opp_in_period = len(set(travel_by_acct.keys()) & set(ins_by_acct.keys()) - ins_customer_by_id)
+        true_b_custs = len(ins_customer_by_id) + both_opp_in_period
+
+        # Needs insurance count (Travel customer in period, no insurance ID, no insurance opp in 5yr)
+        true_n_ins_custs = true_t_custs - len(ins_customer_by_id | ins_opp_ever)
+        # Needs travel count (Insurance customer in period, no travel opp in 3yr)
+        true_n_trv_custs = true_i_custs - len(true_travel_customers)
 
         return {
             'summary': {
                 'total_travel_customers': true_t_custs,
                 'total_insurance_customers': true_i_custs,
-                'customers_with_both': true_b_custs,
-                'needs_insurance_count': true_n_ins_custs,
-                'needs_travel_count': true_n_trv_custs,
+                'customers_with_both': max(0, true_b_custs),
+                'needs_insurance_count': max(0, true_n_ins_custs),
+                'needs_travel_count': max(0, true_n_trv_custs),
                 'needs_insurance_value': round(
                     sum(travel_by_acct[a]['total'] for a in needs_insurance_ids), 2
                 ),
@@ -492,28 +460,33 @@ _UPGRADEABLE_TIERS = {'Classic', 'Basic', 'Plus'}  # Premier is top, can't upgra
 
 
 def _build_membership_reason(acct: dict, total_spend: float, opp_count: int, current_tier: str) -> str:
-    """Build actionable reason for membership upgrade."""
+    """Build actionable reason for membership upgrade or enrollment."""
     spend_str = f"${total_spend:,.0f}"
     age = acct.get('age')
     tenure = acct.get('tenure_years')
     ltv = (acct.get('ltv', '') or '').upper()[:1]
 
-    # Determine upgrade target
-    tier_idx = _MEMBERSHIP_TIERS.index(current_tier) if current_tier in _MEMBERSHIP_TIERS else 0
-    next_tier = _MEMBERSHIP_TIERS[min(tier_idx + 1, len(_MEMBERSHIP_TIERS) - 1)]
-
     parts = []
-    parts.append(f"Currently {current_tier} member with {spend_str} spend ({opp_count} transaction{'s' if opp_count != 1 else ''})")
+    if not current_tier:
+        next_tier = 'Basic'
+        parts.append(f"Non-member with {spend_str} active spend ({opp_count} transaction{'s' if opp_count != 1 else ''})")
+        parts.append(f"Strong prospect for {next_tier} membership enrollment")
+        if total_spend >= 2000:
+            parts.append("Active spending qualifies them for high-value membership benefits")
+    else:
+        tier_idx = _MEMBERSHIP_TIERS.index(current_tier) if current_tier in _MEMBERSHIP_TIERS else 0
+        next_tier = _MEMBERSHIP_TIERS[min(tier_idx + 1, len(_MEMBERSHIP_TIERS) - 1)]
+        parts.append(f"Currently {current_tier} member with {spend_str} spend ({opp_count} transaction{'s' if opp_count != 1 else ''})")
 
-    if total_spend >= 10_000:
-        parts.append(f"High spender — strong candidate for {next_tier} upgrade")
-    elif total_spend >= 5_000:
-        parts.append(f"Moderate spender — would benefit from {next_tier} perks")
+        if total_spend >= 10_000:
+            parts.append(f"High spender — strong candidate for {next_tier} upgrade")
+        elif total_spend >= 5_000:
+            parts.append(f"Moderate spender — would benefit from {next_tier} perks")
 
-    if tenure and tenure >= 5:
-        parts.append(f"Loyal {tenure}-year member — retention upgrade opportunity")
-    elif tenure and tenure >= 2:
-        parts.append(f"{tenure}-year member — reward loyalty with upgrade")
+        if tenure and tenure >= 5:
+            parts.append(f"Loyal {tenure}-year member — retention upgrade opportunity")
+        elif tenure and tenure >= 2:
+            parts.append(f"{tenure}-year member — reward loyalty with upgrade")
 
     if ltv in ('A', 'B'):
         parts.append(f"LTV tier {ltv} — high-value, prioritize")
@@ -530,12 +503,12 @@ def membership_upgrade_insights(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
 ):
-    """Find customers eligible for membership upgrade based on spend and tier."""
+    """Find customers eligible for membership upgrade or enrollment based on spend and tier."""
     sd, ed = _resolve_dates(start_date, end_date, period)
-    key = f"membership_upgrades_v1_{sd}_{ed}"
+    key = f"membership_upgrades_v2_{sd}_{ed}"
 
     def fetch():
-        # Get accounts with low-tier memberships that have recent activity
+        # Get accounts with low-tier memberships or no membership that have recent activity
         data = sf_parallel(
             # Active customers (travel or insurance) in the period
             active_travel=f"""
@@ -558,6 +531,18 @@ def membership_upgrade_insights(
                 GROUP BY AccountId
                 LIMIT 2000
             """,
+            true_needs_mem_custs=f"""
+                SELECT COUNT(Id) cnt FROM Account
+                WHERE (ImportantActiveMemCoverage__c = null OR (NOT ImportantActiveMemCoverage__c IN ('B','PLUS','PREMIER','Classic')))
+                  AND (Member_Status__c != 'A' OR ImportantActiveMemExpiryDate__c < TODAY OR ImportantActiveMemExpiryDate__c = null)
+                  AND Id IN (
+                      SELECT AccountId FROM Opportunity
+                      WHERE RecordTypeId IN ('{OPP_RT_TRAVEL_ID}', '{OPP_RT_INSURANCE_ID}')
+                        AND {WON_STAGES}
+                        AND CloseDate >= {sd} AND CloseDate <= {ed}
+                        AND Amount != null
+                  )
+            """
         )
 
         # Merge all active accounts with spend totals
@@ -577,7 +562,15 @@ def membership_upgrade_insights(
 
         if not acct_spend:
             return {
-                'summary': {'total_upgradeable': 0, 'upgrade_value': 0, 'by_tier': {}},
+                'summary': {
+                    'total_upgradeable': 0,
+                    'upgrade_value': 0,
+                    'total_needs_membership': 0,
+                    'needs_membership_value': 0,
+                    'by_tier': {},
+                },
+                'upgrades': [],
+                'needs_membership': [],
                 'customers': [],
                 'date_range': {'start': sd, 'end': ed},
             }
@@ -588,21 +581,44 @@ def membership_upgrade_insights(
 
         sf_base = sf_instance_url()
 
-        # Filter to upgradeable memberships
-        candidates = []
+        upgrades = []
+        needs_membership = []
         tier_counts: dict[str, int] = defaultdict(int)
         for aid, spend in acct_spend.items():
             acct = account_details.get(aid, {})
             membership = acct.get('membership', '')
-            if not membership or membership not in _UPGRADEABLE_TIERS:
+
+            score, priority = _score_customer(spend['total'], spend['cnt'], acct.get('ltv', ''))
+
+            # Case 1: Non-member (needs membership)
+            if not membership:
+                needs_membership.append({
+                    'account_id': aid,
+                    'account_name': acct.get('name', ''),
+                    'phone': acct.get('phone', ''),
+                    'email': acct.get('email', ''),
+                    'city': acct.get('city', ''),
+                    'ltv': acct.get('ltv', ''),
+                    'current_tier': 'Non-Member',
+                    'upgrade_to': 'Basic',
+                    'total_spend': round(spend['total'], 2),
+                    'transaction_count': spend['cnt'],
+                    'score': score,
+                    'priority': priority,
+                    'reason': _build_membership_reason(acct, spend['total'], spend['cnt'], ''),
+                    'sf_link': f"{sf_base}/{aid}",
+                })
+                continue
+
+            # Case 2: Upgradeable member
+            if membership not in _UPGRADEABLE_TIERS:
                 continue
 
             tier_counts[membership] += 1
             tier_idx = _MEMBERSHIP_TIERS.index(membership)
             next_tier = _MEMBERSHIP_TIERS[min(tier_idx + 1, len(_MEMBERSHIP_TIERS) - 1)]
 
-            score, priority = _score_customer(spend['total'], spend['cnt'], acct.get('ltv', ''))
-            candidates.append({
+            upgrades.append({
                 'account_id': aid,
                 'account_name': acct.get('name', ''),
                 'phone': acct.get('phone', ''),
@@ -620,16 +636,26 @@ def membership_upgrade_insights(
             })
 
         # Sort by score descending, take top N
-        candidates.sort(key=lambda c: c['score'], reverse=True)
-        top_candidates = candidates[:TOP_N]
+        upgrades.sort(key=lambda c: c['score'], reverse=True)
+        needs_membership.sort(key=lambda c: c['score'], reverse=True)
+
+        top_upgrades = upgrades[:TOP_N]
+        top_needs_membership = needs_membership[:TOP_N]
+
+        # Get true needs-membership count from Salesforce query
+        true_needs_mem = (data.get('true_needs_mem_custs', [{}])[0] or {}).get('cnt', 0) or 0
 
         return {
             'summary': {
-                'total_upgradeable': len(candidates),
-                'upgrade_value': round(sum(c['total_spend'] for c in candidates), 2),
+                'total_upgradeable': len(upgrades),
+                'upgrade_value': round(sum(c['total_spend'] for c in upgrades), 2),
+                'total_needs_membership': true_needs_mem,
+                'needs_membership_value': round(sum(c['total_spend'] for c in needs_membership), 2),
                 'by_tier': dict(tier_counts),
             },
-            'customers': top_candidates,
+            'upgrades': top_upgrades,
+            'needs_membership': top_needs_membership,
+            'customers': top_upgrades,  # Backward compatibility
             'date_range': {'start': sd, 'end': ed},
         }
 
