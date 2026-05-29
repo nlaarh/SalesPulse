@@ -49,6 +49,8 @@ interface Membership {
   id: string; name: string; level: string | null; member_number: string | null
   status: string | null; purchase_date: string | null; expiry_date: string | null; price: number | null
   sf_url: string | null
+  payment_method: string | null; payment_method_label: string | null
+  payment_plan: string | null; ebill: boolean; conv_billing: boolean
 }
 
 interface Vehicle { id: string; name: string; status: string | null; vin: string | null; description: string | null }
@@ -142,6 +144,47 @@ function LtvBadge({ tier }: { tier: string }) {
   )
 }
 
+
+
+function ConvBillingCard({ membership }: { membership: Membership }) {
+  const enrolled = membership.conv_billing
+  return (
+    <div className={cn(
+      'rounded-xl border p-4',
+      enrolled ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-border bg-card',
+    )}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <CreditCard className={cn('h-4 w-4', enrolled ? 'text-emerald-500' : 'text-muted-foreground/50')} />
+          <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60">Convenience Billing</p>
+        </div>
+        <span className={cn(
+          'rounded-full px-2 py-0.5 text-[11px] font-semibold',
+          enrolled
+            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+            : 'bg-secondary text-muted-foreground',
+        )}>
+          {enrolled ? 'Enrolled' : 'Not Enrolled'}
+        </span>
+      </div>
+      {enrolled && (
+        <div className="mt-2 flex items-center gap-3 text-[12px] text-muted-foreground">
+          <span className="font-medium text-foreground">{membership.payment_method_label}</span>
+          {membership.payment_plan && (
+            <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+              {membership.payment_plan}
+            </span>
+          )}
+          {membership.ebill && (
+            <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+              eBill
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 
 /* ── Main page ──────────────────────────────────────────────────────────── */
@@ -369,6 +412,11 @@ export default function CustomerProfile() {
                 ))}
               </div>
             </div>
+          )}
+
+          {/* Convenience Billing */}
+          {activeMembership && (
+            <ConvBillingCard membership={activeMembership} />
           )}
 
           {/* Quick stats */}

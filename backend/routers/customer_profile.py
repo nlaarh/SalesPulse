@@ -135,7 +135,8 @@ def get_customer_profile(
                     FROM Account WHERE Id = '{account_id}' LIMIT 1
                 """,
                 memberships=f"""
-                    SELECT Id, Name, Status, SerialNumber, PurchaseDate, UsageEndDate, Price
+                    SELECT Id, Name, Status, SerialNumber, PurchaseDate, UsageEndDate, Price,
+                           Payment_Method__c, Payment_Frequency__c, eBill__c
                     FROM Asset
                     WHERE AccountId = '{account_id}' AND RecordType.Name = 'Membership'
                     ORDER BY PurchaseDate DESC NULLS LAST LIMIT 10
@@ -590,18 +591,32 @@ def _fmt_account(r: dict, base_url: str = '') -> dict:
     }
 
 
+_PAYMENT_METHOD_LABELS = {
+    'VI': 'Visa', 'MC': 'MasterCard', 'DS': 'Discover', 'AX': 'American Express', 'CC': 'Credit Card',
+    'MPPV': 'Visa (Monthly)', 'MPPMC': 'MasterCard (Monthly)',
+    'MPPAX': 'AmEx (Monthly)', 'MPPDS': 'Discover (Monthly)',
+}
+
+
 def _fmt_membership(r: dict) -> dict:
     parts = [p.strip() for p in (r.get('Name') or '').split(' - ')]
     level = parts[1] if len(parts) > 1 else None
+    pm = r.get('Payment_Method__c')
+    is_mpp = pm and pm.startswith('MPP')
     return {
-        'id':           r.get('Id'),
-        'name':         r.get('Name'),
-        'level':        _normalize_coverage(level),
-        'member_number': parts[0] if parts else None,
-        'status':       r.get('Status'),
-        'purchase_date': r.get('PurchaseDate'),
-        'expiry_date':  r.get('UsageEndDate'),
-        'price':        r.get('Price'),
+        'id':             r.get('Id'),
+        'name':           r.get('Name'),
+        'level':          _normalize_coverage(level),
+        'member_number':  parts[0] if parts else None,
+        'status':         r.get('Status'),
+        'purchase_date':  r.get('PurchaseDate'),
+        'expiry_date':    r.get('UsageEndDate'),
+        'price':          r.get('Price'),
+        'payment_method': pm,
+        'payment_method_label': _PAYMENT_METHOD_LABELS.get(pm) if pm else None,
+        'payment_plan':   'Monthly' if is_mpp else ('Annual' if pm else None),
+        'ebill':          r.get('eBill__c', False),
+        'conv_billing':   bool(pm),
     }
 
 
