@@ -15,6 +15,7 @@ from pbi_utils import (
     pbi_by_day as _pbi_by_day,
     pbi_by_branch_day as _pbi_by_branch_day,
     pbi_nbus_by_advisor as _pbi_nbus_by_advisor,
+    get_insurance_book_snapshot as _insurance_book_snapshot,
 )
 from shared import (
     VALID_LINES, WON_STAGES,
@@ -126,8 +127,9 @@ def advisor_summary(
             lf = _line_filter(line)
             df = _date_filter(sd, ed)
 
-            # Run PBI (curr + prev) and SF pipeline/win-rate queries in parallel
-            with ThreadPoolExecutor(max_workers=3) as ex:
+            # For Insurance: fetch the book snapshot in parallel with period data
+            max_workers = 4 if line == 'Insurance' else 3
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
                 curr_f = ex.submit(_pbi_by_day, line, sd, ed)
                 prev_f = ex.submit(_pbi_by_day, line, p_sd, p_ed)
                 sf_f   = ex.submit(sf_parallel,
@@ -139,9 +141,11 @@ def advisor_summary(
                              f" WHERE IsClosed = false AND {lf} AND Amount != null"
                              f" AND CloseDate >= TODAY AND CloseDate <= NEXT_N_MONTHS:12",
                 )
+                book_f = ex.submit(_insurance_book_snapshot) if line == 'Insurance' else None
                 rows  = curr_f.result()
                 prows = prev_f.result()
                 sf    = sf_f.result()
+                book  = book_f.result() if book_f else None
 
             comm    = sum(r['commission'] for r in rows)
             sales   = sum(r['sales']      for r in rows)
@@ -160,19 +164,32 @@ def advisor_summary(
 
             def _pct(a, b): return round((a - b) / b * 100, 1) if b > 0 else 0
 
+            # Insurance: KPI "bookings" = total book WP, "deals" = active policy count
+            # (point-in-time snapshot — no meaningful YoY delta available)
+            if line == 'Insurance' and book:
+                bookings_display = round(book['total_wp'], 2)
+                deals_display    = book['active_policies']
+                bookings_yoy_pct = 0
+                deals_yoy_pct    = 0
+            else:
+                bookings_display = round(sales, 2)
+                deals_display    = txns
+                bookings_yoy_pct = _pct(sales, p_sales)
+                deals_yoy_pct    = _pct(txns, p_txns)
+
             return {
-                "bookings":           round(sales, 2),
+                "bookings":           bookings_display,
                 "bookings_prev":      round(p_sales, 2),
-                "bookings_yoy_pct":   _pct(sales, p_sales),
+                "bookings_yoy_pct":   bookings_yoy_pct,
                 "commission":         round(comm, 2),
                 "commission_prev":    round(p_comm, 2),
                 "commission_yoy_pct": _pct(comm, p_comm),
                 "revenue":            round(sales, 2),
                 "revenue_prev":       round(p_sales, 2),
                 "revenue_yoy_pct":    _pct(sales, p_sales),
-                "deals":              txns,
+                "deals":              deals_display,
                 "deals_prev":         p_txns,
-                "deals_yoy_pct":      _pct(txns, p_txns),
+                "deals_yoy_pct":      deals_yoy_pct,
                 "win_rate":           win_rate,
                 "avg_deal_size":      round(sales / txns, 0) if txns > 0 else 0,
                 "pipeline_value":     pipe_rev,

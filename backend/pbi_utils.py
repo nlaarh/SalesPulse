@@ -332,14 +332,37 @@ def _fetch_pbi_active_agent_count(line: str, sd: str, ed: str) -> int:
 
 def pbi_by_day(line: str, sd: str, ed: str) -> list[dict]:
     """Daily totals across all advisors. Used for trend/YoY charts."""
+    key = f"pbi_by_day_v1_{line}_{sd}_{ed}"
+    return cache.cached_query(key, lambda: _fetch_pbi_by_day(line, sd, ed),
+                              ttl=3600, disk_ttl=86400)
+
+
+def _fetch_pbi_by_day(line: str, sd: str, ed: str) -> list[dict]:
     from pbi_client import travel_by_day, insurance_by_day
     return travel_by_day(sd, ed) if line == 'Travel' else insurance_by_day(sd, ed)
 
 
 def pbi_by_branch_day(line: str, sd: str, ed: str) -> list[dict]:
     """Daily totals by branch. Used for branch charts."""
+    key = f"pbi_by_branch_day_v1_{line}_{sd}_{ed}"
+    return cache.cached_query(key, lambda: _fetch_pbi_by_branch_day(line, sd, ed),
+                              ttl=3600, disk_ttl=86400)
+
+
+def _fetch_pbi_by_branch_day(line: str, sd: str, ed: str) -> list[dict]:
     from pbi_client import travel_by_branch_day, insurance_by_branch_day
     return travel_by_branch_day(sd, ed) if line == 'Travel' else insurance_by_branch_day(sd, ed)
+
+
+
+def get_insurance_book_snapshot() -> dict:
+    """Total WP and active policy count from the full book (point-in-time). Cached 1h/24h."""
+    from pbi_client import insurance_book_snapshot
+    return cache.cached_query(
+        "insurance_book_snapshot_v1",
+        insurance_book_snapshot,
+        ttl=3600, disk_ttl=86400,
+    )
 
 
 def pbi_period_totals(pbi_data: dict, norm_key: str, sd: str, ed: str) -> tuple[float, float]:

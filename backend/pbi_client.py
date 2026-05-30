@@ -17,6 +17,7 @@ Public API:
 import os
 import time
 import requests
+import cache
 
 # ── Workspace / dataset constants ─────────────────────────────────────────────
 PBI_WS       = "019c6471-5f67-4838-970b-35b186425c78"  # Business Intelligence Datasets
@@ -28,7 +29,7 @@ TRAVEL_TRANSACTIONS_DS = "e03a823a-5b3b-40c1-8f59-f9f7cfc52f9c"  # Travel Transa
 
 # Insurance
 INSURANCE_DS           = "2e3c94a1-5900-4ded-8a6d-14e1b0cc0747"  # Insurance Transactions Invoices (advisor perf)
-INSURANCE_COMPREHENSIVE_DS = "61c03e69-9ce3-49cb-b15d-f63f53127fac"  # Insurance Comprehensive v3 (full book)
+INSURANCE_COMPREHENSIVE_DS = "ec6cf035-8a75-4cd3-b049-4274576a45bb"  # Insurance Comprehensive v3 (full book, verified 2026-05-01)
 
 # Membership
 MEMBERSHIP_DS          = "d7cdf3bc-dcf4-48ed-b4bb-200563dcfd7f"  # Membership Comprehensive
@@ -351,3 +352,43 @@ def insurance_nbus_by_advisor(sd: str, ed: str, extra_filter: str = "") -> list[
         _I_NAME, _I_BRANCH, _I_DATE, _I_COMM, _I_SALES,
         sd, ed, combined, code_col=_I_CODE
     )
+
+
+# ── Insurance Comprehensive v3 (full book snapshot) ───────────────────────────
+
+def insurance_book_snapshot() -> dict:
+    """Total written premium and active policy count from the full book snapshot.
+
+    Uses insurance_policies_f (active = expiration_date >= TODAY or blank).
+    Returns {"total_wp": float, "active_policies": int}.
+    """
+    rows = dax_query(PBI_WS, INSURANCE_COMPREHENSIVE_DS, """
+EVALUATE
+ROW(
+    "total_wp",
+    CALCULATE(
+        SUM('insurance_policies_f'[annualized_premium]),
+        FILTER(
+            'insurance_policies_f',
+            ISBLANK('insurance_policies_f'[expiration_date])
+                || 'insurance_policies_f'[expiration_date] >= TODAY()
+        )
+    ),
+    "active_policies",
+    CALCULATE(
+        COUNTROWS('insurance_policies_f'),
+        FILTER(
+            'insurance_policies_f',
+            ISBLANK('insurance_policies_f'[expiration_date])
+                || 'insurance_policies_f'[expiration_date] >= TODAY()
+        )
+    )
+)
+""")
+    if not rows:
+        return {"total_wp": 0.0, "active_policies": 0}
+    row = rows[0]
+    return {
+        "total_wp":        _n(row.get("[total_wp]")),
+        "active_policies": int(_n(row.get("[active_policies]"))),
+    }

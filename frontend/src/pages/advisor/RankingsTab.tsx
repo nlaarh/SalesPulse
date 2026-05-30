@@ -101,8 +101,8 @@ function LeaderboardFull({ leaders, onSelect, targetMap, showBranch, line }: {
 
   const COLS: { key: SortKey; label: string; fmt: (a: Advisor) => string }[] = isInsurance ? [
     { key: 'commission',    label: 'Commission',      fmt: (a) => formatCurrency(a.commission, true) },
-    { key: 'nbus_premium',  label: 'New Business',    fmt: (a) => formatCurrency(a.nbus_premium ?? 0, true) },
-    { key: 'bookings',      label: 'Written Premium', fmt: (a) => formatCurrency(a.bookings, true) },
+    { key: 'nbus_premium',  label: 'New Written',     fmt: (a) => formatCurrency(a.nbus_premium ?? 0, true) },
+    { key: 'bookings',      label: 'Period Activity', fmt: (a) => formatCurrency(a.bookings, true) },
     { key: 'deals',         label: 'Transactions',    fmt: (a) => formatNumber(a.deals) },
     { key: 'pipeline_value',label: 'Pipeline',        fmt: (a) => formatCurrency(a.pipeline_value, true) },
   ] : [
@@ -132,8 +132,8 @@ function LeaderboardFull({ leaders, onSelect, targetMap, showBranch, line }: {
                   Rank: i + 1,
                   Advisor: a.name,
                   Commission: a.commission ?? 0,
-                  'New Business': a.nbus_premium ?? 0,
-                  'Written Premium': a.bookings ?? 0,
+                  'New Written': a.nbus_premium ?? 0,
+                  'Period Activity': a.bookings ?? 0,
                   'Share %': parseFloat(sharePct.toFixed(2)),
                   Transactions: a.deals ?? 0,
                   Pipeline: a.pipeline_value ?? 0,
