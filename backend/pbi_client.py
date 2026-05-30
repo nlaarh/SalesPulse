@@ -356,39 +356,11 @@ def insurance_nbus_by_advisor(sd: str, ed: str, extra_filter: str = "") -> list[
 
 # ── Insurance Comprehensive v3 (full book snapshot) ───────────────────────────
 
-def insurance_book_snapshot() -> dict:
-    """Total written premium and active policy count from the full book snapshot.
+def insurance_book_snapshot() -> dict | None:
+    """Book-level WP and active policy count.
 
-    Uses insurance_policies_f (active = expiration_date >= TODAY or blank).
-    Returns {"total_wp": float, "active_policies": int}.
+    NOTE: insurance_policies_f is not available in the accessible PBI datasets.
+    This function returns None until a policy snapshot table is added to PBI.
+    Callers should fall back to period transaction metrics when None is returned.
     """
-    rows = dax_query(PBI_WS, INSURANCE_COMPREHENSIVE_DS, """
-EVALUATE
-ROW(
-    "total_wp",
-    CALCULATE(
-        SUM('insurance_policies_f'[annualized_premium]),
-        FILTER(
-            'insurance_policies_f',
-            ISBLANK('insurance_policies_f'[expiration_date])
-                || 'insurance_policies_f'[expiration_date] >= TODAY()
-        )
-    ),
-    "active_policies",
-    CALCULATE(
-        COUNTROWS('insurance_policies_f'),
-        FILTER(
-            'insurance_policies_f',
-            ISBLANK('insurance_policies_f'[expiration_date])
-                || 'insurance_policies_f'[expiration_date] >= TODAY()
-        )
-    )
-)
-""")
-    if not rows:
-        return {"total_wp": 0.0, "active_policies": 0}
-    row = rows[0]
-    return {
-        "total_wp":        _n(row.get("[total_wp]")),
-        "active_policies": int(_n(row.get("[active_policies]"))),
-    }
+    return None
