@@ -157,7 +157,8 @@ export default function AdvisorDashboard() {
   // Use period-matched YoY from summary (apple-to-apple), not calendar YTD
   const dealsYoyPct = (summary as any)?.deals_yoy_pct ?? 0
 
-  const annualizedBookings = summary && summary.bookings > 0 ? summary.bookings * (12 / period) : 0
+  // Insurance bookings = total book WP (point-in-time snapshot), not period run-rate — don't annualize
+  const annualizedBookings = !isInsurance && summary && summary.bookings > 0 ? summary.bookings * (12 / period) : 0
   const pipelineCoverage = annualizedBookings > 0
     ? Math.round(summary!.pipeline_value / annualizedBookings * 10) / 10
     : 0

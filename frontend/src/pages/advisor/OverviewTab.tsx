@@ -155,11 +155,11 @@ export default function OverviewTab({
 
   const kpis = [
     { icon: DollarSign, iconBg: 'bg-primary/10',     iconColor: 'text-primary',
-      title: isInsurance ? 'YTD Premium Activity' : 'Billed Bookings', tip: TIPS.billedRevenue,
+      title: isInsurance ? 'Written Premium' : 'Billed Bookings', tip: TIPS.billedRevenue,
       value: formatCurrency(billedValue, true),
       delta: billedPct, deltaLabel: 'vs last year', onClick: () => nav('/monthly') },
     { icon: Trophy,    iconBg: 'bg-amber-500/10',   iconColor: 'text-amber-500',
-      title: isInsurance ? 'YTD Transactions' : 'Won Deals', tip: TIPS.wonDeals,
+      title: isInsurance ? 'Active Policies' : 'Won Deals', tip: TIPS.wonDeals,
       value: formatNumber(summary.deals),
       delta: dealsYoyPct, deltaLabel: 'from last year', onClick: () => nav('/monthly') },
     { icon: GitBranch, iconBg: 'bg-cyan-500/10',    iconColor: 'text-cyan-500',
@@ -330,7 +330,7 @@ export default function OverviewTab({
           <div className="grid grid-cols-2 gap-2.5">
             <ActivityCell icon={Megaphone}  label="Leads"    value={formatNumber(leadsCount)}                     color="text-primary"     bg="bg-primary/10"     onClick={() => nav('/leads')}    tip={TIPS.leads} />
             <ActivityCell icon={Target}     label="Opps"     value={formatNumber(oppsCount)}                     color="text-amber-500"   bg="bg-amber-500/10"   onClick={() => nav('/pipeline')} tip={TIPS.opps} />
-            <ActivityCell icon={Trophy}     label={isInsurance ? 'Transactions' : 'Won'}  value={formatNumber(summary.deals)}                 color="text-emerald-500" bg="bg-emerald-500/10" onClick={() => nav('/monthly')}  tip={TIPS.wonDeals} />
+            <ActivityCell icon={Trophy}     label={isInsurance ? 'Policies' : 'Won'}      value={formatNumber(summary.deals)}                 color="text-emerald-500" bg="bg-emerald-500/10" onClick={() => nav('/monthly')}  tip={TIPS.wonDeals} />
             <ActivityCell icon={DollarSign} label={isInsurance ? 'Avg Premium' : 'Avg Deal'} value={formatCurrency(summary.avg_deal_size, true)}  color="text-cyan-500"    bg="bg-cyan-500/10"    onClick={() => nav('/monthly')}  tip={TIPS.avgDeal} />
           </div>
           <div onClick={() => nav('/pipeline')} className="mt-3 cursor-pointer rounded-xl border border-border/40 bg-secondary/20 p-3.5 hover:bg-secondary/30">

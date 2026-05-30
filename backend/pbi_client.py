@@ -29,7 +29,8 @@ TRAVEL_TRANSACTIONS_DS = "e03a823a-5b3b-40c1-8f59-f9f7cfc52f9c"  # Travel Transa
 
 # Insurance
 INSURANCE_DS           = "2e3c94a1-5900-4ded-8a6d-14e1b0cc0747"  # Insurance Transactions Invoices (advisor perf)
-INSURANCE_COMPREHENSIVE_DS = "ec6cf035-8a75-4cd3-b049-4274576a45bb"  # Insurance Comprehensive v3 (full book, verified 2026-05-01)
+INSURANCE_COMPREHENSIVE_DS = "61c03e69-9ce3-49cb-b15d-f63f53127fac"  # Insurance Comprehensive v3 (full book — has insurance_policies_f)
+INSURANCE_BOB_DS       = "0cd02fab-35a3-475c-8031-c22d5885dd1a"  # Insurance BoB — simplified policy snapshot
 
 # Membership
 MEMBERSHIP_DS          = "d7cdf3bc-dcf4-48ed-b4bb-200563dcfd7f"  # Membership Comprehensive
@@ -356,11 +357,36 @@ def insurance_nbus_by_advisor(sd: str, ed: str, extra_filter: str = "") -> list[
 
 # ── Insurance Comprehensive v3 (full book snapshot) ───────────────────────────
 
-def insurance_book_snapshot() -> dict | None:
-    """Book-level WP and active policy count.
+def insurance_book_snapshot() -> dict:
+    """Total written premium and active policy count from the full book snapshot.
 
-    NOTE: insurance_policies_f is not available in the accessible PBI datasets.
-    This function returns None until a policy snapshot table is added to PBI.
-    Callers should fall back to period transaction metrics when None is returned.
+    Queries insurance_policies_f in Insurance Comprehensive v3, filtered to the
+    most recent business_date. Excludes NWQ (unbound quotes), CAN, and BOR.
+    Verified 2026-05-29: returns ~$64.1M WP and ~40K active policies.
     """
-    return None
+    rows = dax_query(PBI_WS, INSURANCE_COMPREHENSIVE_DS, """
+EVALUATE
+CALCULATETABLE(
+    ROW(
+        "total_wp",
+        SUM('insurance_policies_f'[annualized_premium]),
+        "active_policies",
+        COUNTROWS('insurance_policies_f')
+    ),
+    FILTER(
+        ALL('insurance_policies_f'),
+        'insurance_policies_f'[business_date] = CALCULATE(
+            MAX('insurance_policies_f'[business_date]),
+            ALL('insurance_policies_f')
+        )
+        && NOT('insurance_policies_f'[cd_line_status_code] IN {"NWQ", "CAN", "BOR"})
+    )
+)
+""")
+    if not rows:
+        return {"total_wp": 0.0, "active_policies": 0}
+    row = rows[0]
+    return {
+        "total_wp":        round(float(row.get("[total_wp]") or 0), 2),
+        "active_policies": int(float(row.get("[active_policies]") or 0)),
+    }
