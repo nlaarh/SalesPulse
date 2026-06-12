@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, CSSProperties } from 'react'
+import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
