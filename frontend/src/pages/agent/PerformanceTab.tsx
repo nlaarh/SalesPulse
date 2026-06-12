@@ -150,13 +150,15 @@ export default function PerformanceTab({ profile, c, monthlyTarget, targetData }
               format={(v) => formatCurrency(v, true)}
               max={Math.max(s.avg_deal, profile.team.avg_deal) * 1.3}
             />
-            <CompareBar
-              label="Commissions"
-              agent={s.commission}
-              team={profile.team.avg_commission}
-              format={(v) => formatCurrency(v, true)}
-              max={Math.max(s.commission, profile.team.avg_commission) * 1.3}
-            />
+            {!isInsurance && (
+              <CompareBar
+                label="Commissions"
+                agent={s.commission}
+                team={profile.team.avg_commission}
+                format={(v) => formatCurrency(v, true)}
+                max={Math.max(s.commission, profile.team.avg_commission) * 1.3}
+              />
+            )}
             {profile.has_separate_bookings && (
               <CompareBar
                 label={bookingsLabel}

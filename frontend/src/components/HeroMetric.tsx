@@ -44,8 +44,8 @@ export default function HeroMetric({
           </p>
         </div>
 
-        {/* Commission — secondary (only show if > 0) */}
-        {commission > 0 && (
+        {/* Commission — secondary (Travel only: insurance is premium-led) */}
+        {!isInsurance && commission > 0 && (
           <div>
             <div className="flex items-baseline gap-2.5">
               <span className="tabular-nums text-[36px] font-bold leading-none tracking-tight text-primary">

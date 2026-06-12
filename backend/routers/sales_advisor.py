@@ -16,7 +16,12 @@ from pbi_utils import (
     pbi_by_branch_day as _pbi_by_branch_day,
     pbi_nbus_by_advisor as _pbi_nbus_by_advisor,
     get_insurance_book_snapshot as _insurance_book_snapshot,
+    insurance_newb_by_day as _insurance_newb_by_day,
 )
+
+# Official board-book "Members Insurance" revenue (policy commission + carrier income).
+# Source: 2025-AAA-Draft-FS / Board Book 02.03.26. Finance-only figure, updated yearly.
+INSURANCE_ANNUAL_REVENUE = {"year": 2025, "amount": 9_901_214}
 from shared import (
     VALID_LINES, WON_STAGES,
     line_filter_opp as _line_filter,
@@ -37,7 +42,8 @@ def _date_filter(sd: str, ed: str, field: str = 'CloseDate') -> str:
     return f"{field} >= {sd} AND {field} <= {ed}"
 
 
-def _build_leaderboard(adv_rows: list[dict], nbus_map: dict | None = None) -> list[dict]:
+def _build_leaderboard(adv_rows: list[dict], nbus_map: dict | None = None,
+                       rank_by_nbus: bool = False) -> list[dict]:
     """Collapse by-advisor+branch rows into one row per advisor.
 
     nbus_map: {name -> {nbus_premium, policy_count, branch}} — Insurance NBUS data.
@@ -100,8 +106,12 @@ def _build_leaderboard(adv_rows: list[dict], nbus_map: dict | None = None) -> li
             'policy_count':   policy_count,
         })
 
-    # Primary: commission DESC; secondary: nbus_premium DESC (new advisors with $0 comm go last)
-    advisors.sort(key=lambda x: (x['commission'], x['nbus_premium']), reverse=True)
+    # Insurance: rank by new written premium (what advisors control NOW — commission
+    # lags a year and pays $0 on NEWB). Travel: rank by commission (= revenue).
+    if rank_by_nbus:
+        advisors.sort(key=lambda x: (x['nbus_premium'], x['bookings']), reverse=True)
+    else:
+        advisors.sort(key=lambda x: (x['commission'], x['nbus_premium']), reverse=True)
     for i, a in enumerate(advisors):
         a['rank'] = i + 1
     return advisors
@@ -119,7 +129,7 @@ def advisor_summary(
     if line not in VALID_LINES:
         line = 'Travel'
     sd, ed = _resolve_dates(start_date, end_date, period)
-    key = f"advisor_summary_v2_{line}_{sd}_{ed}"
+    key = f"advisor_summary_v3_{line}_{sd}_{ed}"
 
     def fetch():
         if line in _PBI_LINES:
@@ -127,8 +137,8 @@ def advisor_summary(
             lf = _line_filter(line)
             df = _date_filter(sd, ed)
 
-            # For Insurance: fetch the book snapshot in parallel with period data
-            max_workers = 4 if line == 'Insurance' else 3
+            # Insurance fetches NBUS (new business) + book snapshot alongside period data
+            max_workers = 6 if line == 'Insurance' else 3
             with ThreadPoolExecutor(max_workers=max_workers) as ex:
                 curr_f = ex.submit(_pbi_by_day, line, sd, ed)
                 prev_f = ex.submit(_pbi_by_day, line, p_sd, p_ed)
@@ -141,11 +151,15 @@ def advisor_summary(
                              f" WHERE IsClosed = false AND {lf} AND Amount != null"
                              f" AND CloseDate >= TODAY AND CloseDate <= NEXT_N_MONTHS:12",
                 )
-                book_f = ex.submit(_insurance_book_snapshot) if line == 'Insurance' else None
-                rows  = curr_f.result()
-                prows = prev_f.result()
-                sf    = sf_f.result()
-                book  = book_f.result() if book_f else None
+                book_f      = ex.submit(_insurance_book_snapshot) if line == 'Insurance' else None
+                newb_f      = ex.submit(_insurance_newb_by_day, sd, ed) if line == 'Insurance' else None
+                newb_prev_f = ex.submit(_insurance_newb_by_day, p_sd, p_ed) if line == 'Insurance' else None
+                rows      = curr_f.result()
+                prows     = prev_f.result()
+                sf        = sf_f.result()
+                book      = book_f.result() if book_f else None
+                newb      = newb_f.result() if newb_f else []
+                newb_prev = newb_prev_f.result() if newb_prev_f else []
 
             comm    = sum(r['commission'] for r in rows)
             sales   = sum(r['sales']      for r in rows)
@@ -164,32 +178,22 @@ def advisor_summary(
 
             def _pct(a, b): return round((a - b) / b * 100, 1) if b > 0 else 0
 
-            # Insurance: KPI "bookings" = total book WP, "deals" = active policy count
-            # (point-in-time snapshot — no meaningful YoY delta available)
-            if line == 'Insurance' and book:
-                bookings_display = round(book['total_wp'], 2)
-                deals_display    = book['active_policies']
-                bookings_yoy_pct = 0
-                deals_yoy_pct    = 0
-            else:
-                bookings_display = round(sales, 2)
-                deals_display    = txns
-                bookings_yoy_pct = _pct(sales, p_sales)
-                deals_yoy_pct    = _pct(txns, p_txns)
-
-            return {
-                "bookings":           bookings_display,
+            payload = {
+                # bookings = period production volume (Travel: gross sales; Insurance: written premium)
+                # Same basis current vs prev — YoY is now apples-to-apples for both lines.
+                "bookings":           round(sales, 2),
                 "bookings_prev":      round(p_sales, 2),
-                "bookings_yoy_pct":   bookings_yoy_pct,
+                "bookings_yoy_pct":   _pct(sales, p_sales),
                 "commission":         round(comm, 2),
                 "commission_prev":    round(p_comm, 2),
                 "commission_yoy_pct": _pct(comm, p_comm),
-                "revenue":            round(sales, 2),
-                "revenue_prev":       round(p_sales, 2),
-                "revenue_yoy_pct":    _pct(sales, p_sales),
-                "deals":              deals_display,
+                # revenue = what we actually earn (agency model) = commission
+                "revenue":            round(comm, 2),
+                "revenue_prev":       round(p_comm, 2),
+                "revenue_yoy_pct":    _pct(comm, p_comm),
+                "deals":              txns,
                 "deals_prev":         p_txns,
-                "deals_yoy_pct":      deals_yoy_pct,
+                "deals_yoy_pct":      _pct(txns, p_txns),
                 "win_rate":           win_rate,
                 "avg_deal_size":      round(sales / txns, 0) if txns > 0 else 0,
                 "pipeline_value":     pipe_rev,
@@ -197,6 +201,27 @@ def advisor_summary(
                 "period_months":      period,
                 "line":               line,
             }
+
+            if line == 'Insurance':
+                nbus_sales   = sum(r['sales'] for r in newb)
+                nbus_count   = sum(r['txns']  for r in newb)
+                p_nbus_sales = sum(r['sales'] for r in newb_prev)
+                p_nbus_count = sum(r['txns']  for r in newb_prev)
+                payload.update({
+                    "nbus_premium":         round(nbus_sales, 2),
+                    "nbus_premium_prev":    round(p_nbus_sales, 2),
+                    "nbus_premium_yoy_pct": _pct(nbus_sales, p_nbus_sales),
+                    "policies_sold":        nbus_count,
+                    "policies_sold_prev":   p_nbus_count,
+                    "policies_sold_yoy_pct": _pct(nbus_count, p_nbus_count),
+                    # Book of business — point-in-time snapshot, no YoY
+                    "book_wp":              round(book['total_wp'], 2) if book else 0,
+                    "book_policies":        book['active_policies'] if book else 0,
+                    # Official board-book revenue (policy commission + carrier income), yearly
+                    "annual_revenue_ref":   INSURANCE_ANNUAL_REVENUE,
+                })
+
+            return payload
 
         # ── Salesforce ────────────────────────────────────────────────────
         lf = _line_filter(line)
@@ -284,7 +309,7 @@ def advisor_leaderboard(
     if line not in VALID_LINES:
         line = 'Travel'
     sd, ed = _resolve_dates(start_date, end_date, period)
-    key = f"advisor_leaderboard_v4_{line}_{sd}_{ed}"
+    key = f"advisor_leaderboard_v5_{line}_{sd}_{ed}"
 
     def fetch():
         if line in _PBI_LINES:
@@ -328,7 +353,8 @@ def advisor_leaderboard(
                                                      'rev': r.get('rev', 0) or 0}
                           for r in sf.get('pipeline', []) if r.get('OwnerId') in owner_map}
 
-            advisors = _build_leaderboard(adv_rows, nbus_map)
+            advisors = _build_leaderboard(adv_rows, nbus_map,
+                                          rank_by_nbus=(line == 'Insurance'))
             for a in advisors:
                 name = a['name']
                 won  = won_map.get(name, 0)

@@ -305,7 +305,7 @@ These high-frequency travelers are:
 
 ---
 
-*Last updated: 2026-05-22. Update this file when new data patterns, field behaviors, or business rules are discovered.*
+*Last updated: 2026-06-11. Update this file when new data patterns, field behaviors, or business rules are discovered.*
 
 ---
 
@@ -450,10 +450,16 @@ Uses active member filter (Section 11) for accurate numerator.
 | Line | Dataset Name | Constant | ID | Purpose |
 |---|---|---|---|---|
 | Travel | BI Dataset - Travel Scorecard | `TRAVEL_DS` | `5c60c1bf` | **Advisor performance** — commission, gross sales, branch. Currently wired to all advisor endpoints. |
-| Travel | BI Dataset - Travel Transactions | `TRAVEL_TRANSACTIONS_DS` | `e03a823a` | Raw booking-level transactions. More granular than Scorecard. Not yet wired. |
+| Travel | BI Dataset - Travel Transactions | `TRAVEL_TRANSACTIONS_DS` | `e03a823a` | Raw booking-level transactions. More granular than Scorecard. Has historical data from 2022-2025. |
 | Insurance | BI Dataset - Insurance Transactions Invoices | `INSURANCE_DS` | `2e3c94a1` | **Advisor performance** — commission, premium, branch. Currently wired to all advisor endpoints. |
 | Insurance | BI Dataset - Insurance Comprehensive v3 | `INSURANCE_COMPREHENSIVE_DS` | `61c03e69` | Full book of business view. Also used by "Insurance Daily Report v2". Not yet wired. |
 | Membership | BI Dataset - Membership Comprehensive | `MEMBERSHIP_DS` | `d7cdf3bc` | Two key tables: **Membership Consolidated** (current state snapshot) and **Membership Transactions** (transaction history). Not yet wired. |
+
+> [!NOTE]
+> **Dataset Temporal Scope Mismatch**:
+> - `TRAVEL_DS` (Travel Scorecard) only contains data for calendar years **2024 and 2025** (2022 and 2023 queries return empty/null).
+> - `TRAVEL_TRANSACTIONS_DS` (Travel Transactions) contains full historical transaction data from **2022 to 2025** (4 full years). Always query `TRAVEL_TRANSACTIONS_DS` when historical trend analysis prior to 2024 is needed.
+
 
 ### Table / Column Reference
 
@@ -484,9 +490,36 @@ Uses active member filter (Section 11) for accurate numerator.
 | RENB | Renewal | ✅ Yes — primary commission source |
 | ENDT | Endorsement (policy change) | ✅ Yes |
 | NEWB | New Business | ❌ No ($0 commission in this table) |
-| CANC | Cancellation | Clawback — sign may vary |
+| CANC | Cancellation | ⚠️ Commission stored POSITIVE even when premium negative (verified 2026-06-11, all sampled rows ≥ 0). Raw sum across all types ($6.8M for 2025) matches the strategic appendix's ~$7–8M commission figure — so SUM as-is, do NOT flip CANC sign. |
 | REIN | Reinstatement | ✅ Small |
 | REWR | Rewrite | ✅ Small |
+
+**Official 2025 figures (validated vs board docs + M365 Copilot, 2026-06-11):**
+| Metric | Value | Source |
+|---|---|---|
+| Travel commission | $14.37M | PBI Travel Scorecard = board decks (~$14.4M) ✅ |
+| Travel gross sales | $109.7M | PBI = board (~$110M) ✅. Both travel PBI datasets agree exactly. |
+| Insurance commission (all staff) | $6.82M | PBI insurance_transactions_f, NO job-title filter. Strategic appendix: ~$7–8M ✓ |
+| Insurance commission (Insurance Advisors only) | $4.05M | The app's `assoc_job_title_grps="Insurance Advisors"` filter — advisor production subset, NOT division revenue |
+| Insurance written premium (period, all staff) | $67.0M | PBI transactions. Board summit forecast said $63M. |
+| Board-book "Members Insurance" revenue 2025 | $9,901,214 | Board Book 02.03.26 — includes commission + other income (contingents/fees) beyond the transaction file |
+| ❌ "$14M insurance commission" | WRONG | Appears in AAA_WCNY_Strategic_Appendix / Path_To_114M draft (AXIS GL 2.47xx incl. Epic + bulk carriers). Same appendix elsewhere says $7–8M. Never cite $14M. |
+
+**Revenue semantics (agency business model):** AAA WCNY is an *agency* — revenue = COMMISSION for both lines. Travel gross sales and insurance written premium are production volume, not revenue. Any UI field labeled "revenue" must map to commission.
+
+**Insurance TWO revenue streams (validated 2026-06-12 vs board FS + Copilot):**
+1. **Policy commission** (writing/servicing) — lives in PBI `insurance_transactions_f` (all staff, no job filter)
+2. **Carrier income** (contingent commission, profit share, CSAA/Plymouth Rock/Progressive bulk payments) — lives ONLY in AXIS GL 2.47xx accounts (Internal Audit - Finance dataset `94427963`, GLT_HISTORY + GLT_HISTORY_LINE joined on GLTRAN; FISCAL_PERIOD format "MAR16"). NOT in any transaction-level PBI dataset.
+
+| Year | PBI policy commission | Board FS total insurance revenue | Implied carrier income |
+|---|---|---|---|
+| 2023 | $5.86M | ~$7.0M (Strategic Plan Rev 4) | ~$1.1M |
+| 2024 | $6.73M | $8,018,446 (2025-AAA-Draft-FS) | ~$1.3M |
+| 2025 | $6.82M | $9,901,214 (2025-AAA-Draft-FS / Board Book 02.03.26) | ~$3.1M |
+
+- PBI commission + carrier income ≈ board revenue, every year. The model holds.
+- The "$12–14M" in strategy drafts = blended/gross GL 2.47xx view incl. accrual reversals — NOT the official number. AXIS GL 2.47xx is unreliable for 2025+ (DR-only entries, migration artifact).
+- App KPI design: "Commission (policy)" from transactions is live/monthly; "Total insurance revenue" ($9.9M) is a finance-only yearly figure — no live PBI feed exists (Executive KPIs dataset has Merged GLTran tables for Membership/Travel/CreditCard but NOT Insurance).
 
 **Membership Comprehensive** (`MEMBERSHIP_DS`) — two tables:
 - `Membership Consolidated` — current state of all memberships (snapshot). Use for counts, tier distribution, active member analysis.
@@ -585,3 +618,212 @@ EVALUATE COLUMNSTATISTICS()
 ```
 Returns all tables and columns with cardinality. Use this before building any new endpoint.
 Then pull 20 sample rows with `SELECTCOLUMNS + FILTER` to verify column meanings.
+
+
+---
+
+## 15. Lead Funnel & Conversion
+
+### Record Types
+- **Travel Leads**: `012Pb0000006hIdIAI`
+- **Insurance Leads**: `012Pb0000006hIbIAI`
+- **Financial Services Leads**: `012Pb0000006hIaIAI`
+- **Drivers Programs Leads**: `012Pb0000006hIZIAY`
+
+### Key Fields on Leads Table
+- `Id`: Lead ID (used for Salesforce links: `https://aaawcny.my.salesforce.com/{Id}`).
+- `Name`: Full name of the lead.
+- `Status`: Lead status (e.g., `New`, `Working`, `Contacted`, `Converted`, `Expired`).
+- `LeadSource`: Source channel (e.g., `Web`, `Direct Mail`, `Referral`).
+- `CreatedDate`: Date and time the lead was created.
+- `OwnerId`: Used to join with `User` mapping to get owner name.
+- `IsConverted`: Boolean indicating if the lead has been converted to an opportunity.
+- `ConvertedDate`: Date when the lead was converted.
+- `ConvertedOpportunityId` / `ConvertedOpportunity.Name` / `ConvertedOpportunity.Amount`: Details about the opportunity spawned from conversion.
+
+### Agent Whitelist Filter
+When querying leads for dashboards and drilldown reports, always filter the results to only include leads owned by active sales agents matching the division (`Travel` or `Insurance`). If the owner field is null or not found in the user list, the lead is preserved by default to catch unassigned web/queue leads.
+
+---
+
+## 9. Membership Renewal Rate (PBI / MCR Transactions)
+
+**Correct formula — MCR transactions only, no Epic/consolidated data:**
+
+  Renewal Rate = PAY / (PAY + ADD + CAN)
+
+Where all three codes come from `membership_transactions` filtered to YTD with `business_date` range.
+
+- PAY = renewal payments
+- ADD = new member acquisitions  
+- CAN = cancellation transactions (only 2,752 YTD — much lower than consolidated which has 160,535 AXIS migration artifacts)
+
+**2026 YTD result**: 343,842 / 387,654 = **88.7%**
+**2025 same period**: 346,852 / 390,739 = **88.8%**
+
+### Why NOT to use membership_consolidated for attrition:
+- `membership_consolidated` has 206,211 cancellation records YTD
+- 160,535 of them are `"CANCEL LEGACY AXIS SUSPENDS CANCELLING PRE-SALESFORCE"` — a one-time migration artifact from the AXIS legacy system (Epic data)
+- Only 45,676 are real cancellations (27,103 lapsed + 18,573 explicit)
+- If you use consolidated without filtering, attrition is inflated 3.5×
+
+### Membership Transaction Codes:
+- `ADD` = new member acquisition
+- `PAY` = renewal payment
+- `CAN` / `CANC` / `CXL` = explicit cancellation
+- `LPS` = lapse (90-day non-renewal) — may appear but low volume in transactions; lapses also tracked in consolidated
+
+### PBI Dataset:
+- Dataset ID: `d7cdf3bc-dcf4-48ed-b4bb-200563dcfd7f`
+- Tables: `membership_transactions` (SOURCE=MCR, 5.27M rows), `membership_consolidated` (2.23M rows incl. cancelled)
+- Channel field: `membership_transactions[membership_sales_source_desc]`
+- Renewal rate uses transactions only — avoids Epic/AXIS contamination in consolidated
+
+### Top Sales Channels (2026 YTD by renewals):
+1. Branch / Walk-in: 74,015 renewals, 3,210 new, $6.8M revenue
+2. Call Center: 47,701 renewals, 6,009 new, $4.9M revenue
+3. Digital / Online: 42,265 renewals, 4,286 new, $3.3M revenue
+4. Associate Add-on: 30,446 renewals, 2,277 new
+5. Auto Renewal (batch): 27,039 renewals (PS2021 = system batch, not human-driven)
+6. ERS Conversion: 7,989 renewals, 2,404 new (highest-intent acquisition channel)
+
+---
+
+## 16. Insurance Concierge Scorecard — Data Sources & Column Definitions
+
+**Purpose**: Monthly performance scorecard for Insurance Concierge agents (CC and Branch).  
+**FULL SPEC & REBUILD GUIDE**: `insurancescorecard/SPEC.md` — architecture, endpoints, code map, gotchas, validation protocol. Read it before touching the scorecard.  
+**Production**: `backend/routers/insurance_scorecard.py` + `frontend/src/pages/InsuranceScorecard.tsx` (live, all-PBI/SF, no VPN)  
+**Legacy script**: `insurancescorecard/extract_scorecard_data.py` (Databricks direct, VPN only — kept for cross-validation)  
+**Reference output**: `insurancescorecard/scorecard_data_YYYYMM.csv`
+
+### The 4 Data Sources
+
+| Column | Source | System | Dataset/Table | Date Field |
+|---|---|---|---|---|
+| `activities` | Epic activity records | **Power BI (production)** | Dataset `ec6cf035` (BI Dataset - Insurance Comprehensive) → `insurance_activity_f` [DirectQuery→Databricks] | `closed_date` |
+| `activities` (alt) | Epic activity records | Databricks Bronze (VPN only) | `dev_bronze_catalog.epic.activity` + `activitycode` + `securityuser` | `closed_date` |
+| `n_alert` | TTEC phone system | Power BI | Dataset `5638b93f` (_TTEC Insights Standard Model v2 Incremental) | `Global Calendar[TheDate]` |
+| `n_handled` | TTEC phone system | Power BI | Same as above | Same |
+| `new_member_count` | Membership MEID | Power BI | Dataset `ecbfc836` (BI Dataset - Membership Sales v2) | `Membership Transactions Points[Business Date]` |
+| `membership_points` | Membership MEID | Power BI | Same as above | Same |
+| `walkins` | Salesforce FSL | Salesforce | `AssignedResource` + `ServiceAppointment` | `SchedStartTime` |
+
+### Epic Activities via PBI — PRODUCTION PATH (no VPN needed)
+
+**Discovered 2026-06-11**: `insurance_activity_f` in **BI Dataset - Insurance Comprehensive** (`ec6cf035-8a75-4cd3-b049-4274576a45bb`, the v1 dataset, NOT v3) is a DirectQuery table to Databricks. Queries route: SalesPulse → PBI executeQueries API → PBI gateway → Databricks → results. Works over the internet — Azure App Service can use it.
+
+Key columns (86 total): `activity_category_code` (the 17 codes), `closed_status`, `closed_date`, `closed_by_code`, `closed_by_name` (pre-joined — no securityuser join needed), `branch_name`, `department_name`, `policy_number`, `associate_job_title`.
+
+**Validated April 2026 vs Databricks extract: 37/44 agents exact, 4 within ±2.** Outliers: Denise May +32 and Cindy VanHoesen +10 (likely data drift since CSV extract — Databricks backfills late-closed activities), Mike Pappas missing (name mismatch in `closed_by_name`, known issue).
+
+Working DAX:
+```dax
+EVALUATE
+CALCULATETABLE(
+    SUMMARIZECOLUMNS(
+        'insurance_activity_f'[closed_by_name],
+        "activity_count", COUNTROWS('insurance_activity_f')
+    ),
+    FILTER(ALL('insurance_activity_f'),
+        'insurance_activity_f'[activity_category_code] IN {"CHGE","CNPY",...17 codes}
+        && 'insurance_activity_f'[closed_status] IN {"S", "U"}
+        && 'insurance_activity_f'[closed_date] >= DATE(2026,4,1)
+        && 'insurance_activity_f'[closed_date] < DATE(2026,5,1)
+    )
+)
+```
+Note: DirectQuery → slower than Import datasets (~10-30s); cache results.
+
+### PBI Schema Discovery — INFO.VIEW.TABLES() (CRITICAL TECHNIQUE)
+
+To enumerate tables/columns in ANY PBI dataset with Build permission (no admin needed):
+```dax
+EVALUATE SELECTCOLUMNS(INFO.VIEW.TABLES(), "name", [Name], "mode", [StorageMode])
+EVALUATE FILTER(SELECTCOLUMNS(INFO.VIEW.COLUMNS(), "table", [Table], "column", [Name], "type", [DataType]), [table] = "TableName")
+```
+- `INFO.VIEW.TABLES()` works via executeQueries with Build permission. The older `INFO.TABLES()` requires XMLA admin and fails.
+- This is THE way to discover schemas — blind TOPN probing fails on DirectQuery tables (400+ name guesses found nothing; INFO.VIEW.TABLES found everything in one call).
+- Full inventory of all 57 workspace datasets saved: `/tmp/pbi_table_inventory.json` (2026-06-11).
+- **MCC Scorecard dataset** (`01603790`) = **Member Care Center** (membership call center: CallsHandled, Sales, ConvBilling, VOM surveys, MCCScore) — NOT Insurance Concierge. Tables: `MCC Scorecard Aggregate`, `Calls - Detail`, `Evaluations - Detail`, `Sales - Detail`, `VOM - Detail`, `Mem Trx - New Households`, `Employee List`. All DirectQuery. "Never refreshed" is normal for DirectQuery datasets.
+- **CRM Dashboards** (`e4e52c20`) = Salesforce data via Databricks: `CRM - Activity`, `CRM - Opportunity`, `CRM - Cases`, `Leads - Insurance`, `Leads - Travel`, etc. All DirectQuery.
+- **Insurance Comprehensive v1** (`ec6cf035`) has 7 tables incl. `insurance_activity_f`, `insurance_contacts_f`, `insurance_client_accounts_f` — richer than v3 (which has only `insurance_policies_f` + `R_INS_LifeInsurancePolicies`).
+- **active_epic_employees table** exists in Insurance BoB (`0cd02fab`, Import) and Retention Only (`68c18509`, DirectQuery) — Epic employee lookup if needed.
+
+### Membership Columns — Critical Distinction
+
+Both columns come from the MEID dataset (`ecbfc836`) via the `Membership Transactions Points` table:
+
+**`new_member_count`** = count of transactions where any of these flags = "Y":
+- `New Basic`, `New Plus`, `New Plus Rv`, `New Premier`, `New Premier Rv`
+- Meaning: actual **new memberships written** and attributed to this agent
+- DAX: `COUNTROWS(FILTER('Membership Transactions Points', [New Basic]="Y" || [New Plus]="Y" || ...))`
+
+**`membership_points`** = `SUM('Membership Transactions Points'[Membership Coverage Points])`
+- Meaning: **incentive scoring points** earned from membership-related transactions
+- Points are higher per transaction for higher-tier memberships (Premier > Plus > Basic)
+- Points also come from renewals, upgrades, convenience billing — not just new members
+- This is why `membership_points` ≥ `new_member_count` is NOT guaranteed (points < count is possible if only basic sales happened)
+
+**IMPORTANT — Date Field**: Both columns use `Business Date` (the date the transaction was processed in the membership system). This is NOT the same date field as the visual slicer in the PBI MEID report (`be41cc35` — "Membership Employee Incentive Detail - 00752"), which uses a different date dimension. The MEID report visual will show LOWER numbers for the same month because its slicer connects to a different date field.
+
+### Why Manual Spreadsheet Differs from MEID Extract
+
+The manual scorecard spreadsheet (`Insurance Concierge Scorecards 2026.xlsx`, APR tab) has a "Membership Sales" column with values that are 2–4× higher than `new_member_count` from the extract (April 2026: Annette=14 manual vs 7 extract; Kelly=17 vs 4; Gabrielle=16 vs 0). The comparison analysis flagged this as a "new metric — no baseline." **Explanation**: The manual entries were likely pulled by the manager from a different view, different date range, or a broader definition that includes referrals or credits. The extract's `new_member_count` is the authoritative MEID figure using `Business Date`.
+
+### Epic Activities — 17 Activity Codes
+
+```python
+EPIC_ACTIVITY_CODES = (
+    "CHGE", "CNPY", "CPOL", "CRAK", "CS24", "DPRI",
+    "ECAN", "EMCO", "EMRM", "EREC", "EREI", "ENON",
+    "KEMP", "OCOP", "MAIL", "RMAL", "SSIG",
+)
+```
+Filter: `closed_status IN ('S', 'U')`, grouped by `closed_by_code` → joined to `securityuser.full_name`.  
+Date: `closed_date >= start AND closed_date < end_exclusive` (end date passed as day+1).
+
+### Roster Rule — Who Is On The Scorecard (CRITICAL, discovered 2026-06-12)
+
+The scorecard covers the **Insurance Concierge job family ONLY** — not all insurance agents:
+- TTEC `Users[Department] IN ('Insurance Concierge CC', 'Insurance Concierge Branch')`
+- AND `Users[Job Title]` contains "Insurance Concierge" (incl. Senior)
+- EXCLUDING titles with "Commercial" (Cindy VanHoesen) or "Quality Control" (Charley Loftus)
+- NO status filter (departed agents like Yasmin Brown keep historical data); all-zero rows dropped post-merge
+- This EXCLUDES the ~20 Insurance Sales CC advisors (Karl Osterman, Tyler Cory, …) and all MIA/Medicare reps
+
+Result = the exact 16-agent roster of the manual sheet (8 CC + 8 Branch incl. Melissa McCarthy).
+TTEC is the sole roster source; other systems only contribute data for roster members.
+
+MEID still pulls broadly (`Employee[Home Department]` contains "MIA" OR "Insurance") — the
+roster intersection happens at merge time.
+
+### Walk-ins (Branch agents only)
+
+SF query: `AssignedResource` where `ServiceAppointment.WorkType.Name IN ('Personal Lines - Sales', 'Personal Lines - Service')` AND `Status = 'Completed'`. CC agents always have `walkins = 0`.
+
+### Known Data Quality Issues
+
+- **Hannah Vought**: Epic activities show ~88 in PBI but spreadsheet shows 311 — known exception, documented in `ANALYSIS_NOTES.md`
+- **Domonique Acoff / Mike Pappas**: Not in TTEC system — `n_handled = 0` even when they handled calls; these agents use a different phone platform
+- **Name normalization**: Epic uses `securityuser.full_name`; normalize with `_normalize()` (lowercase + strip hyphens). Override map: `{"michael pappa": "Mike Pappas"}`
+- **Gabi vs Gabrielle Kalinowski**: Two different people — "Gabi Kalinowski" (MIA Administration, CC, no walkins) vs "Gabrielle Kalinowski" (Insurance Concierge Branch, has walkins)
+
+### SalesPulse Scorecard Display Columns
+
+The scorecard in SalesPulse shows **both** membership columns:
+
+| Display Label | Source Field | Group |
+|---|---|---|
+| Activities | `activities` | Customers Helped |
+| Calls Answered | `n_handled` | Customers Helped |
+| Walk-Ins | `walkins` | Customers Helped (Branch only) |
+| Alerted | `n_alert` | Answer Rate |
+| Answered | `n_handled` | Answer Rate |
+| Audits Scored | hardcoded 0 | Quality |
+| Audit Correct | hardcoded 0 | Quality |
+| New Members | `new_member_count` | Membership Sales |
+| Mbr Points | `membership_points` | Membership Sales |
+
+Two groups: **Call Center** (no Walk-Ins column) and **Branch** (has Walk-Ins column).
+

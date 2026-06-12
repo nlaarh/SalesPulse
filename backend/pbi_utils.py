@@ -331,15 +331,29 @@ def _fetch_pbi_active_agent_count(line: str, sd: str, ed: str) -> int:
 
 
 def pbi_by_day(line: str, sd: str, ed: str) -> list[dict]:
-    """Daily totals across all advisors. Used for trend/YoY charts."""
-    key = f"pbi_by_day_v1_{line}_{sd}_{ed}"
+    """Daily totals — division level. Used for summary KPIs and trend/YoY charts.
+
+    Insurance uses ALL-staff totals (no job-title filter): division production is
+    $67M premium / 2025; the Insurance Advisors filter halves it ($37.6M).
+    Validated vs board docs 2026-06-12.
+    """
+    key = f"pbi_by_day_v2_{line}_{sd}_{ed}"
     return cache.cached_query(key, lambda: _fetch_pbi_by_day(line, sd, ed),
                               ttl=3600, disk_ttl=86400)
 
 
 def _fetch_pbi_by_day(line: str, sd: str, ed: str) -> list[dict]:
-    from pbi_client import travel_by_day, insurance_by_day
-    return travel_by_day(sd, ed) if line == 'Travel' else insurance_by_day(sd, ed)
+    from pbi_client import travel_by_day, insurance_by_day_all
+    return travel_by_day(sd, ed) if line == 'Travel' else insurance_by_day_all(sd, ed)
+
+
+def insurance_newb_by_day(sd: str, ed: str) -> list[dict]:
+    """New-business premium by day, ALL staff. sales = NBUS written premium, txns = policies sold."""
+    key = f"ins_newb_by_day_v1_{sd}_{ed}"
+    def _fetch():
+        from pbi_client import insurance_newb_by_day_all
+        return insurance_newb_by_day_all(sd, ed)
+    return cache.cached_query(key, _fetch, ttl=3600, disk_ttl=86400)
 
 
 def pbi_by_branch_day(line: str, sd: str, ed: str) -> list[dict]:

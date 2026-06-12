@@ -15,6 +15,14 @@ export interface Summary {
   pipeline_value: number; pipeline_count: number
   /** Period-matched deals YoY (may not be present on all responses) */
   deals_yoy_pct?: number
+  /** Insurance only — new business (NEWB) written premium */
+  nbus_premium?: number; nbus_premium_prev?: number; nbus_premium_yoy_pct?: number
+  /** Insurance only — NEWB policy count */
+  policies_sold?: number; policies_sold_prev?: number; policies_sold_yoy_pct?: number
+  /** Insurance only — book of business snapshot (point-in-time, no YoY) */
+  book_wp?: number; book_policies?: number
+  /** Insurance only — official board-book revenue (commission + carrier income), yearly */
+  annual_revenue_ref?: { year: number; amount: number }
 }
 
 export interface Advisor {

@@ -29,18 +29,7 @@ export default function MultiSelect({ label, options, selected, onChange, placeh
     })
   }
 
-  // Close on outside click
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (
-        btnRef.current?.contains(e.target as Node) ||
-        dropRef.current?.contains(e.target as Node)
-      ) return
-      setOpen(false)
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
+  // (outside-click is handled by the backdrop overlay in the portal)
 
   // Reposition on scroll/resize while open
   useEffect(() => {
@@ -99,12 +88,31 @@ export default function MultiSelect({ label, options, selected, onChange, placeh
       </button>
 
       {open && createPortal(
-        <div
-          ref={dropRef}
-          style={dropStyle}
-          className="rounded-lg border border-border bg-card shadow-xl"
-        >
+        <>
+          {/* backdrop: eats the outside click so it doesn't fall through to tabs/buttons below */}
+          <div
+            className="fixed inset-0"
+            style={{ zIndex: 9998 }}
+            onClick={() => setOpen(false)}
+          />
+          <div
+            ref={dropRef}
+            style={dropStyle}
+            className="rounded-lg border border-border bg-card shadow-xl"
+          >
           <div className="max-h-60 overflow-y-auto py-1">
+            {selected.length > 0 && (
+              <>
+                <button
+                  onClick={() => { onChange([]); setOpen(false) }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] font-medium text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  <X className="h-3 w-3" />
+                  Clear filter
+                </button>
+                <div className="mx-2 my-1 border-t border-border" />
+              </>
+            )}
             {options.map(opt => (
               <button
                 key={opt}
@@ -132,7 +140,8 @@ export default function MultiSelect({ label, options, selected, onChange, placeh
               <div className="px-3 py-2 text-[12px] text-muted-foreground">No options</div>
             )}
           </div>
-        </div>,
+          </div>
+        </>,
         document.body,
       )}
     </div>

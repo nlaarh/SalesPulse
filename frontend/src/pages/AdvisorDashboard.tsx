@@ -47,9 +47,14 @@ const ALL_TABS: { key: Tab; label: string; icon: typeof BarChart3; travelOnly?: 
 
 export default function AdvisorDashboard() {
   const { line, period, startDate, endDate, viewMode } = useSales()
+
   const navigate = useNavigate()
   const { user } = useAuth()
   const c = useChartColors()
+
+  useEffect(() => {
+    if (line === 'Membership') navigate('/membership', { replace: true })
+  }, [line, navigate])
 
   const [summary, setSummary] = useState<Summary | null>(null)
   const [leaders, setLeaders] = useState<Advisor[]>([])
@@ -157,7 +162,8 @@ export default function AdvisorDashboard() {
   // Use period-matched YoY from summary (apple-to-apple), not calendar YTD
   const dealsYoyPct = (summary as any)?.deals_yoy_pct ?? 0
 
-  // Insurance bookings = total book WP (point-in-time snapshot), not period run-rate — don't annualize
+  // Pipeline coverage is a Travel concept (SF pipeline vs annualized bookings);
+  // insurance pipeline in SF is negligible — keep coverage at 0
   const annualizedBookings = !isInsurance && summary && summary.bookings > 0 ? summary.bookings * (12 / period) : 0
   const pipelineCoverage = annualizedBookings > 0
     ? Math.round(summary!.pipeline_value / annualizedBookings * 10) / 10
@@ -180,7 +186,7 @@ export default function AdvisorDashboard() {
           <p className="text-[12px] font-medium text-muted-foreground">
             {line} Division &middot; {periodLabel}
           </p>
-          <h1 className="mt-0.5 text-2xl font-bold tracking-tight">Advisor Performance</h1>
+          <h1 className="mt-0.5 text-2xl font-bold tracking-tight">Sales Performance</h1>
         </div>
 
         {/* Tab bar + actions */}
@@ -226,31 +232,38 @@ export default function AdvisorDashboard() {
             <span className="text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               Target Achievement
             </span>
-            <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-0.5">
-              <button
-                onClick={() => switchAchBase('commission')}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-md px-3 py-1 text-[11px] font-semibold transition-all',
-                  achBase === 'commission' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                <DollarSign className="h-3 w-3" /> Commission
-              </button>
-              <button
-                onClick={() => switchAchBase('bookings')}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-md px-3 py-1 text-[11px] font-semibold transition-all',
-                  achBase === 'bookings' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                <BookOpen className="h-3 w-3" /> {isInsurance ? 'Written Premium' : 'Bookings'}
-              </button>
-            </div>
+            {/* Insurance is premium-led — no commission base to toggle to */}
+            {isInsurance ? (
+              <span className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1 text-[11px] font-semibold text-muted-foreground">
+                <BookOpen className="h-3 w-3" /> Written Premium
+              </span>
+            ) : (
+              <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-0.5">
+                <button
+                  onClick={() => switchAchBase('commission')}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-md px-3 py-1 text-[11px] font-semibold transition-all',
+                    achBase === 'commission' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <DollarSign className="h-3 w-3" /> Commission
+                </button>
+                <button
+                  onClick={() => switchAchBase('bookings')}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-md px-3 py-1 text-[11px] font-semibold transition-all',
+                    achBase === 'bookings' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <BookOpen className="h-3 w-3" /> Bookings
+                </button>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-6">
             {/* Current CALENDAR month only — never aggregates multi-month period */}
             <TargetProgressBar
-              label={`${_curMonthLabel} Target (${achBase})`}
+              label={`${_curMonthLabel} Target (${isInsurance ? 'premium' : achBase})`}
               actual={achBase === 'bookings'
                 ? (_curMonthEntry?.bookings_actual ?? achievement.current_month?.company?.bookings_actual ?? achievement.current_month?.company?.actual ?? 0)
                 : (_curMonthEntry?.actual ?? achievement.current_month?.company?.commission_actual ?? achievement.current_month?.company?.actual ?? 0)}
@@ -262,7 +275,7 @@ export default function AdvisorDashboard() {
               color="indigo"
             />
             <TargetProgressBar
-              label={`${achievement.yearly.year} Yearly Target (${achBase})`}
+              label={`${achievement.yearly.year} Yearly Target (${isInsurance ? 'premium' : achBase})`}
               actual={achBase === 'bookings'
                 ? (achievement.yearly.company.bookings_actual ?? achievement.yearly.company.actual)
                 : (achievement.yearly.company.commission_actual ?? achievement.yearly.company.actual)}

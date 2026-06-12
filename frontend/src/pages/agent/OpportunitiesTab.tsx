@@ -31,6 +31,7 @@ export default function OpportunitiesTab({ profile }: OpportunitiesTabProps) {
   const [view, setView] = useState<'open' | 'won'>('open')
   const [stageFilter, setStageFilter] = useState<string | null>(null)
   const navigate = useNavigate()
+  const isInsurance = profile.line?.toLowerCase() === 'insurance'
 
   // Build unique stages with counts for filter chips
   const stageCounts = useMemo(() => {
@@ -246,7 +247,7 @@ export default function OpportunitiesTab({ profile }: OpportunitiesTabProps) {
 
                   <div className="text-right">
                     <p className="tabular-nums text-[15px] font-bold">{formatCurrency(opp.amount, true)}</p>
-                    {opp.commission > 0 && (
+                    {!isInsurance && opp.commission > 0 && (
                       <p className="text-[12px] font-semibold text-emerald-600">+{formatCurrency(opp.commission, true)} comm</p>
                     )}
                   </div>

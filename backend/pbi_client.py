@@ -343,6 +343,30 @@ def insurance_by_advisor_day(sd: str, ed: str, extra_filter: str = "") -> list[d
     )
 
 
+def insurance_by_day_all(sd: str, ed: str) -> list[dict]:
+    """Division-level premium/commission by day — ALL staff, no job-title filter.
+
+    The Insurance Advisors filter halves the totals ($37.6M vs $67.0M premium in 2025).
+    Division KPIs must use this; the filtered variants are for advisor leaderboards only.
+    Validated 2026-06-12 vs board docs: 2025 premium $67.0M, commission $6.82M.
+    """
+    return _by_day(
+        PBI_WS, INSURANCE_DS, _I_TABLE,
+        _I_DATE, _I_COMM, _I_SALES,
+        sd, ed,
+    )
+
+
+def insurance_newb_by_day_all(sd: str, ed: str) -> list[dict]:
+    """New-business written premium by day — ALL staff. sales = NBUS premium, txns = policies sold."""
+    return _by_day(
+        PBI_WS, INSURANCE_DS, _I_TABLE,
+        _I_DATE, _I_COMM, _I_SALES,
+        sd, ed,
+        "'insurance_transactions_f'[transaction_type] = \"NEWB\"",
+    )
+
+
 def insurance_nbus_by_advisor(sd: str, ed: str, extra_filter: str = "") -> list[dict]:
     """Insurance NEWB-only transactions: sales = new business written premium, commission ≈ 0."""
     combined = _I_NEWB_FILTER

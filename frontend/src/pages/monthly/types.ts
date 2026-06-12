@@ -32,11 +32,12 @@ export const METRICS: { key: Metric; label: string; short: string; tip: string }
   { key: 'invoiced', label: 'Invoiced', short: 'Inv', tip: TIPS.monthlyInvoiced },
 ]
 
-/** Return METRICS with 'sales' labels overridden to "Written Premium" for Insurance. */
+/** Insurance is premium-led: commission removed (lags a year, pays $0 on new
+ *  business, excludes carrier income — see sales-analyst.md audit 2026-06-12). */
 export function getMetrics(isInsurance: boolean) {
   if (!isInsurance) return METRICS
   return METRICS
-    .filter(m => m.key !== 'invoiced')
+    .filter(m => m.key !== 'invoiced' && m.key !== 'commission')
     .map(m => m.key === 'sales'
       ? { ...m, label: 'Written Premium ($)', short: 'Premium' }
       : m

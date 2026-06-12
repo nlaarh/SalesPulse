@@ -28,14 +28,14 @@ def _call_or(default, label: str, fn, *args, **kwargs):
 
 
 def _dashboard_cache_key(line: str, period: int, sd: str, ed: str, yoy_year: int) -> str:
-    return f"advisor_dashboard_{line}_{period}_{sd}_{ed}_{yoy_year}"
+    return f"advisor_dashboard_v2_{line}_{period}_{sd}_{ed}_{yoy_year}"
 
 
 def _component_cache_keys(line: str, sd: str, ed: str, yoy_year: int) -> list[str]:
     today = date.today().isoformat()
     return [
-        f"advisor_summary_v2_{line}_{sd}_{ed}",
-        f"advisor_leaderboard_v3_{line}_{sd}_{ed}",
+        f"advisor_summary_v3_{line}_{sd}_{ed}",
+        f"advisor_leaderboard_v5_{line}_{sd}_{ed}",
         f"perf_insights_v2_{line}_{sd}_{ed}",
         f"perf_funnel_{line}_{sd}_{ed}",
         f"leads_volume_{line}_{sd}_{ed}",
@@ -88,15 +88,11 @@ def _build_dashboard_payload(line: str, period: int, start_date, end_date, yoy_y
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    try:
-        summary = advisor_summary(line, period, start_date, end_date)
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail='Salesforce data unavailable') from exc
-
     branch_default = {"branches": [], "period_months": [], "line": line}
 
     # SF tasks — all independent, run concurrently
     sf_tasks = {
+        "summary":      (advisor_summary,         [line, period, start_date, end_date]),
         "leaderboard":  (advisor_leaderboard,     [line, period, start_date, end_date]),
         "insights":     (performance_insights,    [line, period, start_date, end_date]),
         "yoy":          (advisor_yoy,             [line, yoy_year]),
@@ -109,6 +105,7 @@ def _build_dashboard_payload(line: str, period: int, start_date, end_date, yoy_y
         sf_tasks["branch_monthly"] = (advisor_branch_monthly, [line, period, start_date, end_date])
 
     defaults = {
+        "summary":        None,
         "leaderboard":    {"advisors": []},
         "insights":       {"insights": []},
         "yoy":            {},
@@ -132,13 +129,15 @@ def _build_dashboard_payload(line: str, period: int, start_date, end_date, yoy_y
             try:
                 results[key] = future.result()
             except Exception as exc:
+                if key == "summary":
+                    raise HTTPException(status_code=503, detail='Salesforce data unavailable') from exc
                 log.warning("dashboard component '%s' failed: %s", key, exc)
 
     # DB-backed tasks — SQLAlchemy sessions are not thread-safe; run sequentially
     results["targets"] = _call_or({"targets": [], "upload": None}, "targets", get_targets, user, db)
     results["achievement"] = _call_or(None, "achievement", get_target_achievement, line, None, start_date, end_date, user, db)
 
-    return {"summary": summary, **results}
+    return results
 
 
 @router.get("/api/sales/advisors/dashboard")

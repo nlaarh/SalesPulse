@@ -5,7 +5,7 @@
  * Pure presentation — receives all data via props.
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { formatCurrency, formatNumber, formatPct, cn } from '@/lib/utils'
 import { useChartColors, getEChartTooltip } from '@/lib/chart-theme'
 import { Tip, TIPS } from '@/components/MetricTip'
@@ -79,7 +79,7 @@ function LeaderboardFull({ leaders, onSelect, targetMap, line }: {
 }) {
   const isInsurance = line?.toLowerCase() === 'insurance'
   const hasTargets = targetMap && targetMap.size > 0
-  const [sortKey, setSortKey] = useState<SortKey>('commission')
+  const [sortKey, setSortKey] = useState<SortKey>(isInsurance ? 'nbus_premium' : 'commission')
   const [sortAsc, setSortAsc] = useState(false)
   const [showAll, setShowAll] = useState(false)
   const [selDepts, setSelDepts] = useLocalStorage<string[]>(`sp_filter_advisor_perf_depts_${line ?? 'all'}`, [])
@@ -89,10 +89,20 @@ function LeaderboardFull({ leaders, onSelect, targetMap, line }: {
     () => [...new Set(leaders.map(a => a.branch).filter(Boolean) as string[])].sort(),
     [leaders],
   )
-  const allAdvisors = useMemo(
-    () => [...new Set(leaders.map(a => a.name))].sort(),
-    [leaders],
-  )
+  const allAdvisors = useMemo(() => {
+    const base = selDepts.length > 0
+      ? leaders.filter(a => selDepts.includes(a.branch ?? ''))
+      : leaders
+    return [...new Set(base.map(a => a.name))].sort()
+  }, [leaders, selDepts])
+
+  // Drop advisor selections that are no longer in the filtered dept
+  useEffect(() => {
+    if (selAdvisors.length === 0) return
+    const valid = new Set(allAdvisors)
+    const still = selAdvisors.filter(a => valid.has(a))
+    if (still.length !== selAdvisors.length) setSelAdvisors(still)
+  }, [allAdvisors])
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortAsc(!sortAsc)
@@ -114,17 +124,23 @@ function LeaderboardFull({ leaders, onSelect, targetMap, line }: {
   const displayed = showAll ? filtered : filtered.slice(0, 15)
   const showBranch = allDepts.length > 0
 
-  // Totals for share calculation
+  // Totals for share calculation — Insurance: share of new written premium;
+  // Travel: share of commission (falls back to bookings if commission absent)
   const totalBookings = leaders.reduce((s, a) => s + (a.bookings || 0), 0)
   const totalCommission = leaders.reduce((s, a) => s + (a.commission || 0), 0)
-  const shareBase = totalCommission > 0 ? totalCommission : totalBookings
+  const totalNbus = leaders.reduce((s, a) => s + (a.nbus_premium ?? 0), 0)
+  const shareBase = isInsurance
+    ? (totalNbus > 0 ? totalNbus : totalBookings)
+    : (totalCommission > 0 ? totalCommission : totalBookings)
+  const agentShareVal = (a: Advisor) => isInsurance
+    ? (totalNbus > 0 ? (a.nbus_premium ?? 0) : (a.bookings || 0))
+    : (totalCommission > 0 ? (a.commission || 0) : (a.bookings || 0))
 
   const COLS: { key: SortKey; label: string; fmt: (a: Advisor) => string }[] = isInsurance ? [
-    { key: 'commission',    label: 'Commission',      fmt: (a) => formatCurrency(a.commission, true) },
-    { key: 'nbus_premium',  label: 'New Written',     fmt: (a) => formatCurrency(a.nbus_premium ?? 0, true) },
-    { key: 'bookings',      label: 'Period Activity', fmt: (a) => formatCurrency(a.bookings, true) },
-    { key: 'deals',         label: 'Transactions',    fmt: (a) => formatNumber(a.deals) },
-    { key: 'pipeline_value',label: 'Pipeline',        fmt: (a) => formatCurrency(a.pipeline_value, true) },
+    { key: 'nbus_premium',  label: 'New Written',  fmt: (a) => formatCurrency(a.nbus_premium ?? 0, true) },
+    { key: 'bookings',      label: 'Premium',      fmt: (a) => formatCurrency(a.bookings, true) },
+    { key: 'deals',         label: 'Transactions', fmt: (a) => formatNumber(a.deals) },
+    { key: 'pipeline_value',label: 'Pipeline',     fmt: (a) => formatCurrency(a.pipeline_value, true) },
   ] : [
     { key: 'commission',    label: 'Commission', fmt: (a) => a.commission > 0 ? formatCurrency(a.commission, true) : formatCurrency(a.bookings, true) },
     { key: 'bookings',      label: 'Bookings',   fmt: (a) => formatCurrency(a.bookings, true) },
@@ -148,14 +164,12 @@ function LeaderboardFull({ leaders, onSelect, targetMap, line }: {
           <button
             onClick={() => {
               const rows = filtered.map((a, i) => {
-                const agentBase = totalCommission > 0 ? (a.commission || 0) : (a.bookings || 0)
-                const sharePct = shareBase > 0 ? (agentBase / shareBase) * 100 : 0
+                const sharePct = shareBase > 0 ? (agentShareVal(a) / shareBase) * 100 : 0
                 return isInsurance ? {
                   Rank: i + 1,
                   Advisor: a.name,
-                  Commission: a.commission ?? 0,
                   'New Written': a.nbus_premium ?? 0,
-                  'Period Activity': a.bookings ?? 0,
+                  Premium: a.bookings ?? 0,
                   'Share %': parseFloat(sharePct.toFixed(2)),
                   Transactions: a.deals ?? 0,
                   Pipeline: a.pipeline_value ?? 0,
@@ -248,8 +262,7 @@ function LeaderboardFull({ leaders, onSelect, targetMap, line }: {
           </thead>
           <tbody>
             {displayed.map((a, idx) => {
-              const agentBase = totalCommission > 0 ? (a.commission || 0) : (a.bookings || 0)
-              const sharePct = shareBase > 0 ? (agentBase / shareBase) * 100 : 0
+              const sharePct = shareBase > 0 ? (agentShareVal(a) / shareBase) * 100 : 0
               return (
                 <tr
                   key={a.name}
@@ -276,7 +289,7 @@ function LeaderboardFull({ leaders, onSelect, targetMap, line }: {
                   {COLS.map((col) => (
                     <td key={col.key} className={cn(
                       'tabular-nums whitespace-nowrap px-3 py-2.5 text-right text-[12px]',
-                      col.key === 'commission' ? 'font-semibold' : 'text-muted-foreground',
+                      (col.key === 'commission' || col.key === 'nbus_premium') ? 'font-semibold' : 'text-muted-foreground',
                       col.key === 'win_rate' && a.win_rate >= 55 && 'text-emerald-500',
                       col.key === 'win_rate' && a.win_rate < 35 && 'text-rose-500',
                     )}>

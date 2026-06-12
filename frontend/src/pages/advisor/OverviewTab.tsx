@@ -153,13 +153,33 @@ export default function OverviewTab({
     s + (isInsurance ? a.bookings : (a.commission > 0 ? a.commission : a.bookings)), 0)
   const totalBranchValue = branchData?.branches?.reduce((s, b) => s + b.total_commission, 0) ?? 0
 
-  const kpis = [
+  // Insurance is premium-led: we sell premium; revenue (commission + carrier income)
+  // is only known from the board financials once a year.
+  const kpis = isInsurance ? [
     { icon: DollarSign, iconBg: 'bg-primary/10',     iconColor: 'text-primary',
-      title: isInsurance ? 'Written Premium' : 'Billed Bookings', tip: TIPS.billedRevenue,
+      title: 'Written Premium', tip: 'Total premium written this period, all transaction types, all staff — matches PBI Insurance Transactions.',
       value: formatCurrency(billedValue, true),
       delta: billedPct, deltaLabel: 'vs last year', onClick: () => nav('/monthly') },
     { icon: Trophy,    iconBg: 'bg-amber-500/10',   iconColor: 'text-amber-500',
-      title: isInsurance ? 'Active Policies' : 'Won Deals', tip: TIPS.wonDeals,
+      title: 'New Business Premium', tip: 'Premium from brand-new policies (NEWB) — the growth engine.',
+      value: formatCurrency(summary.nbus_premium ?? 0, true),
+      delta: summary.nbus_premium_yoy_pct, deltaLabel: 'vs last year', onClick: () => nav('/monthly') },
+    { icon: Target,    iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500',
+      title: 'Policies Sold', tip: 'New policies written this period (NEWB count).',
+      value: formatNumber(summary.policies_sold ?? 0),
+      delta: summary.policies_sold_yoy_pct, deltaLabel: 'vs last year', onClick: () => nav('/monthly') },
+    { icon: GitBranch, iconBg: 'bg-cyan-500/10',    iconColor: 'text-cyan-500',
+      title: `Revenue ${summary.annual_revenue_ref?.year ?? ''} (Finance)`,
+      tip: 'Official board-book "Members Insurance" revenue: policy commission plus carrier/contingent income. Updated yearly from financial statements — not a live number.',
+      value: formatCurrency(summary.annual_revenue_ref?.amount ?? 0, true),
+      sub: `Book: ${formatCurrency(summary.book_wp ?? 0, true)} WP · ${formatNumber(summary.book_policies ?? 0)} policies` },
+  ] as const : [
+    { icon: DollarSign, iconBg: 'bg-primary/10',     iconColor: 'text-primary',
+      title: 'Billed Bookings', tip: TIPS.billedRevenue,
+      value: formatCurrency(billedValue, true),
+      delta: billedPct, deltaLabel: 'vs last year', onClick: () => nav('/monthly') },
+    { icon: Trophy,    iconBg: 'bg-amber-500/10',   iconColor: 'text-amber-500',
+      title: 'Won Deals', tip: TIPS.wonDeals,
       value: formatNumber(summary.deals),
       delta: dealsYoyPct, deltaLabel: 'from last year', onClick: () => nav('/monthly') },
     { icon: GitBranch, iconBg: 'bg-cyan-500/10',    iconColor: 'text-cyan-500',
@@ -168,9 +188,9 @@ export default function OverviewTab({
       sub: `${pipelineCoverage.toFixed(1)}x coverage · ${formatNumber(summary.pipeline_count)} deals`,
       onClick: () => nav('/pipeline') },
     { icon: Target,    iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500',
-      title: isInsurance ? 'Avg Premium' : 'Win Rate', tip: isInsurance ? TIPS.avgDeal : TIPS.winRate,
-      value: isInsurance ? formatCurrency(summary.avg_deal_size, true) : formatPct(summary.win_rate),
-      sub: isInsurance ? undefined : `Avg ${formatCurrency(summary.avg_deal_size, true)} per deal`,
+      title: 'Win Rate', tip: TIPS.winRate,
+      value: formatPct(summary.win_rate),
+      sub: `Avg ${formatCurrency(summary.avg_deal_size, true)} per deal`,
       onClick: () => nav('/monthly') },
   ] as const
 

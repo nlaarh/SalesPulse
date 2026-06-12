@@ -334,16 +334,19 @@ export default function AgentDashboard() {
       {/* ── KPI Cards Row ─────────────────────────────────────────────── */}
       <div className={cn('animate-enter stagger-1 grid gap-3',
         isInsurance
-          ? (monthlyTarget != null ? 'grid-cols-5' : 'grid-cols-4')
+          ? (monthlyTarget != null ? 'grid-cols-4' : 'grid-cols-3')
           : (monthlyTarget != null ? 'grid-cols-6' : 'grid-cols-5')
       )}>
-        <KPICard
-          label="Commissions"
-          value={formatCurrency(s.commission, true)}
-          delta={<DeltaPill value={yoy.commission_pct} suffix="% YoY" />}
-          sub={`PY: ${formatCurrency(profile.prior.commission, true)}`}
-          tip={TIPS.commission}
-        />
+        {/* Insurance is premium-led — commission lags a year and pays $0 on new business */}
+        {!isInsurance && (
+          <KPICard
+            label="Commissions"
+            value={formatCurrency(s.commission, true)}
+            delta={<DeltaPill value={yoy.commission_pct} suffix="% YoY" />}
+            sub={`PY: ${formatCurrency(profile.prior.commission, true)}`}
+            tip={TIPS.commission}
+          />
+        )}
         {profile.has_separate_bookings ? (
           <KPICard
             label={line?.toLowerCase() === 'insurance' ? 'Written Premium' : 'Bookings'}
@@ -392,8 +395,9 @@ export default function AgentDashboard() {
           tip={TIPS.activePipeline}
         />
         {targetData && monthlyTarget != null && (() => {
-          const avgMonthlyComm = period > 0 ? targetData.totalActual / period : 0
-          const pct = monthlyTarget > 0 ? (avgMonthlyComm / monthlyTarget) * 100 : 0
+          const avgMonthlyActual = period > 0 ? targetData.totalActual / period : 0
+          const pct = monthlyTarget > 0 ? (avgMonthlyActual / monthlyTarget) * 100 : 0
+          const baseLabel = isInsurance ? 'Premium' : 'Comm'
           return (
             <KPICard
               label="vs Target"
@@ -406,8 +410,8 @@ export default function AgentDashboard() {
                   {pct >= 100 ? 'On track' : pct >= 80 ? 'Close' : 'Below target'}
                 </span>
               }
-              sub={`Comm ${formatCurrency(avgMonthlyComm, true)}/mo vs ${formatCurrency(monthlyTarget, true)} target`}
-              tip="Average monthly commission vs monthly performance threshold"
+              sub={`${baseLabel} ${formatCurrency(avgMonthlyActual, true)}/mo vs ${formatCurrency(monthlyTarget, true)} target`}
+              tip={`Average monthly ${isInsurance ? 'written premium' : 'commission'} vs monthly performance threshold`}
             />
           )
         })()}

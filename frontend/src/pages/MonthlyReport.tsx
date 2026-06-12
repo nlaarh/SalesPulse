@@ -43,7 +43,7 @@ export default function MonthlyReport() {
   const [divTotals, setDivTotals] = useState<Record<string, number>>({})
   const [monthColumns, setMonthColumns] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
-  const [metric, setMetric] = useState<Metric>('commission')
+  const [metric, setMetric] = useState<Metric>(line.toLowerCase() === 'insurance' ? 'sales' : 'commission')
   const [sortField, setSortField] = useState<SortField>('total')
   const [sortAsc, setSortAsc] = useState(false)
   const [showAll, setShowAll] = useState(false)
@@ -57,6 +57,13 @@ export default function MonthlyReport() {
   const [refreshing, setRefreshing] = useState(false)
 
   const forceRefresh = () => { setRetryCount(c => c + 1); setRefreshing(true) }
+
+  // Insurance has no commission metric — snap to Premium when switching lines
+  useEffect(() => {
+    const isIns = line.toLowerCase() === 'insurance'
+    if (isIns && metric === 'commission') setMetric('sales')
+    if (isIns && metric === 'invoiced') setMetric('sales')
+  }, [line])
 
   useEffect(() => {
     let cancelled = false
@@ -172,10 +179,21 @@ export default function MonthlyReport() {
     return [...new Set([...advisorBranchMap.values()].filter(Boolean))].sort()
   }, [viewType, advisorBranchMap, aggregatedBranches])
 
-  const allAdvisors = useMemo(
-    () => viewType === 'advisor' ? [...new Set(agents.map(a => a.name))].sort() : [],
-    [viewType, agents],
-  )
+  const allAdvisors = useMemo(() => {
+    if (viewType !== 'advisor') return []
+    const base = selDepts.length > 0
+      ? agents.filter(a => selDepts.includes(advisorBranchMap.get(a.name.toLowerCase()) ?? ''))
+      : agents
+    return [...new Set(base.map(a => a.name))].sort()
+  }, [viewType, agents, selDepts, advisorBranchMap])
+
+  // Drop advisor selections that are no longer in the filtered dept
+  useEffect(() => {
+    if (selAdvisors.length === 0) return
+    const valid = new Set(allAdvisors)
+    const still = selAdvisors.filter(a => valid.has(a))
+    if (still.length !== selAdvisors.length) setSelAdvisors(still)
+  }, [allAdvisors])
 
   const filteredItems = useMemo(() => {
     return activeItems.filter(item => {
@@ -211,7 +229,7 @@ export default function MonthlyReport() {
       bVal = bMonth ? (bMonth[metric as keyof MonthData] as number) || 0 : 0
     }
     return sortAsc ? aVal - bVal : bVal - aVal
-  }), [activeItems, sortField, sortAsc, metric])
+  }), [filteredItems, sortField, sortAsc, metric])
 
   const monthTotals = useMemo(() => {
     const totals = new Map<string, Record<Metric, number>>()

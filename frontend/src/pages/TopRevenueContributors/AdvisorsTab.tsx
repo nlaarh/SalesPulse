@@ -10,7 +10,7 @@ import {
 } from 'recharts'
 import { Loader2, Users, Building2, ChevronRight, Download, ArrowUp, ArrowDown } from 'lucide-react'
 import { exportToExcel } from '@/lib/exportExcel'
-import { fmt, fmtFull, fmtNum, Pie3D, ShareBar } from './shared'
+import { fmt, fmtFull, fmtNum, Pie3D, ShareBar, type DateRangeProps } from './shared'
 
 /* ── Shared ─────────────────────────────────────────────────────────────────*/
 
@@ -21,10 +21,11 @@ const BRANCH_COLORS = ['#6366f1','#06b6d4','#10b981','#f59e0b','#ef4444','#8b5cf
 
 type AdvSort = 'primary' | 'deals' | 'win_rate'
 
-export function AdvisorsTab() {
-  const { line, period, startDate, endDate } = useSales()
+export function AdvisorsTab({ startDate, endDate }: DateRangeProps) {
+  const { line, period } = useSales()
   const navigate = useNavigate()
   const c = useChartColors()
+  const isInsurance = line.toLowerCase() === 'insurance'
   const [advisors, setAdvisors] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [sortField, setSortField] = useState<AdvSort>('primary')
@@ -39,17 +40,21 @@ export function AdvisorsTab() {
     ])
       .then(([lbData, summaryData]) => {
         setAdvisors(lbData.advisors ?? [])
-        setOverallTotal(summaryData?.commission || 0)
+        // Insurance contribution = share of new written premium; Travel = share of commission
+        setOverallTotal(isInsurance
+          ? (summaryData?.nbus_premium || 0)
+          : (summaryData?.commission || 0))
       })
       .catch(() => {
         setAdvisors([])
         setOverallTotal(0)
       })
       .finally(() => setLoading(false))
-  }, [line, period, startDate, endDate])
+  }, [line, period, startDate, endDate, isInsurance])
 
-  const getVal = (a: any) => a.commission || 0
-  const metricLabel = 'Commission'
+  // Insurance is premium-led (commission lags and excludes carrier income)
+  const getVal = (a: any) => isInsurance ? (a.nbus_premium || 0) : (a.commission || 0)
+  const metricLabel = isInsurance ? 'New Written Premium' : 'Commission'
 
   const sorted = useMemo(() =>
     [...advisors].sort((a, b) => {
@@ -256,8 +261,8 @@ export function AdvisorsTab() {
 
 type BranchSort = 'commission' | 'sales' | 'comm_pct'
 
-export function BranchesTab() {
-  const { line, period, startDate, endDate } = useSales()
+export function BranchesTab({ startDate, endDate }: DateRangeProps) {
+  const { line, period } = useSales()
   const c = useChartColors()
   const [data, setData] = useState<BranchMonthlyData | null>(null)
   const [loading, setLoading] = useState(true)

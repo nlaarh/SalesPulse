@@ -459,9 +459,11 @@ def targets_with_actuals(
                 # Fallback to advisor's flat target
                 month_target = mt or 0.0
                 
-            # Fetch actual from consolidated actuals (commission)
+            # Actuals: Insurance targets are premium-based (premium-led standard);
+            # Travel targets are commission-based.
             actual_vals = actuals.get(ym) or {}
-            actual = actual_vals.get('commission', 0.0) or 0.0
+            actual_key = 'bookings' if line == 'Insurance' else 'commission'
+            actual = actual_vals.get(actual_key, 0.0) or 0.0
             
             total_actual += actual
             total_target += month_target
