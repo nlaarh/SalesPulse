@@ -17,9 +17,9 @@ import type { SystemServiceHealth, SystemServiceStatus } from '@/lib/api_admin'
 export const SERVICE_LABELS: Record<string, string> = {
   salesforce: 'SALESFORCE',
   postgres: 'PRIMARY DATABASE',
-  dr_postgres: 'DR DATABASE',
+  dr_postgres: 'POSTGRESQL DR',
   app: 'PRIMARY API NODE',
-  dr_app: 'DR API NODE',
+  dr_app: 'SALESPULSE DR',
   pbi: 'POWER BI',
   azure: 'AZURE VM',
   openai: 'OPENAI SERVICE',

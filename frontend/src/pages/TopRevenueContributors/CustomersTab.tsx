@@ -9,14 +9,14 @@ import {
 } from 'recharts'
 import { Loader2, Users, ExternalLink, ArrowUp, ArrowDown, Download } from 'lucide-react'
 import { exportToExcel } from '@/lib/exportExcel'
-import { fmt, fmtFull, fmtNum, CustomerSearchBox, ShareBar } from './shared'
+import { fmt, fmtFull, fmtNum, CustomerSearchBox, ShareBar, type DateRangeProps } from './shared'
 
 const CUST_COLORS = ['#6366f1','#06b6d4','#10b981','#f59e0b','#ef4444','#8b5cf6','#f97316','#14b8a6','#ec4899','#84cc16']
 
 type SortField = 'total_rev' | 'deal_count' | 'avg_deal'
 
-export function CustomersTab() {
-  const { line, startDate, endDate } = useSales()
+export function CustomersTab({ startDate, endDate }: DateRangeProps) {
+  const { line } = useSales()
   const navigate = useNavigate()
   const c = useChartColors()
 

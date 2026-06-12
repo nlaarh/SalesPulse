@@ -504,6 +504,165 @@ export async function fetchAgentCrossSell(name: string, line?: string) {
   }
 }
 
+// ── Membership Snapshot ───────────────────────────────────────────────────
+
+export interface MembershipMonthly {
+  month_no: number
+  month: string
+  new: number
+  renew: number
+  cancel: number
+}
+
+export interface MembershipSnapshot {
+  active_members: number
+  year: number
+  ytd_new: number
+  ytd_renew: number
+  ytd_cancel: number
+  ytd_lapsed: number          // non-renewals: 90-day past due
+  ytd_explicit_cancel: number // voluntary/involuntary real cancels (excl. legacy migration)
+  prior_ytd_new: number
+  prior_ytd_renew: number
+  prior_ytd_cancel: number
+  monthly: MembershipMonthly[]
+  renewal_rate?: number
+  prior_renewal_rate?: number
+}
+
+export async function fetchMembershipSnapshot(): Promise<MembershipSnapshot> {
+  const { data } = await api.get('/api/membership/snapshot')
+  return data as MembershipSnapshot
+}
+
+export interface MembershipAgent {
+  name: string
+  branch: string
+  new: number
+  renew: number
+  cancel: number
+  revenue: number
+}
+
+export interface MembershipLeaderboard {
+  agents: MembershipAgent[]
+  year: number
+}
+
+export interface MembershipChannel {
+  channel: string
+  new: number
+  renew: number
+  cancel: number
+  revenue: number
+}
+
+export interface MembershipChannels {
+  channels: MembershipChannel[]
+  year: number
+}
+
+export async function fetchMembershipLeaderboard(year?: number): Promise<MembershipLeaderboard> {
+  const { data } = await api.get('/api/membership/leaderboard', { params: year ? { year } : {} })
+  return data as MembershipLeaderboard
+}
+
+export async function fetchMembershipChannels(year?: number): Promise<MembershipChannels> {
+  const { data } = await api.get('/api/membership/channels', { params: year ? { year } : {} })
+  return data as MembershipChannels
+}
+
+// ── Reports ───────────────────────────────────────────────────────────────
+
+export interface ReportEntry {
+  id: string
+  type: string
+  start_date: string
+  end_date: string
+  label: string
+  generated_at: string
+  filename: string
+  file_size_kb?: number
+}
+
+export async function fetchReports(): Promise<ReportEntry[]> {
+  const { data } = await api.get('/api/reports')
+  return data as ReportEntry[]
+}
+
+export async function generateReport(startDate: string, endDate: string): Promise<{ report_id: string; status: string } & Partial<ReportEntry>> {
+  const { data } = await api.post('/api/reports/generate', { start_date: startDate, end_date: endDate })
+  return data
+}
+
+export async function pollReportStatus(reportId: string): Promise<{ status: string; report_id: string } & Partial<ReportEntry>> {
+  const { data } = await api.get(`/api/reports/${reportId}/status`)
+  return data
+}
+
+export async function openReportHtml(reportId: string): Promise<void> {
+  const { data } = await api.get(`/api/reports/${reportId}/html`, { responseType: 'blob' })
+  const url = window.URL.createObjectURL(new Blob([data], { type: 'text/html' }))
+  window.open(url, '_blank')
+}
+
+export async function deleteReport(reportId: string): Promise<void> {
+  await api.delete(`/api/reports/${reportId}`)
+}
+
+// ── Insurance Scorecard ────────────────────────────────────────────────────
+
+export interface ScorecardAgent {
+  name: string
+  department: string
+  manager: string
+  group: 'cc' | 'branch'
+  activities: number
+  calls_answered: number
+  walkins: number
+  alerted: number
+  answered: number
+  audits_scored: number
+  audits_correct: number
+  new_members: number
+  mbr_points: number
+}
+
+export interface ScorecardSource {
+  label: string
+  url: string
+}
+
+export interface ScorecardResponse {
+  start_date: string
+  end_date: string
+  agents: ScorecardAgent[]
+  source_errors: Record<string, string>
+  sources: Record<string, ScorecardSource>
+}
+
+export async function fetchInsuranceScorecard(startDate: string, endDate: string): Promise<ScorecardResponse> {
+  const { data } = await api.get('/api/insurance-scorecard', {
+    params: { start_date: startDate, end_date: endDate },
+    timeout: 180000,  // DirectQuery → Databricks can be slow on cold cache
+  })
+  return data
+}
+
+export async function exportInsuranceScorecard(startDate: string, endDate: string): Promise<void> {
+  const { data } = await api.get('/api/insurance-scorecard/export', {
+    params: { start_date: startDate, end_date: endDate },
+    responseType: 'blob',
+    timeout: 180000,
+  })
+  const url = window.URL.createObjectURL(new Blob([data], { type: 'text/csv' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `insurance_scorecard_${startDate}_${endDate}.csv`
+  a.click()
+  window.URL.revokeObjectURL(url)
+}
+
 // ── Re-exports from domain modules ────────────────────────────────────────
 export * from './api_territory'
 export * from './api_market'

@@ -18,6 +18,8 @@ from shared import (
     OPP_RT_TRAVEL_ID, OPP_RT_INSURANCE_ID, WON_STAGES,
     get_owner_map,
 )
+from pbi_client import dax_query, PBI_WS
+MEMBERSHIP_DS = "d7cdf3bc-dcf4-48ed-b4bb-200563dcfd7f"
 from constants import CACHE_TTL_DAY
 import cache
 from routers.market_pulse_destinations import (
@@ -292,82 +294,7 @@ def _safe_birthday_window(today: date) -> tuple[date, date]:
         end = date(today.year - 64, today.month, 28)
     return start, end
 
-
-def _fetch_membership_metrics(today: date) -> dict[str, int]:
-    """Daily-cached account-side metrics (expensive + period-independent)."""
-    key = f"market_pulse_membership_metrics_{today.isoformat()}"
-
-    def fetch():
-        birth_start, birth_end = _safe_birthday_window(today)
-        exp_end_90 = (today + timedelta(days=90)).isoformat()
-        exp_end_30 = (today + timedelta(days=30)).isoformat()
-        _exp_base = (
-            f"IsPersonAccount = true AND Member_Status__c = 'A'"
-            f" AND ImportantActiveMemExpiryDate__c >= {today.isoformat()}"
-            f" AND ImportantActiveMemCoverage__c IN ('B','PLUS','PREMIER')"
-            f" AND Out_of_Territory_Member__c = false"
-            f" AND Billing_Region__c IN ('Western','Rochester','Central')"
-        )
-        data = sf_parallel(
-            turning_65=f"""
-                SELECT COUNT(Id) cnt
-                FROM Account
-                WHERE {_exp_base}
-                  AND PersonBirthdate != null
-                  AND PersonBirthdate >= {birth_start.isoformat()}
-                  AND PersonBirthdate <= {birth_end.isoformat()}
-            """,
-            expiring_90d=f"""
-                SELECT COUNT(Id) cnt FROM Account
-                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_90}
-            """,
-            expiring_30d=f"""
-                SELECT COUNT(Id) cnt FROM Account
-                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_30}
-            """,
-            expiring_premier=f"""
-                SELECT COUNT(Id) cnt FROM Account
-                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_90}
-                  AND ImportantActiveMemCoverage__c = 'PREMIER'
-            """,
-            expiring_plus=f"""
-                SELECT COUNT(Id) cnt FROM Account
-                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_90}
-                  AND ImportantActiveMemCoverage__c = 'PLUS'
-            """,
-            expiring_basic=f"""
-                SELECT COUNT(Id) cnt FROM Account
-                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_90}
-                  AND ImportantActiveMemCoverage__c = 'B'
-            """,
-            basic_members=f"""
-                SELECT COUNT(Id) cnt
-                FROM Account
-                WHERE IsPersonAccount = true
-                  AND Member_Status__c = 'A'
-                  AND Out_of_Territory_Member__c = false
-                  AND Billing_Region__c IN ('Western','Rochester','Central')
-                  AND ImportantActiveMemCoverage__c = 'B'
-                  AND ImportantActiveMemExpiryDate__c >= {today.isoformat()}
-            """,
-        )
-        _cnt = lambda k: (data.get(k, [{}])[0] or {}).get('cnt', 0) or 0
-        return {
-            'members_turning_65': _cnt('turning_65'),
-            'expiring_memberships_90d': _cnt('expiring_90d'),
-            'expiring_memberships_30d': _cnt('expiring_30d'),
-            'expiring_premier': _cnt('expiring_premier'),
-            'expiring_plus': _cnt('expiring_plus'),
-            'expiring_basic': _cnt('expiring_basic'),
-            'basic_tier_members': _cnt('basic_members'),
-        }
-
-    # These values shift slowly; cache aggressively.
-    return cache.cached_query(key, fetch, ttl=CACHE_TTL_DAY, disk_ttl=CACHE_TTL_DAY) or {
-        'members_turning_65': 0,
-        'expiring_memberships_90d': 0,
-        'basic_tier_members': 0,
-    }
+# _fetch_membership_metrics has been removed as it was unused and relied on Salesforce.
 
 
 # ── Endpoint ─────────────────────────────────────────────────────────────────
@@ -397,17 +324,7 @@ def market_pulse(
         adv_thread = threading.Thread(target=_fetch_adv, daemon=True)
         adv_thread.start()
 
-        # ── ALL queries in ONE parallel batch (travel + medicare + membership) ──
-        birth_start, birth_end = _safe_birthday_window(today)
-        exp_end_90 = (today + timedelta(days=90)).isoformat()
-        exp_end_30 = (today + timedelta(days=30)).isoformat()
-        _exp_base = (
-            f"IsPersonAccount = true AND Member_Status__c = 'A'"
-            f" AND ImportantActiveMemExpiryDate__c >= {today.isoformat()}"
-            f" AND ImportantActiveMemCoverage__c IN ('B','PLUS','PREMIER')"
-            f" AND Out_of_Territory_Member__c = false"
-            f" AND Billing_Region__c IN ('Western','Rochester','Central')"
-        )
+        # ── SF parallel batch (Opportunities only) ──
         data = sf_parallel(
             travel_rollup=f"""
                 SELECT Destination_Region__c dest, COUNT(Id) cnt, SUM(Amount) total
@@ -426,46 +343,95 @@ def market_pulse(
                   AND {WON_STAGES}
                   AND CloseDate >= {sd} AND CloseDate <= {ed}
             """,
-            # Membership metrics — merged into same batch
-            turning_65=f"""
-                SELECT COUNT(Id) cnt FROM Account
-                WHERE {_exp_base}
-                  AND PersonBirthdate != null
-                  AND PersonBirthdate >= {birth_start.isoformat()}
-                  AND PersonBirthdate <= {birth_end.isoformat()}
-            """,
-            expiring_90d=f"""
-                SELECT COUNT(Id) cnt FROM Account
-                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_90}
-            """,
-            expiring_30d=f"""
-                SELECT COUNT(Id) cnt FROM Account
-                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_30}
-            """,
-            expiring_premier=f"""
-                SELECT COUNT(Id) cnt FROM Account
-                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_90}
-                  AND ImportantActiveMemCoverage__c = 'PREMIER'
-            """,
-            expiring_plus=f"""
-                SELECT COUNT(Id) cnt FROM Account
-                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_90}
-                  AND ImportantActiveMemCoverage__c = 'PLUS'
-            """,
-            expiring_basic=f"""
-                SELECT COUNT(Id) cnt FROM Account
-                WHERE {_exp_base} AND ImportantActiveMemExpiryDate__c <= {exp_end_90}
-                  AND ImportantActiveMemCoverage__c = 'B'
-            """,
-            basic_members=f"""
-                SELECT COUNT(Id) cnt FROM Account
-                WHERE IsPersonAccount = true AND Member_Status__c = 'A'
-                  AND Out_of_Territory_Member__c = false
-                  AND Billing_Region__c IN ('Western','Rochester','Central')
-                  AND ImportantActiveMemCoverage__c = 'B'
-                  AND ImportantActiveMemExpiryDate__c >= {today.isoformat()}
-            """,
         )
+
+        # ── Query active WCNY membership statistics from PBI ──
+        y, m, d = today.isoformat().split("-")
+        today_dax = f"DATE({y}, {int(m)}, {int(d)})"
+        
+        exp_end_90 = (today + timedelta(days=90)).isoformat()
+        y90, m90, d90 = exp_end_90.split("-")
+        exp_end_90_dax = f"DATE({y90}, {int(m90)}, {int(d90)})"
+        
+        exp_end_30 = (today + timedelta(days=30)).isoformat()
+        y30, m30, d30 = exp_end_30.split("-")
+        exp_end_30_dax = f"DATE({y30}, {int(m30)}, {int(d30)})"
+        
+        birth_start, birth_end = _safe_birthday_window(today)
+        yb_start, mb_start, db_start = birth_start.isoformat().split("-")
+        birth_start_dax = f"DATE({yb_start}, {int(mb_start)}, {int(db_start)})"
+        
+        yb_end, mb_end, db_end = birth_end.isoformat().split("-")
+        birth_end_dax = f"DATE({yb_end}, {int(mb_end)}, {int(db_end)})"
+
+        q_pbi = f"""
+        EVALUATE
+        ROW(
+            "turning_65", CALCULATE(
+                COUNTROWS(membership_consolidated),
+                membership_consolidated[membership_status_code] = "A"
+                && membership_consolidated[customer_address_region] IN {{"WESTERN", "ROCHESTER", "CENTRAL"}}
+                && membership_consolidated[membership_coverage_level_code] IN {{"BASIC", "PLUS", "PLUS-A", "PREMIER", "PREMIER-A"}}
+                && membership_consolidated[membership_expiry_date] >= {today_dax}
+                && membership_consolidated[customer_birthdate] >= {birth_start_dax}
+                && membership_consolidated[customer_birthdate] <= {birth_end_dax}
+            ),
+            "expiring_90d", CALCULATE(
+                COUNTROWS(membership_consolidated),
+                membership_consolidated[membership_status_code] = "A"
+                && membership_consolidated[customer_address_region] IN {{"WESTERN", "ROCHESTER", "CENTRAL"}}
+                && membership_consolidated[membership_coverage_level_code] IN {{"BASIC", "PLUS", "PLUS-A", "PREMIER", "PREMIER-A"}}
+                && membership_consolidated[membership_expiry_date] >= {today_dax}
+                && membership_consolidated[membership_expiry_date] <= {exp_end_90_dax}
+            ),
+            "expiring_30d", CALCULATE(
+                COUNTROWS(membership_consolidated),
+                membership_consolidated[membership_status_code] = "A"
+                && membership_consolidated[customer_address_region] IN {{"WESTERN", "ROCHESTER", "CENTRAL"}}
+                && membership_consolidated[membership_coverage_level_code] IN {{"BASIC", "PLUS", "PLUS-A", "PREMIER", "PREMIER-A"}}
+                && membership_consolidated[membership_expiry_date] >= {today_dax}
+                && membership_consolidated[membership_expiry_date] <= {exp_end_30_dax}
+            ),
+            "expiring_premier", CALCULATE(
+                COUNTROWS(membership_consolidated),
+                membership_consolidated[membership_status_code] = "A"
+                && membership_consolidated[customer_address_region] IN {{"WESTERN", "ROCHESTER", "CENTRAL"}}
+                && membership_consolidated[membership_coverage_level_code] IN {{"PREMIER", "PREMIER-A"}}
+                && membership_consolidated[membership_expiry_date] >= {today_dax}
+                && membership_consolidated[membership_expiry_date] <= {exp_end_90_dax}
+            ),
+            "expiring_plus", CALCULATE(
+                COUNTROWS(membership_consolidated),
+                membership_consolidated[membership_status_code] = "A"
+                && membership_consolidated[customer_address_region] IN {{"WESTERN", "ROCHESTER", "CENTRAL"}}
+                && membership_consolidated[membership_coverage_level_code] IN {{"PLUS", "PLUS-A"}}
+                && membership_consolidated[membership_expiry_date] >= {today_dax}
+                && membership_consolidated[membership_expiry_date] <= {exp_end_90_dax}
+            ),
+            "expiring_basic", CALCULATE(
+                COUNTROWS(membership_consolidated),
+                membership_consolidated[membership_status_code] = "A"
+                && membership_consolidated[customer_address_region] IN {{"WESTERN", "ROCHESTER", "CENTRAL"}}
+                && membership_consolidated[membership_coverage_level_code] IN {{"BASIC"}}
+                && membership_consolidated[membership_expiry_date] >= {today_dax}
+                && membership_consolidated[membership_expiry_date] <= {exp_end_90_dax}
+            ),
+            "basic_members", CALCULATE(
+                COUNTROWS(membership_consolidated),
+                membership_consolidated[membership_status_code] = "A"
+                && membership_consolidated[customer_address_region] IN {{"WESTERN", "ROCHESTER", "CENTRAL"}}
+                && membership_consolidated[membership_coverage_level_code] IN {{"BASIC"}}
+                && membership_consolidated[membership_expiry_date] >= {today_dax}
+            )
+        )
+        """
+        pbi_metrics = {}
+        try:
+            pbi_rows = dax_query(PBI_WS, MEMBERSHIP_DS, q_pbi)
+            if pbi_rows:
+                pbi_metrics = pbi_rows[0]
+        except Exception:
+            log.exception("Failed to query membership metrics from PBI in market pulse")
 
         _cnt = lambda k: (data.get(k, [{}])[0] or {}).get('cnt', 0) or 0
 
@@ -497,13 +463,13 @@ def market_pulse(
 
         medicare_won = _cnt('medicare_count')
         membership_metrics = {
-            'members_turning_65': _cnt('turning_65'),
-            'expiring_memberships_90d': _cnt('expiring_90d'),
-            'expiring_memberships_30d': _cnt('expiring_30d'),
-            'expiring_premier': _cnt('expiring_premier'),
-            'expiring_plus': _cnt('expiring_plus'),
-            'expiring_basic': _cnt('expiring_basic'),
-            'basic_tier_members': _cnt('basic_members'),
+            'members_turning_65': int(pbi_metrics.get('[turning_65]') or 0),
+            'expiring_memberships_90d': int(pbi_metrics.get('[expiring_90d]') or 0),
+            'expiring_memberships_30d': int(pbi_metrics.get('[expiring_30d]') or 0),
+            'expiring_premier': int(pbi_metrics.get('[expiring_premier]') or 0),
+            'expiring_plus': int(pbi_metrics.get('[expiring_plus]') or 0),
+            'expiring_basic': int(pbi_metrics.get('[expiring_basic]') or 0),
+            'basic_tier_members': int(pbi_metrics.get('[basic_members]') or 0),
         }
 
         # Enrich membership renewal alert with real tier breakdown

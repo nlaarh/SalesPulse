@@ -202,7 +202,7 @@ init_db()
 
 # ── Register routers ─────────────────────────────────────────────────────────
 
-from routers import sales_advisor, sales_advisor_search, sales_dashboard, sales_pipeline, sales_travel, sales_leads, sales_performance, sales_opportunities, sales_goal_focus, sales_agent_profile, sales_narrative, users, admin_users, activity_logs, advisor_targets, advisor_targets_monthly, advisor_targets_excel, advisor_targets_achievement, email_report, issues, ai_config, customer_profile, cross_sell, market_pulse, territory_map, territory_customers, territory_census, territory_insights, census_data, ai_queries, performance_metrics, cache_admin, query_profile, permissions, growth, growth_admin, product_report, system_health, db_admin
+from routers import sales_advisor, sales_advisor_search, sales_dashboard, sales_pipeline, sales_travel, sales_leads, sales_performance, sales_opportunities, sales_goal_focus, sales_agent_profile, sales_narrative, users, admin_users, activity_logs, advisor_targets, advisor_targets_monthly, advisor_targets_excel, advisor_targets_achievement, email_report, issues, ai_config, customer_profile, cross_sell, market_pulse, territory_map, territory_customers, territory_census, territory_insights, census_data, ai_queries, performance_metrics, cache_admin, query_profile, permissions, growth, growth_admin, product_report, system_health, db_admin, membership_snapshot, membership_leaderboard, insurance_scorecard
 
 app.include_router(sales_advisor.router)
 app.include_router(sales_advisor_search.router)
@@ -243,10 +243,15 @@ app.include_router(growth_admin.router)
 app.include_router(product_report.router)
 app.include_router(system_health.router)
 app.include_router(db_admin.router)
+app.include_router(membership_snapshot.router)
+app.include_router(membership_leaderboard.router)
+app.include_router(insurance_scorecard.router)
 from routers import growth_narrative
 app.include_router(growth_narrative.router)
 from routers import growth_data
 app.include_router(growth_data.router)
+from routers import reports as reports_router
+app.include_router(reports_router.router)
 
 
 # ── Health check ─────────────────────────────────────────────────────────────

@@ -106,6 +106,39 @@ Opportunities:
         return {}
 
 
+def _get_advisor_branches(line: str, sd: str, ed: str) -> dict[str, str]:
+    """Load advisor -> branch mapping from db targets and PBI overlays."""
+    mapping = {}
+    # 1. Fetch from database targets
+    try:
+        from database import SessionLocal
+        from models import AdvisorTarget
+        db = SessionLocal()
+        try:
+            rows = db.query(AdvisorTarget.sf_name, AdvisorTarget.branch).filter(AdvisorTarget.sf_name != None).all()
+            for r in rows:
+                if r.sf_name and r.branch:
+                    mapping[r.sf_name.strip().lower()] = r.branch.strip()
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"Failed to query AdvisorTarget for branches: {e}")
+
+    # 2. Overlay with PBI advisor mapping for the current range if available
+    try:
+        from pbi_utils import pbi_by_advisor
+        pbi_rows = pbi_by_advisor(line, sd, ed)
+        for r in pbi_rows:
+            name = r.get('name')
+            branch = r.get('branch')
+            if name and branch:
+                mapping[name.strip().lower()] = branch.strip()
+    except Exception as e:
+        log.warning(f"Failed to fetch branches from PBI: {e}")
+
+    return mapping
+
+
 @router.get("/api/sales/opportunities/top")
 def top_opportunities(
     line: str = "Travel", limit: int = 100, ai: bool = True,
@@ -125,7 +158,7 @@ def top_opportunities(
         records = sf_query_all(f"""
             SELECT Id, Name, Amount, StageName, Probability, ForecastCategory,
                    CloseDate, CreatedDate, LastActivityDate, PushCount,
-                   LastStageChangeDate, OwnerId, RecordTypeId
+                   LastStageChangeDate, OwnerId, RecordTypeId, AccountId, Account.Name
             FROM Opportunity
             WHERE IsClosed = false AND {lf}
               AND Amount != null
@@ -139,6 +172,7 @@ def top_opportunities(
     records = cache.cached_query(key, fetch_opps, ttl=CACHE_TTL_MEDIUM, disk_ttl=CACHE_TTL_HOUR)
 
     owner_map = get_owner_map()
+    branch_map = _get_advisor_branches(line, sd, ed)
     rt_name_map = {OPP_RT_TRAVEL_ID: 'Travel', OPP_RT_INSURANCE_ID: 'Insurance'}
 
     today = date.today()
@@ -146,6 +180,15 @@ def top_opportunities(
     for r in records:
         s = _score_opportunity(r, today)
         owner_name = owner_map.get(r.get('OwnerId', ''), '')
+        owner_name_lower = owner_name.strip().lower()
+        branch = branch_map.get(owner_name_lower, 'Unknown')
+
+        # Safe extraction of account name
+        account_name = 'Unknown Customer'
+        account_data = r.get('Account')
+        if isinstance(account_data, dict):
+            account_name = account_data.get('Name') or 'Unknown Customer'
+
         scored.append({
             'id': r.get('Id', ''),
             'name': r.get('Name', ''),
@@ -158,6 +201,9 @@ def top_opportunities(
             'last_activity': r.get('LastActivityDate', ''),
             'push_count': r.get('PushCount', 0) or 0,
             'owner': owner_name,
+            'branch': branch,
+            'account_id': r.get('AccountId') or '',
+            'account_name': account_name,
             'record_type': rt_name_map.get(r.get('RecordTypeId', ''), ''),
             'score': s['score'],
             'reasons': s['reasons'],

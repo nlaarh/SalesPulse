@@ -13,14 +13,14 @@ import {
 // Positions tuned for the ~460px-tall topology container.
 const NODE_POSITIONS: Record<string, string> = {
   salesforce:  'top-[5px] left-[50%] -translate-x-1/2',
-  postgres:    'top-[80px] left-[10px]',
-  app:         'top-[80px] right-[10px]',
-  pbi:         'top-[200px] left-[10px]',
-  openai:      'top-[200px] right-[10px]',
-  github:      'top-[310px] left-[10px]',
-  azure:       'top-[310px] right-[10px]',
-  dr_postgres: 'bottom-[5px] left-[35%] -translate-x-1/2',
-  dr_app:      'bottom-[5px] left-[65%] -translate-x-1/2',
+  postgres:    'top-[115px] left-[10px]',
+  app:         'top-[115px] right-[10px]',
+  pbi:         'top-[265px] left-[10px]',
+  openai:      'top-[265px] right-[10px]',
+  github:      'top-[415px] left-[10px]',
+  azure:       'top-[415px] right-[10px]',
+  dr_postgres: 'top-[565px] left-[35%] -translate-x-1/2',
+  dr_app:      'top-[565px] left-[65%] -translate-x-1/2',
 }
 
 type Props = {
@@ -42,7 +42,7 @@ export default function SystemHealthTopology({
 }: Props) {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[3fr_2fr]">
-      <div className="card-premium relative flex min-h-[560px] flex-col justify-between overflow-hidden border border-border/40 bg-black/25 p-6 dark:bg-black/45">
+      <div className="card-premium relative flex min-h-[790px] flex-col justify-between overflow-hidden border border-border/40 bg-black/25 p-6 dark:bg-black/45">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(94,106,210,0.08),transparent_65%)]" />
         <div className="relative z-10 flex items-center justify-between border-b border-border/40 pb-3">
           <div>
@@ -77,7 +77,7 @@ function PowerTopology({ health, pinging, onPing }: {
   onPing: (serviceKey: string) => void
 }) {
   return (
-    <div className="relative my-2 flex h-[460px] w-full select-none items-center justify-center">
+    <div className="relative my-2 flex h-[690px] w-full select-none items-center justify-center">
       <CableLines health={health} />
       <CorePdu health={health} />
       {SERVICE_ORDER.map((key) => health.services[key] ? (
@@ -90,24 +90,24 @@ function PowerTopology({ health, pinging, onPing }: {
 function CableLines({ health }: { health: SystemHealthResponse }) {
   const lines = [
     { key: 'salesforce',  d: 'M 320 90 L 320 130' },
-    { key: 'postgres',    d: 'M 127 115 L 240 115 L 295 150' },
-    { key: 'app',         d: 'M 513 115 L 400 115 L 345 150' },
-    { key: 'pbi',         d: 'M 127 195 L 240 195 L 290 195' },
-    { key: 'openai',      d: 'M 513 195 L 400 195 L 350 195' },
-    { key: 'github',      d: 'M 127 285 L 240 285 L 295 230' },
-    { key: 'azure',       d: 'M 513 285 L 400 285 L 345 230' },
-    { key: 'dr_postgres', d: 'M 224 325 L 270 325 L 300 238' },
-    { key: 'dr_app',      d: 'M 416 325 L 370 325 L 340 238' },
+    { key: 'postgres',    d: 'M 127 135 L 240 135 L 295 150' },
+    { key: 'app',         d: 'M 513 135 L 400 135 L 345 150' },
+    { key: 'pbi',         d: 'M 127 285 L 240 285 L 290 195' },
+    { key: 'openai',      d: 'M 513 285 L 400 285 L 350 195' },
+    { key: 'github',      d: 'M 127 435 L 240 435 L 295 230' },
+    { key: 'azure',       d: 'M 513 435 L 400 435 L 345 230' },
+    { key: 'dr_postgres', d: 'M 224 575 L 270 575 L 300 238' },
+    { key: 'dr_app',      d: 'M 416 575 L 370 575 L 340 238' },
   ]
 
   // Replication / Sync Line between DR nodes
   const drDbOnline = health.services['dr_postgres']?.status === 'online'
   const drAppOnline = health.services['dr_app']?.status === 'online'
   const syncColor = (drDbOnline && drAppOnline) ? '#10B981' : '#F59E0B'
-  const syncPath = 'M 224 325 L 416 325'
+  const syncPath = 'M 224 575 L 416 575'
 
   return (
-    <svg viewBox="0 0 640 380" className="pointer-events-none absolute inset-0 z-0 h-full w-full">
+    <svg viewBox="0 0 640 600" className="pointer-events-none absolute inset-0 z-0 h-full w-full">
       <defs>
         <style>{'@keyframes pulseLine{to{stroke-dashoffset:-20}}.line-pulse{stroke-dasharray:4 12;animation:pulseLine 1.2s linear infinite}'}</style>
       </defs>
@@ -146,7 +146,7 @@ function CorePdu({ health }: { health: SystemHealthResponse }) {
     { key: 'azure',       label: 'VM',  x: 345, y: 230, anchor: 'end' },
   ]
   return (
-    <svg viewBox="0 0 640 380" className="pointer-events-none absolute inset-0 z-10 h-full w-full">
+    <svg viewBox="0 0 640 600" className="pointer-events-none absolute inset-0 z-10 h-full w-full">
       <rect x="257" y="102" width="126" height="156" rx="10" fill="none" stroke="#5E6AD2" strokeWidth="1" opacity="0.1" className="animate-pulse" />
       <rect x="260" y="105" width="120" height="150" rx="8" fill="#0F172A" fillOpacity="0.9" stroke="#334155" strokeWidth="1.5" />
       <rect x="262" y="107" width="116" height="146" rx="6" fill="none" stroke="#475569" strokeWidth="0.5" opacity="0.4" />
@@ -258,7 +258,7 @@ function TopologyNode({ serviceKey, service, pinging, onPing }: {
 
 function ConsoleLogs({ logs }: { logs: string[] }) {
   return (
-    <div className="card-premium flex min-h-[560px] flex-col overflow-hidden border border-zinc-800 bg-zinc-950 font-mono">
+    <div className="card-premium flex min-h-[790px] flex-col overflow-hidden border border-zinc-800 bg-zinc-950 font-mono">
       <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800 bg-zinc-900/40 px-4 py-3 text-primary">
         <Terminal className="h-4 w-4 text-primary" />
         <span className="text-[11px] font-bold uppercase tracking-wider">Tactical HUD Console Logs</span>

@@ -139,6 +139,31 @@ def test_leads_volume_returns_expected_keys(api_client, auth_headers):
     assert resp.status_code == 200
 
 
+def test_leads_list_returns_expected_keys(api_client, auth_headers):
+    resp = api_client.get('/api/sales/leads/list',
+                          params={'line': 'Travel', 'source': 'Web'},
+                          headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert 'leads' in data
+    assert 'total' in data
+    assert 'line' in data
+    assert isinstance(data['leads'], list)
+
+
+def test_leads_time_to_convert_returns_expected_keys(api_client, auth_headers):
+    resp = api_client.get('/api/sales/leads/time-to-convert',
+                          params={'line': 'Travel'},
+                          headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert 'avg_days' in data
+    assert 'median_days' in data
+    assert 'buckets' in data
+    assert 'by_source' in data
+    assert 'line' in data
+
+
 def test_narrative_invalid_page_returns_error(api_client, auth_headers):
     resp = api_client.get('/api/sales/narrative',
                           params={'page': 'nonexistent', 'line': 'Travel'},

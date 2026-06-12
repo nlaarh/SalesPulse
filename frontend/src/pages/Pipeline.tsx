@@ -88,7 +88,7 @@ export default function Pipeline() {
           <p className="text-[12px] font-medium text-muted-foreground">
             {line} Division &middot; {periodLabel}
           </p>
-          <h1 className="mt-0.5 text-2xl font-bold tracking-tight">Pipeline & Forecasting</h1>
+          <h1 className="mt-0.5 text-2xl font-bold tracking-tight">Sales Pipeline</h1>
         </div>
         <div className="flex gap-1 rounded-lg border border-border bg-secondary/30 p-1">
           {TABS.map((t) => {

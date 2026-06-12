@@ -26,17 +26,22 @@ def _clear_geo_related_cache():
 from schemas import LoginRequest, CreateUserRequest, UpdateUserRequest, ResetAdminRequest
 
 
+from concurrent.futures import ThreadPoolExecutor
+_login_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix='login-session')
+
+
 def _create_session_for_user(
     db: Session,
     user: User,
     *,
     ip: str | None,
     impersonator_user_id: int | None = None,
+    token: str | None = None,
 ) -> UserSession:
     """Create + persist a UserSession row. Returns the row (with token populated)."""
     now = datetime.utcnow()
     sess = UserSession(
-        token=secrets.token_urlsafe(32),
+        token=token or secrets.token_urlsafe(32),
         user_id=user.id,
         name=user.name or '',
         role=user.role or '',
@@ -68,16 +73,20 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     # Persist a session row (used by Admin → Sessions UI + last_seen tracking).
     # Best-effort: if it fails for any reason (e.g., table not yet migrated), we
     # still return a usable JWT so login is never broken by session-tracking.
-    sid: str | None = None
-    try:
-        sess = _create_session_for_user(db, user, ip=ip)
-        sid = sess.token
-    except Exception:
-        log.exception('Failed to create UserSession row on login (degrading gracefully)')
+    sid = secrets.token_urlsafe(32)
+    def bg_create_session():
+        from database import SessionLocal
+        bg_db = SessionLocal()
         try:
-            db.rollback()
+            bg_user = bg_db.query(User).filter(User.id == user.id).first()
+            if bg_user:
+                _create_session_for_user(bg_db, bg_user, ip=ip, token=sid)
         except Exception:
-            pass
+            log.exception('Failed to create UserSession row on login (degrading gracefully)')
+        finally:
+            bg_db.close()
+
+    _login_executor.submit(bg_create_session)
 
     token = create_token(user.id, user.email, user.role, sid=sid)
     log_activity(db, action='login', category='auth', user=user, detail=f'Login success ({user.role})', ip=ip)

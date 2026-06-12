@@ -434,6 +434,8 @@ function CensusSection({ census }: { census: ZipCensusData }) {
           <div className="grid grid-cols-2 gap-2 text-xs">
             <StatBox label="Registered Vehicles" value={fmt(census.registered_vehicles || 0)} />
             <StatBox label="Vehicles 3+ Yrs" value={fmt(census.vehicles_3plus_yrs || 0)} highlight />
+            <StatBox label="College Ed." value={fmt(census.college_educated || 0)} />
+            <StatBox label="College %" value={census.college_pct !== undefined ? `${census.college_pct}%` : '—'} />
             <StatBox label="Population" value={fmt(census.population || 0)} />
             <StatBox label="Adults 18+" value={fmt(census.adults_18plus || 0)} />
             <StatBox label="Median Income" value={`$${fmt(census.median_income || 0)}`} />

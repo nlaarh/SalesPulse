@@ -44,11 +44,11 @@ function pushRecent(id: string) {
 
 /* ── Static nav items (used outside of hook too) ────────────────────────── */
 export const NAV_COMMANDS = [
-  { id: 'nav-dashboard',     label: 'Sales Dashboard',        sub: 'Bookings, KPIs & leaderboard',        to: '/dashboard',     icon: <LayoutDashboard className="w-4 h-4" />, keywords: 'home overview' },
-  { id: 'nav-monthly',       label: 'Monthly Report',         sub: 'Agent × month breakdown',             to: '/monthly',       icon: <Table2    className="w-4 h-4" />, keywords: 'advisors table' },
-  { id: 'nav-pipeline',      label: 'Pipeline & Forecast',    sub: 'Stages, velocity & risk',             to: '/pipeline',      icon: <GitBranch className="w-4 h-4" />, keywords: 'funnel stages forecast coverage' },
-  { id: 'nav-opportunities', label: 'Top Opportunities',      sub: 'AI-scored deal ranking',              to: '/opportunities', icon: <Target    className="w-4 h-4" />, keywords: 'deals score opps' },
-  { id: 'nav-leads',         label: 'Lead Funnel',            sub: 'Conversion rates & sources',          to: '/leads',         icon: <Megaphone className="w-4 h-4" />, keywords: 'leads conversion expired' },
+  { id: 'nav-dashboard',     label: 'Advisor Performance',    sub: 'Bookings, KPIs & leaderboard',        to: '/dashboard',     icon: <LayoutDashboard className="w-4 h-4" />, keywords: 'home overview' },
+  { id: 'nav-monthly',       label: 'Monthly Breakdown',      sub: 'Agent × month breakdown',             to: '/monthly',       icon: <Table2    className="w-4 h-4" />, keywords: 'advisors table' },
+  { id: 'nav-pipeline',      label: 'Sales Pipeline',         sub: 'Stages, velocity & risk',             to: '/pipeline',      icon: <GitBranch className="w-4 h-4" />, keywords: 'funnel stages forecast coverage' },
+  { id: 'nav-opportunities', label: 'AI-Ranked Deals',        sub: 'AI-scored deal ranking',              to: '/opportunities', icon: <Target    className="w-4 h-4" />, keywords: 'deals score opps' },
+  { id: 'nav-leads',         label: 'Lead Funnel & Conversion', sub: 'Conversion rates & sources',          to: '/leads',         icon: <Megaphone className="w-4 h-4" />, keywords: 'leads conversion expired' },
   { id: 'nav-travel',        label: 'Travel Destinations',    sub: 'Destination & seasonal analytics',    to: '/travel',        icon: <Plane     className="w-4 h-4" />, keywords: 'destinations travel' },
   { id: 'nav-settings',      label: 'Settings',               sub: 'Users & preferences',                 to: '/settings',      icon: <Settings  className="w-4 h-4" />, keywords: 'admin users' },
   { id: 'nav-help',          label: 'Help & Documentation',   sub: 'Data model, metrics, glossary',       to: '/help',          icon: <HelpCircle className="w-4 h-4" />, keywords: 'docs guide' },

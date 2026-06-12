@@ -358,7 +358,7 @@ export default function MarketPulse() {
           <Radio className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-foreground">Market Pulse</h1>
+          <h1 className="text-xl font-bold text-foreground">Advisories & Alerts</h1>
           <p className="text-xs text-muted-foreground">
             External intelligence & proactive alerts • Updated {new Date(data.generated_at).toLocaleString()}
           </p>

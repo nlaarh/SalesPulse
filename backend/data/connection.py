@@ -25,9 +25,9 @@ PG_SCHEMA = os.getenv('PG_SCHEMA', 'sales')
 PG_USER = os.getenv('PG_USER', 'nlaaroubi@nyaaa.com')
 PG_PORT = int(os.getenv('PG_PORT', '5432'))
 
-# Do not use SQLite fallback except strictly for running isolated backend unit tests.
+# Do not use SQLite fallback except strictly for running isolated backend unit tests or when USE_SQLITE=1 is set.
 IS_TESTING = 'pytest' in sys.modules or os.getenv('PYTEST_CURRENT_TEST') is not None
-USE_SQLITE = IS_TESTING
+USE_SQLITE = IS_TESTING or os.getenv('USE_SQLITE') == '1'
 
 if not os.getenv('PG_HOST') and not USE_SQLITE:
     log.warning("PG_HOST not set — using hardcoded default. Set PG_HOST explicitly in production.")
@@ -167,3 +167,37 @@ def create_all_tables():
     from data.models import register_all_models  # noqa: F401 — ensures models loaded
     Base.metadata.create_all(bind=engine, checkfirst=True)
     log.info("All tables created/verified")
+
+    # Drop redundant/duplicate indexes and create composite aggregation index on active DB
+    from sqlalchemy import text
+    statements = []
+    if USE_SQLITE:
+        statements = [
+            "DROP INDEX IF EXISTS ix_api_request_metrics_path;",
+            "DROP INDEX IF EXISTS ix_api_request_metrics_status_code;",
+            "DROP INDEX IF EXISTS ix_client_render_metrics_page;",
+            "DROP INDEX IF EXISTS ix_client_render_metrics_metric;",
+            "DROP INDEX IF EXISTS ix_geo_vehicles_zip_code;",
+            "DROP INDEX IF EXISTS ix_geo_vehicles_county_name;",
+            "DROP INDEX IF EXISTS ix_monthly_advisor_targets_advisor_target_id;",
+            "CREATE INDEX IF NOT EXISTS ix_geo_vehicles_aggregation ON geo_vehicles (county_name, model_year, fuel_type, vehicle_count);"
+        ]
+    else:
+        statements = [
+            f"DROP INDEX IF EXISTS {PG_SCHEMA}.ix_api_request_metrics_path;",
+            f"DROP INDEX IF EXISTS {PG_SCHEMA}.ix_api_request_metrics_status_code;",
+            f"DROP INDEX IF EXISTS {PG_SCHEMA}.ix_client_render_metrics_page;",
+            f"DROP INDEX IF EXISTS {PG_SCHEMA}.ix_client_render_metrics_metric;",
+            f"DROP INDEX IF EXISTS {PG_SCHEMA}.ix_geo_vehicles_zip_code;",
+            f"DROP INDEX IF EXISTS {PG_SCHEMA}.ix_geo_vehicles_county_name;",
+            f"DROP INDEX IF EXISTS {PG_SCHEMA}.ix_monthly_advisor_targets_advisor_target_id;",
+            f"CREATE INDEX IF NOT EXISTS ix_geo_vehicles_aggregation ON {PG_SCHEMA}.geo_vehicles (county_name, model_year, fuel_type, vehicle_count);"
+        ]
+    with engine.connect() as conn:
+        for stmt in statements:
+            try:
+                conn.execute(text(stmt))
+                conn.commit()
+            except Exception as e:
+                log.warning(f"Raw SQL index operation failed: {stmt}. Error: {e}")
+

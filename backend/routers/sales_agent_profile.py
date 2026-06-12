@@ -502,19 +502,19 @@ def agent_top_customers(
     ids_csv = ",".join(f"'{aid}'" for aid in account_ids)
 
     # Parallel: account details + travel portfolios + individual deals
-    acct_rows = sf_query_all(f"""
+    acct_q = f"""
         SELECT Id, Name, Phone, PersonMobilePhone, PersonEmail, BillingCity,
                Account_Member_ID__c, ImportantActiveMemCoverage__c,
                Insuance_Customer_ID__c, Member_Status__c, Account_Member_Since__c
         FROM Account
         WHERE Id IN ({ids_csv})
-    """)
-    tp_rows = sf_query_all(f"""
+    """
+    tp_q = f"""
         SELECT Account__c
         FROM Travel_Portfolio__c
         WHERE Account__c IN ({ids_csv})
-    """)
-    deal_rows = sf_query_all(f"""
+    """
+    deal_q = f"""
         SELECT Id, Name, AccountId, Amount, CloseDate, StageName
         FROM Opportunity
         WHERE AccountId IN ({ids_csv}) AND {ow} AND StageName IN ('Closed Won','Invoice') AND {lf}
@@ -522,7 +522,12 @@ def agent_top_customers(
           AND Amount != null
         ORDER BY CloseDate DESC
         LIMIT 500
-    """)
+    """
+
+    res = sf_parallel(accounts=acct_q, portfolios=tp_q, deals=deal_q)
+    acct_rows = res.get('accounts') or []
+    tp_rows = res.get('portfolios') or []
+    deal_rows = res.get('deals') or []
 
     acct_map = {r.get('Id', ''): r for r in acct_rows if r.get('Id')}
     has_travel = {r.get('Account__c') for r in tp_rows if r.get('Account__c')}

@@ -19,6 +19,9 @@ from fastapi import APIRouter
 
 from sf_client import sf_parallel
 import cache
+from pbi_client import dax_query, PBI_WS
+
+MEMBERSHIP_DS = "d7cdf3bc-dcf4-48ed-b4bb-200563dcfd7f"
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -75,67 +78,59 @@ def customers_by_age():
     key = f'growth_data_customers_by_age_v4_{today.isoformat()}'
 
     def fetch():
-        queries = {}
-        # Loose filter — matches territory_map.py's `members_total` (the count
-        # this page already shows in the hero). Cohorts must reconcile to it.
-        base = "IsPersonAccount = true AND Member_Status__c = 'A'"
-
-        for label, min_age, max_age in AGE_COHORTS:
-            # Person is age X today iff their birthdate is in
-            #     ( today - (X+1)y , today - Xy ]   (half-open, upper inclusive)
-            # Using strict greater-than on bd_start avoids the prior overlap
-            # bug where cohort N's bd_start equaled cohort N-1's bd_end.
-            bd_end = _safe_birthday(today.year - min_age, today.month, today.day)
-            bd_start = _safe_birthday(today.year - max_age - 1, today.month, today.day)
-            queries[label] = f"""
-                SELECT COUNT(Id) cnt
-                FROM Account
-                WHERE {base}
-                  AND PersonBirthdate != null
-                  AND PersonBirthdate > {bd_start.isoformat()}
-                  AND PersonBirthdate <= {bd_end.isoformat()}
-            """
-
-        queries['Unknown'] = f"""
-            SELECT COUNT(Id) cnt
-            FROM Account
-            WHERE {base}
-              AND PersonBirthdate = null
+        q = """
+        EVALUATE
+        SUMMARIZECOLUMNS(
+            membership_consolidated[Current Age],
+            FILTER(
+                ALL(membership_consolidated),
+                membership_consolidated[membership_status_code] = "A"
+            ),
+            "Count", COUNTROWS(membership_consolidated)
+        )
         """
+        rows = dax_query(PBI_WS, MEMBERSHIP_DS, q)
 
-        queries['Total'] = f"""
-            SELECT COUNT(Id) cnt
-            FROM Account
-            WHERE {base}
-        """
+        cohort_counts = {label: 0 for label, _, _ in AGE_COHORTS}
+        unk = 0
+        total_pbi_active = 0
+        for r in rows:
+            age_val = r.get("membership_consolidated[Current Age]")
+            cnt = int(r.get("[Count]") or 0)
+            total_pbi_active += cnt
+            if age_val is None:
+                unk += cnt
+                continue
 
-        data = sf_parallel(**queries)
-
-        def cnt(k: str) -> int:
             try:
-                return (data.get(k, [{}])[0] or {}).get('cnt', 0) or 0
-            except Exception:
-                return 0
+                age = int(age_val)
+            except (ValueError, TypeError):
+                unk += cnt
+                continue
 
-        # The parallel `Total` query and the cohort queries can drift slightly
-        # (a member can have their status flipped between queries). To keep
-        # the percentages internally consistent, base them on the row sum.
-        sf_total = cnt('Total') or 0
-        unk = cnt('Unknown')
-        cohort_counts = [(label, _min, _max, cnt(label)) for label, _min, _max in AGE_COHORTS]
-        row_sum = sum(c for _, _, _, c in cohort_counts) + unk
+            placed = False
+            for label, min_age, max_age in AGE_COHORTS:
+                if min_age <= age <= max_age:
+                    cohort_counts[label] += cnt
+                    placed = True
+                    break
+            if not placed:
+                unk += cnt
+
+        row_sum = sum(cohort_counts.values()) + unk
         denom = row_sum or 1
 
-        rows = []
-        for label, _min, _max, c in cohort_counts:
-            rows.append({
+        rows_res = []
+        for label, _min, _max in AGE_COHORTS:
+            c = cohort_counts[label]
+            rows_res.append({
                 'cohort': label,
                 'min_age': _min,
                 'max_age': _max,
                 'count': c,
                 'pct_of_total': round(100 * c / denom, 2),
             })
-        rows.append({
+        rows_res.append({
             'cohort': 'Unknown',
             'min_age': None,
             'max_age': None,
@@ -146,12 +141,12 @@ def customers_by_age():
         return {
             'level': 'cohort',
             'as_of': today.isoformat(),
-            'rows': rows,
+            'rows': rows_res,
             'totals': {
-                'count': row_sum,        # sum of displayed rows (always reconciles)
-                'sf_total': sf_total,    # SOQL COUNT for cross-check
+                'count': row_sum,
+                'sf_total': total_pbi_active,
             },
-            'count': len(rows),
+            'count': len(rows_res),
         }
 
     # 6 hour TTL — age cohort buckets shift daily but aren't real-time
@@ -167,40 +162,53 @@ def coverage_tiers():
     key = f'growth_data_coverage_tiers_v2_{today.isoformat()}'
 
     def fetch():
-        # Match the org-wide active filter used by canonical-counts so all the
-        # /growth-plan totals reconcile.
-        base = "IsPersonAccount = true AND Member_Status__c = 'A'"
-        data = sf_parallel(
-            premier=f"SELECT COUNT(Id) cnt FROM Account WHERE {base} AND ImportantActiveMemCoverage__c = 'PREMIER'",
-            plus=f"SELECT COUNT(Id) cnt FROM Account WHERE {base} AND ImportantActiveMemCoverage__c = 'PLUS'",
-            basic=f"SELECT COUNT(Id) cnt FROM Account WHERE {base} AND ImportantActiveMemCoverage__c = 'B'",
-            other=f"SELECT COUNT(Id) cnt FROM Account WHERE {base} AND (ImportantActiveMemCoverage__c = null OR ImportantActiveMemCoverage__c NOT IN ('PREMIER','PLUS','B'))",
-            total=f"SELECT COUNT(Id) cnt FROM Account WHERE {base}",
+        q = """
+        EVALUATE
+        SUMMARIZECOLUMNS(
+            membership_consolidated[membership_coverage_level_code],
+            FILTER(
+                ALL(membership_consolidated),
+                membership_consolidated[membership_status_code] = "A"
+            ),
+            "Count", COUNTROWS(membership_consolidated)
         )
+        """
+        rows = dax_query(PBI_WS, MEMBERSHIP_DS, q)
 
-        def cnt(k: str) -> int:
-            try:
-                return (data.get(k, [{}])[0] or {}).get('cnt', 0) or 0
-            except Exception:
-                return 0
+        premier = 0
+        plus = 0
+        basic = 0
+        other = 0
+        for r in rows:
+            code = (r.get("membership_consolidated[membership_coverage_level_code]") or "").strip().upper()
+            cnt = int(r.get("[Count]") or 0)
+            if code in {"PREMIER", "PREMIER-A"}:
+                premier += cnt
+            elif code in {"PLUS", "PLUS-A"}:
+                plus += cnt
+            elif code in {"BASIC", "B"}:
+                basic += cnt
+            else:
+                other += cnt
 
-        total = cnt('total') or 1
+        total = premier + plus + basic + other
         tiers = [
-            ('Premier', cnt('premier')),
-            ('Plus', cnt('plus')),
-            ('Basic', cnt('basic')),
-            ('Other / Unknown', cnt('other')),
+            ('Premier', premier),
+            ('Plus', plus),
+            ('Basic', basic),
+            ('Other / Unknown', other),
         ]
-        rows = [
-            {'tier': name, 'count': c, 'pct_of_total': round(100 * c / total, 2)}
+        denom = total or 1
+        rows_res = [
+            {'tier': name, 'count': c, 'pct_of_total': round(100 * c / denom, 2)}
             for name, c in tiers
         ]
         return {
             'level': 'tier',
             'as_of': today.isoformat(),
-            'rows': rows,
+            'rows': rows_res,
             'totals': {'count': total},
-            'count': len(rows),
+            'count': len(rows_res),
         }
 
     return cache.cached_query(key, fetch, ttl=6 * 3600, disk_ttl=24 * 3600)
@@ -260,11 +268,14 @@ def _live_members_total() -> int:
 
     def fetch():
         try:
-            data = sf_parallel(
-                total="SELECT COUNT(Id) cnt FROM Account WHERE IsPersonAccount = true AND Member_Status__c = 'A'",
+            q = """
+            EVALUATE
+            ROW(
+                "total", CALCULATE(COUNTROWS(membership_consolidated), membership_consolidated[membership_status_code] = "A")
             )
-            rows = data.get('total') or []
-            return int((rows[0] or {}).get('cnt', 0)) if rows else 0
+            """
+            rows = dax_query(PBI_WS, MEMBERSHIP_DS, q)
+            return int(rows[0].get('[total]') or 0) if rows else 0
         except Exception:
             log.exception('canonical: live members query failed; falling back to last cached')
             return 0

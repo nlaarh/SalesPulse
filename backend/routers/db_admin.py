@@ -133,7 +133,7 @@ def create_backup(admin: User = Depends(require_admin), db: Session = Depends(ge
                      detail=f"Created database backup: {filename}", metadata={"filename": filename})
 
         stat = filepath.stat()
-        return {"filename": filename, "created_at": datetime.now().isoformat(), "size_bytes": stat.st_size, "type": "local"}
+        return {"status": "success", "filename": filename, "created_at": datetime.now().isoformat(), "size_bytes": stat.st_size, "type": "local"}
     except Exception as exc:
         log.exception("Database backup failed")
         raise HTTPException(status_code=500, detail=f"Backup failed: {exc}")

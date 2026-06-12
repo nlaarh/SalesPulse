@@ -8,7 +8,7 @@ import {
 } from 'recharts'
 import { Loader2, Globe, Map, Plane, ArrowUp, ArrowDown, Download } from 'lucide-react'
 import { exportToExcel } from '@/lib/exportExcel'
-import { fmt, fmtFull, fmtNum, Pie3D } from './shared'
+import { fmt, fmtFull, fmtNum, Pie3D, type DateRangeProps } from './shared'
 
 /* ── DestinationsTab ─────────────────────────────────────────────────────────*/
 
@@ -23,8 +23,8 @@ interface Destination {
 
 type DestSort = 'revenue' | 'volume' | 'avg_booking' | 'yoy_growth_pct'
 
-export function DestinationsTab() {
-  const { line, period, startDate, endDate } = useSales()
+export function DestinationsTab({ startDate, endDate }: DateRangeProps) {
+  const { line, period } = useSales()
   const c = useChartColors()
 
   const [destinations, setDestinations] = useState<Destination[]>([])
@@ -183,8 +183,8 @@ interface RegionRow {
   rev_pct: number
 }
 
-export function RegionsTab() {
-  const { line, period, startDate, endDate } = useSales()
+export function RegionsTab({ startDate, endDate }: DateRangeProps) {
+  const { line, period } = useSales()
   const c = useChartColors()
 
   const [mapData, setMapData] = useState<TerritoryMapData | null>(null)

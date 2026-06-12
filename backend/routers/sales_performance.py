@@ -307,6 +307,10 @@ def performance_funnel(
         invoiced = _get('invoiced_opps')
         won = _get('won_opps')
         won_rev = _get('won_opps', 'rev')
+        if line in _PBI_COMMISSION_LINES:
+            from pbi_utils import pbi_by_day as _pbi_by_day_fn
+            pbi_rows = _pbi_by_day_fn(line, sd, ed)
+            won_rev = sum(r.get('sales', 0.0) for r in pbi_rows)
         lost = _get('lost_opps')
 
         def rate(num, denom):
@@ -397,6 +401,7 @@ def performance_insights(
 
         # ── PBI override: replace top5 + totals with authoritative PBI data for Travel/Insurance
         pbi_total_comm = None
+        pbi_total_sales = None
         if line in _PBI_COMMISSION_LINES:
             from pbi_utils import pbi_by_advisor as _pbi_by_advisor_fn, pbi_by_day as _pbi_by_day_fn
             pbi_adv = _pbi_by_advisor_fn(line, sd, ed)
@@ -410,10 +415,13 @@ def performance_insights(
             ]
             pbi_day = _pbi_by_day_fn(line, sd, ed)
             pbi_total_comm = sum(r.get('commission', 0) for r in pbi_day)
+            pbi_total_sales = sum(r.get('sales', 0.0) for r in pbi_day)
 
         insights = []
         current = data['current'][0] if data['current'] else {}
         total_rev = current.get('rev', 0) or 0
+        if pbi_total_sales is not None:
+            total_rev = pbi_total_sales
         total_cnt = current.get('cnt', 0) or 0
 
         # ── Top performer

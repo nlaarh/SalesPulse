@@ -1,0 +1,46 @@
+name,department,manager,n_alert,n_handled,new_member_count,membership_points,activities
+Jason Weldy,Insurance Sales CC,"Schmidt, Kelsey",74,77,10,11,0
+Jason Dorigo,Insurance Sales CC,"Holt, Rachel",74,137,8,8,0
+Terry Rice,Insurance Sales CC,"Schmidt, Kelsey",71,69,6,9,0
+Roman Ratinskiy,Insurance Sales CC,"Schmidt, Kelsey",58,74,6,9,0
+Andrew Marrs,MIA - KENTON,"Covert, Matthew A.",0,0,5,1,0
+Melissa Dashner,MIA - Ins Telephone Sales,"Schmidt, Kelsey",0,0,5,7,0
+Karl Osterman,Insurance Sales CC,"Schmidt, Kelsey",212,173,4,6,0
+Daniel Duenas-Galvis,Insurance Sales CC,"Holt, Rachel",93,77,4,7,0
+Kherysten Webb,Insurance Sales CC,"Schmidt, Kelsey",60,74,4,8,0
+Michael Hughes,MIA - ORCHARD PARK,"Covert, Matthew A.",0,0,4,7,0
+Kelly Cook,Insurance Concierge CC,"Martin, Inna",81,97,3,4,0
+Brittany Evans-Cobb,Insurance Sales CC,"Holt, Rachel",67,82,3,6,0
+James Fleming,Insurance Sales CC,"Holt, Rachel",66,59,3,5,0
+Andrew Bucella,MIA - PENFIELD,"Schaefer, Michael",0,0,3,4,0
+Denny Soliday,MIA- AMHERST,"Ratinskiy, Ashley A.",0,0,3,5,0
+Robyn Graczyk,Insurance Sales CC,"Holt, Rachel",95,94,2,3,0
+Gregory Feidner,Insurance Sales CC,"Schmidt, Kelsey",41,68,2,2,0
+Juliana Calamis,Insurance Concierge Branch,"Bowman, Tiffany",36,42,2,4,0
+Michael Klopp,MIA - ORCHARD PARK,"Covert, Matthew A.",0,0,2,3,0
+Annette Mathews,Insurance Concierge CC,"Martin, Inna",79,76,1,0,0
+Christopher Daniels,Insurance Concierge CC,"Martin, Inna",69,83,1,2,0
+Sarah Backlas,Insurance Concierge CC,"Martin, Inna",29,44,1,1,0
+John DeNicola,Insurance Concierge Branch,"Deitz, Tina M.",14,18,1,2,0
+Hannah Vought,Insurance Concierge CC,"Martin, Inna",13,22,1,2,0
+Yasmin Brown,Insurance Concierge Branch,"Covert, Matthew A.",10,10,1,1,0
+Roan Moncrieffe,MIA - KENTON,"Covert, Matthew A.",0,0,1,2,0
+Melissa Marchesi,Insurance Sales CC,,134,217,0,0,0
+Kevin Pickering,Insurance Concierge CC,,57,56,0,0,0
+Vanessa Quiles,Insurance Concierge CC,,49,51,0,0,0
+Tyler Cory,Insurance Sales CC,,40,0,0,0,0
+Katie Cultrara,Insurance Concierge CC,"Martin, Inna",36,43,0,0,0
+Michael Pappa,Insurance Concierge Branch,,32,41,0,0,0
+Mike Jones,Insurance Sales CC,,23,0,0,0,0
+Gabrielle Kalinowski,Insurance Concierge Branch,,22,39,0,0,0
+Michael Cioppi,Insurance Sales CC,,21,2,0,0,0
+David Kamholz,MIA - Medicare Ins,,20,38,0,0,0
+Mason Saunders,Insurance Concierge Branch,"Covert, Matthew A.",20,62,0,0,0
+Melissa McCarthy,Insurance Concierge Branch,,20,54,0,0,0
+Cindy VanHoesen,Insurance Concierge CC,,17,17,0,0,0
+Bradley Hulshoff,Insurance Sales CC,,13,0,0,0,0
+Kristina Stadlmeir,MIA - Medicare Ins,,13,67,0,0,0
+Linda Zangerle,Insurance Concierge Branch,"Schaefer, Michael",11,13,0,0,0
+Sam Bacher,MIA - Medicare Ins,,9,43,0,0,0
+Domonique Acoff,MIA  Administration,"Martin, Inna",0,0,0,0,0
+Gabi Kalinowski,MIA  Administration,"Ratinskiy, Ashley A.",0,0,0,0,0

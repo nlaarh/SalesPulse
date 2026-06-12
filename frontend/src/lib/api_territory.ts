@@ -110,6 +110,15 @@ export interface CensusZipRow {
   median_home_value: number
   college_educated: number
   college_pct: number
+  registered_vehicles?: number
+  vehicles_3plus_yrs?: number
+  age_16_18?: number
+  age_18_24?: number
+  age_25_34?: number
+  age_35_44?: number
+  age_45_54?: number
+  age_55_64?: number
+  age_65_plus?: number
 }
 
 export interface CensusCountyRow {
@@ -123,6 +132,15 @@ export interface CensusCountyRow {
   median_home_value: number
   college_educated: number
   college_pct: number
+  registered_vehicles?: number
+  vehicles_3plus_yrs?: number
+  age_16_18?: number
+  age_18_24?: number
+  age_25_34?: number
+  age_35_44?: number
+  age_45_54?: number
+  age_55_64?: number
+  age_65_plus?: number
 }
 
 export interface CensusDataResponse {
@@ -250,6 +268,8 @@ export interface ZipCensusData {
   region?: string
   registered_vehicles?: number
   vehicles_3plus_yrs?: number
+  college_educated?: number
+  college_pct?: number
   owner_occupied?: number
   untapped_homes?: number
   renter_occupied?: number

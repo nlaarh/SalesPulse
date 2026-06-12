@@ -13,9 +13,9 @@ const USERS = [
 ]
 
 const PAGES = [
-  { path: '/dashboard', heading: 'Sales Performance' },
-  { path: '/pipeline', heading: 'Pipeline & Forecasting' },
-  { path: '/opportunities', heading: 'Top Opportunities' },
+  { path: '/dashboard', heading: 'Advisor Performance' },
+  { path: '/pipeline', heading: 'Sales Pipeline' },
+  { path: '/opportunities', heading: 'AI-Ranked Deals' },
 ]
 
 function percentile(sortedValues, pct) {
@@ -90,7 +90,7 @@ async function runUserRound(browser, user, round) {
         throw new Error(`login response ${loginResponse.status()}`)
       }
       await page.waitForURL((url) => !url.pathname.includes('login'), { timeout: 30_000 })
-    }, { type: 'heading', value: 'Sales Performance' }))
+    }, { type: 'heading', value: 'Advisor Performance' }))
 
     for (const target of PAGES) {
       metrics.push(await measureStep(

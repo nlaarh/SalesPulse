@@ -22,7 +22,7 @@ const capabilities = [
         <path d="M16 3.13a4 4 0 0 1 0 7.75" />
       </svg>
     ),
-    title: 'Census Demographics',
+    title: 'Market Demographics',
     desc: 'Population, income, education, and housing data by zip code and county',
     stat: '26 counties',
   },
@@ -34,7 +34,7 @@ const capabilities = [
         <line x1="12" y1="17" x2="12.01" y2="17" />
       </svg>
     ),
-    title: 'Market Pulse',
+    title: 'Advisories & Alerts',
     desc: 'Travel advisories, Medicare enrollment windows, and seasonal outreach triggers',
     stat: 'Real-time',
   },

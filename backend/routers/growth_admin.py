@@ -239,9 +239,21 @@ async def upload_census(file: UploadFile = File(...), _user=Depends(require_admi
     _load_census.cache_clear()
     _clear_disk_cache()
 
+    from seed_geodata import seed_geodata_local
+    import logging
+    try:
+        logging.getLogger(__name__).info("Re-seeding database after Excel census upload...")
+        seed_geodata_local(force=True)
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Failed to re-seed database after Excel upload: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "message": f"Census data parsed, but database re-seeding failed: {str(e)}"
+        }
+
     return {
         "status": "ok",
-        "message": f"Census data updated: {len(data)} ZIPs parsed from '{sheet_name}'",
+        "message": f"Census data updated and database re-seeded: {len(data)} ZIPs parsed from '{sheet_name}'",
         "zips": len(data),
     }
 

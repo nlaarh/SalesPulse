@@ -2,19 +2,19 @@ import { Users, Table2, Target, GitBranch, Plane, Megaphone } from 'lucide-react
 
 const MODULES = [
   {
-    icon: Users, label: 'Sales Dashboard', route: '/',
+    icon: Users, label: 'Advisor Performance', route: '/dashboard',
     desc: 'The main command center. Shows KPIs (revenue, deals, win rate, pipeline), year-over-year comparison charts, advisor leaderboard, sales funnel, lead sources, AI insights, and at-risk deals — all in a single view.',
   },
   {
-    icon: Table2, label: 'Monthly Report', route: '/monthly',
+    icon: Table2, label: 'Monthly Breakdown', route: '/monthly',
     desc: 'Agent-by-month breakdown table showing leads, opportunities, invoiced deals, sales, and commission. Useful for tracking individual advisor productivity over time.',
   },
   {
-    icon: Target, label: 'Top Opportunities', route: '/top-opps',
+    icon: Target, label: 'AI-Ranked Deals', route: '/opportunities',
     desc: 'AI-scored ranking of the most important open deals. Each opportunity gets a priority score based on amount, days in stage, close probability, and urgency. Includes AI-generated deal write-ups.',
   },
   {
-    icon: GitBranch, label: 'Pipeline & Forecasting', route: '/pipeline',
+    icon: GitBranch, label: 'Sales Pipeline', route: '/pipeline',
     desc: 'Pipeline health analysis including stage distribution, deal velocity, past-due tracking, and a sales funnel visualization showing conversion rates from lead to close.',
   },
   {
@@ -22,7 +22,7 @@ const MODULES = [
     desc: 'Destination-level booking analysis for the Travel division. Shows revenue by destination, party sizes, year-over-year trends, and top-performing markets.',
   },
   {
-    icon: Megaphone, label: 'Lead Funnel', route: '/leads',
+    icon: Megaphone, label: 'Lead Funnel & Conversion', route: '/leads',
     desc: 'Lead conversion analytics including volume by status, source effectiveness, time-to-convert distribution, and agent close speed comparison.',
   },
 ]

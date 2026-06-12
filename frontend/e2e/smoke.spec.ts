@@ -18,7 +18,7 @@ test.describe('Smoke', () => {
     expect(data.targets).toBeTruthy()
     expect(data.achievement).toBeTruthy()
 
-    await expect(page.getByRole('heading', { name: /sales performance/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /advisor performance/i })).toBeVisible()
     await expect(page.getByText(/target achievement/i)).toBeVisible()
     await expectNoError(page)
   })
@@ -35,7 +35,7 @@ test.describe('Smoke', () => {
 
     await login(page)
     await page.goto('/top-opps')
-    await expect(page.getByRole('heading', { name: /top opportunities/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /ai-ranked deals/i })).toBeVisible()
     await expectNoError(page)
 
     await page.waitForLoadState('networkidle')

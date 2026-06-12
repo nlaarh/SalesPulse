@@ -11,7 +11,7 @@ export default function TargetsTab() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-[16px] font-bold text-foreground">Advisor Targets & Performance Thresholds</h2>
+          <h2 className="text-[16px] font-bold text-foreground">Manage Targets & Performance Thresholds</h2>
           <p className="text-[12px] text-muted-foreground mt-0.5">
             Manage performance thresholds and monthly stretch goals. Actuals are pulled directly from Power BI.
           </p>

@@ -11,7 +11,9 @@ import {
 type Level = 'zip' | 'county'
 type SortField = 'population' | 'pop_18plus' | 'median_income' | 'median_age' |
   'housing_units' | 'median_home_value' | 'college_educated' | 'college_pct' |
-  'zip' | 'city' | 'county' | 'fips'
+  'zip' | 'city' | 'county' | 'fips' |
+  'registered_vehicles' | 'vehicles_3plus_yrs' |
+  'age_16_18' | 'age_18_24' | 'age_25_34' | 'age_35_44' | 'age_45_54' | 'age_55_64' | 'age_65_plus'
 type SortDir = 'asc' | 'desc'
 
 const fmt = (n: number) => n.toLocaleString()
@@ -84,6 +86,15 @@ export default function CensusData() {
           'Median Home Value': zr.median_home_value,
           'College Educated': zr.college_educated,
           'College %': zr.college_pct,
+          'Registered Vehicles': zr.registered_vehicles || 0,
+          'Vehicles 3+ Yrs Old': zr.vehicles_3plus_yrs || 0,
+          'Age 16-18': zr.age_16_18 || 0,
+          'Age 18-24': zr.age_18_24 || 0,
+          'Age 25-34': zr.age_25_34 || 0,
+          'Age 35-44': zr.age_35_44 || 0,
+          'Age 45-54': zr.age_45_54 || 0,
+          'Age 55-64': zr.age_55_64 || 0,
+          'Age 65+': zr.age_65_plus || 0,
         }
       } else {
         const cr = r as CensusCountyRow
@@ -98,6 +109,15 @@ export default function CensusData() {
           'Median Home Value': cr.median_home_value,
           'College Educated': cr.college_educated,
           'College %': cr.college_pct,
+          'Registered Vehicles': cr.registered_vehicles || 0,
+          'Vehicles 3+ Yrs Old': cr.vehicles_3plus_yrs || 0,
+          'Age 16-18': cr.age_16_18 || 0,
+          'Age 18-24': cr.age_18_24 || 0,
+          'Age 25-34': cr.age_25_34 || 0,
+          'Age 35-44': cr.age_35_44 || 0,
+          'Age 45-54': cr.age_45_54 || 0,
+          'Age 55-64': cr.age_55_64 || 0,
+          'Age 65+': cr.age_65_plus || 0,
         }
       }
     })
@@ -112,7 +132,7 @@ export default function CensusData() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Census Data</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Market Demographics</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             US Census Bureau ACS 2022 — population, income, education & housing for WCNY territory
           </p>
@@ -221,6 +241,15 @@ export default function CensusData() {
                   <Th field="median_home_value" label="Home Value" sortField={sortField} sortDir={sortDir} onSort={handleSort} right />
                   <Th field="college_educated" label="College Ed." sortField={sortField} sortDir={sortDir} onSort={handleSort} right />
                   <Th field="college_pct" label="College %" sortField={sortField} sortDir={sortDir} onSort={handleSort} right />
+                  <Th field="registered_vehicles" label="Reg. Vehicles" sortField={sortField} sortDir={sortDir} onSort={handleSort} right />
+                  <Th field="vehicles_3plus_yrs" label="Vehicles 3+ Yrs" sortField={sortField} sortDir={sortDir} onSort={handleSort} right />
+                  <Th field="age_16_18" label="16-18" sortField={sortField} sortDir={sortDir} onSort={handleSort} right />
+                  <Th field="age_18_24" label="18-24" sortField={sortField} sortDir={sortDir} onSort={handleSort} right />
+                  <Th field="age_25_34" label="25-34" sortField={sortField} sortDir={sortDir} onSort={handleSort} right />
+                  <Th field="age_35_44" label="35-44" sortField={sortField} sortDir={sortDir} onSort={handleSort} right />
+                  <Th field="age_45_54" label="45-54" sortField={sortField} sortDir={sortDir} onSort={handleSort} right />
+                  <Th field="age_55_64" label="55-64" sortField={sortField} sortDir={sortDir} onSort={handleSort} right />
+                  <Th field="age_65_plus" label="65+" sortField={sortField} sortDir={sortDir} onSort={handleSort} right />
                 </tr>
               </thead>
               <tbody>
@@ -259,6 +288,15 @@ export default function CensusData() {
                           {row.college_pct}%
                         </span>
                       </td>
+                      <td className="px-3 py-2 text-right">{fmt(row.registered_vehicles || 0)}</td>
+                      <td className="px-3 py-2 text-right">{fmt(row.vehicles_3plus_yrs || 0)}</td>
+                      <td className="px-3 py-2 text-right">{fmt(row.age_16_18 || 0)}</td>
+                      <td className="px-3 py-2 text-right">{fmt(row.age_18_24 || 0)}</td>
+                      <td className="px-3 py-2 text-right">{fmt(row.age_25_34 || 0)}</td>
+                      <td className="px-3 py-2 text-right">{fmt(row.age_35_44 || 0)}</td>
+                      <td className="px-3 py-2 text-right">{fmt(row.age_45_54 || 0)}</td>
+                      <td className="px-3 py-2 text-right">{fmt(row.age_55_64 || 0)}</td>
+                      <td className="px-3 py-2 text-right">{fmt(row.age_65_plus || 0)}</td>
                     </tr>
                   )
                 })}

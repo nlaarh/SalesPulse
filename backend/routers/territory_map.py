@@ -19,6 +19,8 @@ from shared import (
     WON_STAGES, OPP_RT_TRAVEL_ID, OPP_RT_INSURANCE_ID,
     resolve_dates as _resolve_dates,
 )
+from pbi_client import dax_query, PBI_WS
+MEMBERSHIP_DS = "d7cdf3bc-dcf4-48ed-b4bb-200563dcfd7f"
 from constants import CACHE_TTL_HOUR, CACHE_TTL_DAY, CACHE_TTL_NEVER
 import cache
 
@@ -106,30 +108,34 @@ def territory_map_data(
         census_thread = threading.Thread(target=_load_census, daemon=True)
         census_thread.start()
 
-        # ── ALL 12 SOQL queries in ONE parallel batch ──
-        # Previously 3 sequential batches (batch1→batch2→batch3).
-        # No data dependencies between any of these queries, so run all at once.
-        data = sf_parallel(
-            # -- Members & totals --
-            members=f"""
-                SELECT BillingPostalCode zip, Billing_Region__c region,
-                       COUNT(Id) cnt
-                FROM Account
-                WHERE BillingPostalCode != null
-                  AND {NY_STATE} AND {REGION_FILTER}
-                  AND {ACTIVE_MEMBER}
-                GROUP BY BillingPostalCode, Billing_Region__c
-                HAVING COUNT(Id) >= {MIN_MEMBERS}
-                ORDER BY COUNT(Id) DESC
-                LIMIT 2000
-            """,
+        # ── Query PBI first for active member zip-level counts ──
+        y, m, d = cy_start.split("-")
+        cy_start_dax = f"DATE({y}, {int(m)}, {int(d)})"
+        
+        q_pbi_members = f"""
+        EVALUATE
+        SUMMARIZECOLUMNS(
+            membership_consolidated[customer_address_postal_code],
+            membership_consolidated[customer_address_region],
+            FILTER(
+                ALL(membership_consolidated),
+                membership_consolidated[membership_status_code] = "A"
+                && membership_consolidated[customer_address_region] IN {{"WESTERN", "ROCHESTER", "CENTRAL"}}
+                && membership_consolidated[membership_coverage_level_code] IN {{"BASIC", "PLUS", "PLUS-A", "PREMIER", "PREMIER-A"}}
+                && membership_consolidated[membership_expiry_date] >= {cy_start_dax}
+            ),
+            "Count", COUNTROWS(membership_consolidated)
+        )
+        """
+        pbi_members = []
+        try:
+            pbi_members = dax_query(PBI_WS, MEMBERSHIP_DS, q_pbi_members)
+        except Exception:
+            log.exception("Failed to query membership from PBI in territory map")
 
-            # -- True total: all active members in the WCNY region --
-            members_total=f"""
-                SELECT COUNT(Id) cnt
-                FROM Account
-                WHERE {NY_STATE} AND {REGION_FILTER} AND {ACTIVE_MEMBER}
-            """,
+        # ── Salesforce queries in parallel batch ──
+        # Members and members_total counts are sourced from PBI.
+        data = sf_parallel(
 
             # -- Insurance customers (active members with insurance) --
             ins_customers=f"""
@@ -293,15 +299,18 @@ def territory_map_data(
                     out[z] = entry
             return out
 
-        members_raw = data.get('members', [])
-        # Normalize members ZIP+4 to 5-digit and aggregate
+        # Normalize members from PBI: zip, region, and count
         members_normed: dict[str, dict] = {}
-        for r in (members_raw or []):
-            z = (r.get('zip', '') or '')[:5]
+        total_members = 0
+        region_map = {"WESTERN": "Western", "ROCHESTER": "Rochester", "CENTRAL": "Central"}
+        for r in (pbi_members or []):
+            z = (r.get('membership_consolidated[customer_address_postal_code]', '') or '')[:5]
             if not z or len(z) < 5:
                 continue
-            region = r.get('region', '')
-            cnt = r.get('cnt', 0) or 0
+            pbi_reg = (r.get('membership_consolidated[customer_address_region]', '') or '').strip().upper()
+            region = region_map.get(pbi_reg, pbi_reg.capitalize())
+            cnt = int(r.get('[Count]') or 0)
+            total_members += cnt
             if z in members_normed:
                 members_normed[z]['cnt'] += cnt
             else:
@@ -328,9 +337,7 @@ def territory_map_data(
         total_travel_3yr = travel_total_raw[0].get('cnt', 0) if travel_total_raw else 0
         total_travel_cy_rev = sum(v.get('rev', 0) or 0 for v in travel_rev_cy_d.values())
         total_travel_py_rev = sum(v.get('rev', 0) or 0 for v in travel_rev_py_d.values())
-        # Use accurate COUNT from dedicated total query (not grouped/limited/having-filtered)
-        members_total_raw = data.get('members_total', [])
-        total_members = (members_total_raw[0].get('cnt', 0) if members_total_raw else 0)
+        # total_members is already computed during PBI normalization
         # Sum of members in mapped zips (for penetration calculations)
         mapped_members = sum(v['cnt'] for v in members_normed.values())
 

@@ -35,6 +35,13 @@ const CensusData = lazy(() => import('@/pages/CensusData'))
 
 const GrowthPlan = lazy(() => import('@/pages/GrowthPlan'))
 const Projection = lazy(() => import('@/pages/settings/TargetsTab'))
+const MembershipDashboard = lazy(() => import('@/pages/MembershipDashboard'))
+const MembershipChannels = lazy(() => import('@/pages/MembershipChannels'))
+const MembershipAdvisors = lazy(() => import('@/pages/MembershipAdvisors'))
+const Reports = lazy(() => import('@/pages/Reports'))
+const ReportsTravel = lazy(() => import('@/pages/ReportsTravel'))
+const ReportsInsurance = lazy(() => import('@/pages/ReportsInsurance'))
+const InsuranceScorecard = lazy(() => import('@/pages/InsuranceScorecard'))
 
 /* ── React Query client ──────────────────────────────────────────────────── */
 
@@ -101,6 +108,13 @@ export default function App() {
                   <Route path="strategic-insights" element={<Navigate to="/growth-plan" replace />} />
                   <Route path="growth" element={<Navigate to="/growth-plan" replace />} />
                   <Route path="growth/matrix" element={<Navigate to="/growth-plan" replace />} />
+                  <Route path="membership" element={<Suspense fallback={LazyFallback}><MembershipDashboard /></Suspense>} />
+                  <Route path="membership/channels" element={<Suspense fallback={LazyFallback}><MembershipChannels /></Suspense>} />
+                  <Route path="membership/advisors" element={<Suspense fallback={LazyFallback}><MembershipAdvisors /></Suspense>} />
+                  <Route path="reports" element={<Suspense fallback={LazyFallback}><Reports /></Suspense>} />
+                  <Route path="reports/travel" element={<Suspense fallback={LazyFallback}><ReportsTravel /></Suspense>} />
+                  <Route path="reports/insurance" element={<Suspense fallback={LazyFallback}><ReportsInsurance /></Suspense>} />
+                  <Route path="reports/insurance-scorecard" element={<Suspense fallback={LazyFallback}><InsuranceScorecard /></Suspense>} />
                   {/* User management has moved to Settings → Users tab. */}
                   <Route path="admin/users" element={<Navigate to="/settings?tab=users" replace />} />
                 </Route>

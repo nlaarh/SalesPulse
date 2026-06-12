@@ -53,12 +53,7 @@ def log_activity(
         metadata_json=json.dumps(metadata) if metadata else None,
         ip_address=ip,
     )
-    try:
-        db.add(entry)
-        db.commit()
-    except Exception:
-        db.rollback()
-        log.exception('Failed to write activity log')
+    _executor.submit(_write, entry)
 
 
 def log_sf_query(query: str) -> None:

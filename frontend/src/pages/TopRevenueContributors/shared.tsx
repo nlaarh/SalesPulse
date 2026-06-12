@@ -21,6 +21,11 @@ export function fmtNum(n: number) {
 
 export type Tab = 'customers' | 'destinations' | 'regions' | 'advisors' | 'branches'
 
+export interface DateRangeProps {
+  startDate: string | null
+  endDate: string | null
+}
+
 /* ── Pie3D ───────────────────────────────────────────────────────────────────*/
 
 export interface Pie3DSlice { label: string; value: number; color: string; pct: number }

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && rm -rf ../backend/static/* && cp -r dist/* ../backend/static/",
     "lint": "eslint .",
     "preview": "vite preview",
     "test:e2e": "playwright test",

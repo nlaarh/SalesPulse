@@ -37,7 +37,7 @@ const PAGES = [
   },
   {
     icon: Table2,
-    label: 'Monthly Report', route: '/monthly',
+    label: 'Monthly Breakdown', route: '/monthly',
     color: 'bg-violet-500/10 border-violet-500/30 text-violet-500',
     whatToLook: [
       'Each row = one advisor. Columns = Leads, Opps, Invoiced, Inv/Opp%, Sales, Commission.',
@@ -50,7 +50,7 @@ const PAGES = [
   },
   {
     icon: Target,
-    label: 'Top Opportunities', route: '/top-opps',
+    label: 'AI-Ranked Deals', route: '/opportunities',
     color: 'bg-amber-500/10 border-amber-500/30 text-amber-500',
     whatToLook: [
       'Priority Score (0-100) — higher = more urgent. Deals decay as they sit without activity.',
@@ -63,7 +63,7 @@ const PAGES = [
   },
   {
     icon: GitBranch,
-    label: 'Pipeline & Forecasting', route: '/pipeline',
+    label: 'Sales Pipeline', route: '/pipeline',
     color: 'bg-primary/10 border-primary/30 text-primary',
     whatToLook: [
       'Pipeline Coverage — should be 2x+ your revenue target. Below 1x is critical.',
@@ -88,7 +88,7 @@ const PAGES = [
   },
   {
     icon: Megaphone,
-    label: 'Lead Funnel', route: '/leads',
+    label: 'Lead Funnel & Conversion', route: '/leads',
     color: 'bg-rose-500/10 border-rose-500/30 text-rose-500',
     whatToLook: [
       'Expired lead rate — if > 15%, advisors are not following up within SLA.',

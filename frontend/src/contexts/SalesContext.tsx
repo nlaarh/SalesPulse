@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 
-type BusinessLine = 'Travel' | 'Insurance' | 'All'
+type BusinessLine = 'Travel' | 'Insurance' | 'Membership' | 'All'
 type ViewMode = 'month' | 'quarter' | '6m' | 'ytd' | 'year' | 'last-year' | 'custom'
 
 interface SalesContextValue {

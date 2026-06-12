@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ExternalLink, Shield, Plane, Loader2, Users, TrendingUp, UserPlus, Crown, Phone } from 'lucide-react'
+import { ExternalLink, Shield, Plane, Loader2, Users, TrendingUp, UserPlus, Crown, Phone, Download } from 'lucide-react'
 import { cn, formatCurrency } from '@/lib/utils'
 import { fetchAgentCrossSell } from '@/lib/api'
+import { exportToExcel } from '@/lib/exportExcel'
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
@@ -88,7 +89,7 @@ function TierBadge({ tier }: { tier: string }) {
 
 /* ── Member sortable table ──────────────────────────────────────────────── */
 
-function MemberTable({ members, emptyMsg }: { members: CrossSellMember[]; emptyMsg: string }) {
+function MemberTable({ members, emptyMsg, exportName }: { members: CrossSellMember[]; emptyMsg: string; exportName: string }) {
   const [sortField, setSortField] = useState<MemberSort>('name')
   const [sortAsc, setSortAsc] = useState(true)
   const [search, setSearch] = useState('')
@@ -129,13 +130,29 @@ function MemberTable({ members, emptyMsg }: { members: CrossSellMember[]; emptyM
     <div className="rounded-lg border border-border overflow-hidden">
       <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border bg-secondary/20">
         <span className="text-[11px] text-muted-foreground">{filtered.length} customers</span>
-        <input
-          type="text"
-          placeholder="Search name, city, phone…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="px-2.5 py-1 text-[12px] rounded border border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/30 w-48"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="Search name, city, phone…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="px-2.5 py-1 text-[12px] rounded border border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/30 w-48"
+          />
+          <button
+            onClick={() => exportToExcel(sorted.map(m => ({
+              Name: m.name,
+              City: m.city || '',
+              Phone: m.phone || '',
+              Email: m.email || '',
+              Tier: m.membership || 'Basic',
+              'Tenure (yrs)': m.tenure_years ?? '',
+              'SF Link': m.sf_link || `https://aaawcny.my.salesforce.com/${m.account_id}`,
+            })), `${exportName}_${new Date().toISOString().slice(0, 10)}`)}
+            className="flex items-center gap-1.5 rounded-md border border-border bg-secondary px-2.5 py-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Download className="h-3 w-3" />Export
+          </button>
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -237,13 +254,27 @@ function NonMemberTable({ customers }: { customers: NonMemberCustomer[] }) {
     <div className="rounded-lg border border-border overflow-hidden">
       <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border bg-secondary/20">
         <span className="text-[11px] text-muted-foreground">{filtered.length} customers</span>
-        <input
-          type="text"
-          placeholder="Search name or city…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="px-2.5 py-1 text-[12px] rounded border border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/30 w-48"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="Search name or city…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="px-2.5 py-1 text-[12px] rounded border border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/30 w-48"
+          />
+          <button
+            onClick={() => exportToExcel(sorted.map(c => ({
+              Name: c.name,
+              City: c.city || '',
+              Deals: c.deal_count,
+              'Total Spend': c.total_spend,
+              'SF Link': c.sf_link || `https://aaawcny.my.salesforce.com/${c.account_id}`,
+            })), `CrossSell_NewMember_${new Date().toISOString().slice(0, 10)}`)}
+            className="flex items-center gap-1.5 rounded-md border border-border bg-secondary px-2.5 py-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Download className="h-3 w-3" />Export
+          </button>
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -396,17 +427,17 @@ export default function CrossSellTab({ agentName }: CrossSellTabProps) {
 
       {/* Panels */}
       {activePanel === 'insurance' && (
-        <MemberTable members={members_no_insurance} emptyMsg="All members have insurance" />
+        <MemberTable members={members_no_insurance} emptyMsg="All members have insurance" exportName="CrossSell_NeedsInsurance" />
       )}
       {activePanel === 'travel' && (
-        <MemberTable members={members_no_travel} emptyMsg="All members have travel" />
+        <MemberTable members={members_no_travel} emptyMsg="All members have travel" exportName="CrossSell_NeedsTravel" />
       )}
       {activePanel === 'upgrade' && (
         <div className="space-y-2">
           <p className="text-[12px] text-muted-foreground">
             Basic members — opportunity to upgrade to <span className="font-semibold text-blue-500">Plus</span> or <span className="font-semibold text-amber-500">Premier</span>.
           </p>
-          <MemberTable members={members_upgrade} emptyMsg="No Basic-tier members to upgrade" />
+          <MemberTable members={members_upgrade} emptyMsg="No Basic-tier members to upgrade" exportName="CrossSell_Upgrade" />
         </div>
       )}
       {activePanel === 'new-member' && (

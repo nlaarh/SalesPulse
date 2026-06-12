@@ -238,6 +238,17 @@ def seed_geodata(force: bool = False):
     from models import GeoCounty, GeoZip, GeoMeta
     from datetime import datetime, timezone
 
+    if force:
+        log.info("Force re-seed: dropping existing geo tables to align schema")
+        try:
+            from sqlalchemy import text
+            with engine.connect() as conn:
+                conn.execute(text("DROP TABLE IF EXISTS sales.geo_zips CASCADE;"))
+                conn.execute(text("DROP TABLE IF EXISTS sales.geo_counties CASCADE;"))
+                conn.commit()
+        except Exception as e:
+            log.warning(f"Could not drop tables: {e}")
+
     # Create tables if not exist
     Base.metadata.create_all(bind=engine, checkfirst=True)
 
@@ -251,32 +262,9 @@ def seed_geodata(force: bool = False):
             log.info(f"Geo data already seeded ({county_count} counties, {zip_count} zips) — skipping")
             return
 
-        if force:
-            log.info("Force re-seed: clearing existing geo data")
-            db.query(GeoZip).delete()
-            db.query(GeoCounty).delete()
-            db.commit()
-
         # ── 1. Fetch county boundaries + population ──
         boundaries = _fetch_county_boundaries()
         populations = _fetch_county_population()
-
-        for fips, name in WCNY_COUNTY_FIPS.items():
-            pop = populations.get(fips, {})
-            db.merge(GeoCounty(
-                fips=fips,
-                name=name,
-                population=pop.get('population', 0),
-                pop_18plus=pop.get('pop_18plus', 0),
-                median_income=pop.get('median_income', 0),
-                median_age=pop.get('median_age', 0),
-                housing_units=pop.get('housing_units', 0),
-                median_home_value=pop.get('median_home_value', 0),
-                college_educated=pop.get('college_educated', 0),
-                geojson=boundaries.get(fips, ''),
-            ))
-        db.commit()
-        log.info(f"Seeded {len(WCNY_COUNTY_FIPS)} county records")
 
         # ── 2. Load zip centroids and assign to counties ──
         with open(CENTROID_FILE) as f:
@@ -293,12 +281,35 @@ def seed_geodata(force: bool = False):
         # Fetch population for these zips
         zip_pops = _fetch_zip_population(list(wcny_zips.keys()))
 
+        # Load local segments to merge age/vehicle metrics if available
+        census_segments = {}
+        try:
+            segments_file = os.path.join(os.path.dirname(__file__), 'seed_data', 'census_segments.json')
+            if os.path.exists(segments_file):
+                with open(segments_file) as f:
+                    census_segments = json.load(f)
+        except Exception as e:
+            log.warning(f"Could not load census_segments.json for API merge: {e}")
+
         # Assign each zip to nearest county
+        county_aggregates = {}
         for z, info in wcny_zips.items():
             county_fips, county_name = _assign_zip_to_county(
                 info['lat'], info['lng'], boundaries
             )
             pop = zip_pops.get(z, {})
+
+            seg = census_segments.get(z) or {}
+            reg_v = seg.get('registered_vehicles') or 0
+            v_3yr = seg.get('vehicles_3plus_yrs') or 0
+            a_16_18 = seg.get('age_16_18') or 0
+            a_18_24 = seg.get('age_18_24') or 0
+            a_25_34 = seg.get('age_25_34') or 0
+            a_35_44 = seg.get('age_35_44') or 0
+            a_45_54 = seg.get('age_45_54') or 0
+            a_55_64 = seg.get('age_55_64') or 0
+            a_65_plus = seg.get('age_65_plus') or 0
+
             db.merge(GeoZip(
                 zip_code=z,
                 city=info['city'],
@@ -313,11 +324,82 @@ def seed_geodata(force: bool = False):
                 housing_units=pop.get('housing_units', 0),
                 median_home_value=pop.get('median_home_value', 0),
                 college_educated=pop.get('college_educated', 0),
+                registered_vehicles=reg_v,
+                vehicles_3plus_yrs=v_3yr,
+                age_16_18=a_16_18,
+                age_18_24=a_18_24,
+                age_25_34=a_25_34,
+                age_35_44=a_35_44,
+                age_45_54=a_45_54,
+                age_55_64=a_55_64,
+                age_65_plus=a_65_plus,
+            ))
+
+            # Aggregate for county in API seeder
+            if county_fips:
+                if county_fips not in county_aggregates:
+                    county_aggregates[county_fips] = {
+                        'registered_vehicles': 0,
+                        'vehicles_3plus_yrs': 0,
+                        'age_16_18': 0,
+                        'age_18_24': 0,
+                        'age_25_34': 0,
+                        'age_35_44': 0,
+                        'age_45_54': 0,
+                        'age_55_64': 0,
+                        'age_65_plus': 0,
+                    }
+                agg = county_aggregates[county_fips]
+                agg['registered_vehicles'] += reg_v
+                agg['vehicles_3plus_yrs'] += v_3yr
+                agg['age_16_18'] += a_16_18
+                agg['age_18_24'] += a_18_24
+                agg['age_25_34'] += a_25_34
+                agg['age_35_44'] += a_35_44
+                agg['age_45_54'] += a_45_54
+                agg['age_55_64'] += a_55_64
+                agg['age_65_plus'] += a_65_plus
+
+        # ── 3. Seed county records ──
+        for fips, name in WCNY_COUNTY_FIPS.items():
+            pop = populations.get(fips, {})
+            agg = county_aggregates.get(fips) or {
+                'registered_vehicles': 0,
+                'vehicles_3plus_yrs': 0,
+                'age_16_18': 0,
+                'age_18_24': 0,
+                'age_25_34': 0,
+                'age_35_44': 0,
+                'age_45_54': 0,
+                'age_55_64': 0,
+                'age_65_plus': 0,
+            }
+            db.merge(GeoCounty(
+                fips=fips,
+                name=name,
+                population=pop.get('population', 0),
+                pop_18plus=pop.get('pop_18plus', 0),
+                median_income=pop.get('median_income', 0),
+                median_age=pop.get('median_age', 0),
+                housing_units=pop.get('housing_units', 0),
+                median_home_value=pop.get('median_home_value', 0),
+                college_educated=pop.get('college_educated', 0),
+                registered_vehicles=agg['registered_vehicles'],
+                vehicles_3plus_yrs=agg['vehicles_3plus_yrs'],
+                age_16_18=agg['age_16_18'],
+                age_18_24=agg['age_18_24'],
+                age_25_34=agg['age_25_34'],
+                age_35_44=agg['age_35_44'],
+                age_45_54=agg['age_45_54'],
+                age_55_64=agg['age_55_64'],
+                age_65_plus=agg['age_65_plus'],
+                geojson=boundaries.get(fips, ''),
             ))
 
         db.commit()
         final_zip_count = db.query(GeoZip).count()
         final_county_count = db.query(GeoCounty).count()
+
 
         # Record refresh timestamp
         now = datetime.now(timezone.utc).isoformat()
@@ -343,45 +425,104 @@ def seed_geodata(force: bool = False):
 
     except Exception as e:
         db.rollback()
-        log.error(f"Geo seed failed: {e}", exc_info=True)
-        raise
+        log.warning(f"Census API seed failed ({e}), falling back to local data...")
+        try:
+            seed_geodata_local(force=force)
+        except Exception as le:
+            log.error(f"Fallback local seed also failed: {le}", exc_info=True)
+            raise
     finally:
         db.close()
 
 
 def seed_geodata_local(force: bool = False):
-    """Seed GeoZip table from local census_segments.json + ny_zip_centroids.json.
+    """Seed GeoZip and GeoCounty tables from local census_segments.json + ny_zip_centroids.json.
 
     This is a robust fallback that doesn't require the Census Bureau API.
     Works reliably on Azure and in any environment.
     """
     from database import SessionLocal, Base, engine
-    from models import GeoZip, GeoMeta
+    from models import GeoZip, GeoCounty, GeoMeta
     from datetime import datetime, timezone
+
+    if force:
+        log.info("Force local seed: dropping existing geo tables to align schema")
+        try:
+            from sqlalchemy import text
+            with engine.connect() as conn:
+                conn.execute(text("DROP TABLE IF EXISTS sales.geo_zips CASCADE;"))
+                conn.execute(text("DROP TABLE IF EXISTS sales.geo_counties CASCADE;"))
+                conn.commit()
+        except Exception as e:
+            log.warning(f"Could not drop tables: {e}")
 
     Base.metadata.create_all(bind=engine, checkfirst=True)
 
     db = SessionLocal()
     try:
         zip_count = db.query(GeoZip).count()
-        if zip_count > 0 and not force:
-            log.info(f"GeoZip already has {zip_count} records — skipping local seed")
+        county_count = db.query(GeoCounty).count()
+        if zip_count > 0 and county_count > 0 and not force:
+            log.info(f"Geo data already seeded ({zip_count} zips, {county_count} counties) — skipping local seed")
             return
 
-        if force:
-            log.info("Force local seed: clearing GeoZip data")
-            db.query(GeoZip).delete()
-            db.commit()
+        # Load county boundaries GeoJSON from public plotly github URL if available
+        boundaries = {}
+        try:
+            log.info("Fetching county boundary GeoJSON for local fallback...")
+            req = urllib.request.Request(COUNTY_GEOJSON_URL, headers={'User-Agent': 'SalesPulse/1.0'})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode())
+                for feature in data['features']:
+                    fips = feature.get('id') or feature['properties'].get('GEO_ID', '')[-5:]
+                    if fips in WCNY_COUNTY_FIPS:
+                        boundaries[fips] = json.dumps(feature['geometry'])
+            log.info(f"Got boundaries for {len(boundaries)} WCNY counties")
+        except Exception as e:
+            log.warning(f"Failed to fetch county boundaries: {e}. Falling back to empty string boundaries.")
 
         # Load local data files
         census_file = os.path.join(os.path.dirname(__file__), 'seed_data', 'census_segments.json')
         with open(census_file) as f:
             census_data = json.load(f)
 
+        # Load census_zips.json to get actual college_educated and median_age if available
+        zip_details = {}
+        try:
+            zips_file = os.path.join(os.path.dirname(__file__), 'seed_data', 'census_zips.json')
+            if os.path.exists(zips_file):
+                with open(zips_file) as f:
+                    zips_list = json.load(f)
+                    for item in zips_list:
+                        zc = item.get('zip_code')
+                        if zc:
+                            zip_details[str(zc).zfill(5)] = item
+                log.info(f"Loaded details for {len(zip_details)} zips from census_zips.json")
+        except Exception as e:
+            log.warning(f"Could not load census_zips.json for college/age: {e}")
+
+        # Load census_counties.json to get actual county demographics if available
+        county_details = {}
+        try:
+            counties_file = os.path.join(os.path.dirname(__file__), 'seed_data', 'census_counties.json')
+            if os.path.exists(counties_file):
+                with open(counties_file) as f:
+                    counties_list = json.load(f)
+                    for item in counties_list:
+                        cfips = item.get('fips')
+                        if cfips:
+                            county_details[cfips] = item
+                log.info(f"Loaded details for {len(county_details)} counties from census_counties.json")
+        except Exception as e:
+            log.warning(f"Could not load census_counties.json: {e}")
+
         with open(CENTROID_FILE) as f:
             centroids = json.load(f)
 
-        count = 0
+        county_aggregates = {}
+        name_to_fips = {name.lower().strip(): fips for fips, name in WCNY_COUNTY_FIPS.items()}
+
+        z_count = 0
         for zip_code, info in census_data.items():
             z = str(zip_code).zfill(5)
             centroid = centroids.get(z)
@@ -395,33 +536,151 @@ def seed_geodata_local(force: bool = False):
             owner = info.get('owner_occupied', 0) or 0
             renter = info.get('renter_occupied', 0) or 0
             housing = (owner or 0) + (renter or 0)
+            county_name = info.get('county', '').strip()
+
+            # Find matching FIPS code
+            fips = name_to_fips.get(county_name.lower())
+
+            # Get actual college_educated and median_age from lookup
+            lookup = zip_details.get(z, {})
+            college = lookup.get('college_educated') or 0
+            med_age = lookup.get('median_age') or 0.0
+
+            reg_v = info.get('registered_vehicles') or 0
+            v_3yr = info.get('vehicles_3plus_yrs') or 0
+            a_16_18 = info.get('age_16_18') or 0
+            a_18_24 = info.get('age_18_24') or 0
+            a_25_34 = info.get('age_25_34') or 0
+            a_35_44 = info.get('age_35_44') or 0
+            a_45_54 = info.get('age_45_54') or 0
+            a_55_64 = info.get('age_55_64') or 0
+            a_65_plus = info.get('age_65_plus') or 0
 
             db.merge(GeoZip(
                 zip_code=z,
                 city=info.get('city', ''),
-                county_fips=None,
-                county_name=info.get('county', ''),
+                county_fips=fips,
+                county_name=county_name,
                 lat=lat,
                 lng=lng,
                 population=pop,
                 pop_18plus=adults,
                 median_income=income,
-                median_age=None,
+                median_age=med_age,
                 housing_units=housing,
                 median_home_value=home_val,
-                college_educated=None,
+                college_educated=college,
+                registered_vehicles=reg_v,
+                vehicles_3plus_yrs=v_3yr,
+                age_16_18=a_16_18,
+                age_18_24=a_18_24,
+                age_25_34=a_25_34,
+                age_35_44=a_35_44,
+                age_45_54=a_45_54,
+                age_55_64=a_55_64,
+                age_65_plus=a_65_plus,
             ))
-            count += 1
+            z_count += 1
+
+            # Aggregate ZIP details for GeoCounty
+            if fips:
+                if fips not in county_aggregates:
+                    county_aggregates[fips] = {
+                        'name': county_name,
+                        'population': 0,
+                        'pop_18plus': 0,
+                        'housing_units': 0,
+                        'college_educated': 0,
+                        'income_weighted_sum': 0,
+                        'income_weight': 0,
+                        'home_val_weighted_sum': 0,
+                        'home_val_weight': 0,
+                        'registered_vehicles': 0,
+                        'vehicles_3plus_yrs': 0,
+                        'age_16_18': 0,
+                        'age_18_24': 0,
+                        'age_25_34': 0,
+                        'age_35_44': 0,
+                        'age_45_54': 0,
+                        'age_55_64': 0,
+                        'age_65_plus': 0,
+                    }
+                agg = county_aggregates[fips]
+                agg['population'] += pop
+                agg['pop_18plus'] += adults
+                agg['housing_units'] += housing
+                agg['college_educated'] += college
+                agg['registered_vehicles'] += reg_v
+                agg['vehicles_3plus_yrs'] += v_3yr
+                agg['age_16_18'] += a_16_18
+                agg['age_18_24'] += a_18_24
+                agg['age_25_34'] += a_25_34
+                agg['age_35_44'] += a_35_44
+                agg['age_45_54'] += a_45_54
+                agg['age_55_64'] += a_55_64
+                agg['age_65_plus'] += a_65_plus
+
+                if income > 0:
+                    agg['income_weighted_sum'] += income * pop
+                    agg['income_weight'] += pop
+                if home_val > 0:
+                    agg['home_val_weighted_sum'] += home_val * pop
+                    agg['home_val_weight'] += pop
+
+        # Insert aggregated GeoCounty records
+        c_count = 0
+        for fips, agg in county_aggregates.items():
+            lookup = county_details.get(fips)
+            if lookup:
+                pop = lookup.get('population', agg['population'])
+                adults = lookup.get('pop_18plus', agg['pop_18plus'])
+                income = lookup.get('median_income', 0)
+                med_age = lookup.get('median_age', 0.0) or 40.0
+                housing = lookup.get('housing_units', agg['housing_units'])
+                home_val = lookup.get('median_home_value', 0)
+                college = lookup.get('college_educated', 0)
+            else:
+                pop = agg['population']
+                adults = agg['pop_18plus']
+                income = int(agg['income_weighted_sum'] / agg['income_weight']) if agg['income_weight'] > 0 else 0
+                med_age = 40.0
+                housing = agg['housing_units']
+                home_val = int(agg['home_val_weighted_sum'] / agg['home_val_weight']) if agg['home_val_weight'] > 0 else 0
+                college = agg['college_educated']
+
+            db.merge(GeoCounty(
+                fips=fips,
+                name=agg['name'],
+                population=pop,
+                pop_18plus=adults,
+                median_income=income,
+                median_age=med_age,
+                housing_units=housing,
+                median_home_value=home_val,
+                college_educated=college,
+                registered_vehicles=agg['registered_vehicles'],
+                vehicles_3plus_yrs=agg['vehicles_3plus_yrs'],
+                age_16_18=agg['age_16_18'],
+                age_18_24=agg['age_18_24'],
+                age_25_34=agg['age_25_34'],
+                age_35_44=agg['age_35_44'],
+                age_45_54=agg['age_45_54'],
+                age_55_64=agg['age_55_64'],
+                age_65_plus=agg['age_65_plus'],
+                geojson=boundaries.get(fips, '') or (lookup.get('geojson', '') if lookup else ''),
+            ))
+            c_count += 1
 
         db.commit()
 
         now = datetime.now(timezone.utc).isoformat()
         db.merge(GeoMeta(key='last_refreshed', value=now))
-        db.merge(GeoMeta(key='zip_count', value=str(count)))
+        db.merge(GeoMeta(key='zip_count', value=str(z_count)))
+        db.merge(GeoMeta(key='county_count', value=str(c_count)))
         db.merge(GeoMeta(key='source', value='Local census_segments.json'))
         db.commit()
 
-        log.info(f"Local geo seed complete: {count} zips from census_segments.json")
+        log.info(f"Local geo seed complete: {z_count} zips and {c_count} counties from census_segments.json")
 
     except Exception as e:
         db.rollback()

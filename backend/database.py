@@ -85,3 +85,14 @@ def init_db():
         except Exception as e:
             log.warning(f'Territory seed failed: {e}')
     threading.Thread(target=_bg_geo_seed, daemon=True).start()
+
+
+def _has_seeded_geo_data(db) -> bool:
+    from data.models import GeoZip, GeoCounty
+    try:
+        zips = db.query(GeoZip).count()
+        counties = db.query(GeoCounty).count()
+        return zips > 0 and counties > 0
+    except Exception:
+        return False
+
