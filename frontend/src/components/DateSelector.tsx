@@ -1,7 +1,6 @@
 import { useRef } from 'react'
 import { useSales } from '@/contexts/SalesContext'
 import { cn } from '@/lib/utils'
-import { Calendar, ArrowRight } from 'lucide-react'
 
 const PRESETS = [
   { key: 'month'     as const, label: '1M',  title: 'Last 30 days' },
@@ -60,15 +59,14 @@ export default function DateSelector() {
       </div>
 
       {/* Inline date range — click either date to pick */}
-      <div className="flex items-center gap-1 rounded-lg border border-border bg-secondary/30 px-2.5 py-1">
-        <Calendar className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+      <div className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary/30 px-2.5 py-1">
 
         {/* Start date */}
         <div className="relative">
           <span
             className={cn(
-              'text-[11px] font-semibold tabular-nums cursor-pointer select-none',
-              isCustom ? 'text-primary' : 'text-muted-foreground',
+              'text-[11px] font-semibold tabular-nums cursor-pointer select-none underline underline-offset-2 decoration-dotted',
+              isCustom ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
             )}
             onClick={() => startRef.current?.showPicker?.()}
           >
@@ -84,14 +82,14 @@ export default function DateSelector() {
           />
         </div>
 
-        <ArrowRight className="h-2.5 w-2.5 text-muted-foreground/50 shrink-0" />
+        <span className="text-[11px] text-muted-foreground/50 select-none">→</span>
 
         {/* End date */}
         <div className="relative">
           <span
             className={cn(
-              'text-[11px] font-semibold tabular-nums cursor-pointer select-none',
-              isCustom ? 'text-primary' : 'text-muted-foreground',
+              'text-[11px] font-semibold tabular-nums cursor-pointer select-none underline underline-offset-2 decoration-dotted',
+              isCustom ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
             )}
             onClick={() => endRef.current?.showPicker?.()}
           >
