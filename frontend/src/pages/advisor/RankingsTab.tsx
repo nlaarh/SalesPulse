@@ -16,6 +16,7 @@ import { Users, ArrowUpDown, ChevronRight, Download } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
 import { exportToExcel } from '@/lib/exportExcel'
 import MultiSelect from '@/components/MultiSelect'
+import { useLocalStorage } from '@/hooks/useLocalStorage'
 
 /* ── Props ────────────────────────────────────────────────────────────────── */
 
@@ -81,8 +82,8 @@ function LeaderboardFull({ leaders, onSelect, targetMap, line }: {
   const [sortKey, setSortKey] = useState<SortKey>('commission')
   const [sortAsc, setSortAsc] = useState(false)
   const [showAll, setShowAll] = useState(false)
-  const [selDepts, setSelDepts] = useState<string[]>([])
-  const [selAdvisors, setSelAdvisors] = useState<string[]>([])
+  const [selDepts, setSelDepts] = useLocalStorage<string[]>(`sp_filter_advisor_perf_depts_${line ?? 'all'}`, [])
+  const [selAdvisors, setSelAdvisors] = useLocalStorage<string[]>(`sp_filter_advisor_perf_advisors_${line ?? 'all'}`, [])
 
   const allDepts = useMemo(
     () => [...new Set(leaders.map(a => a.branch).filter(Boolean) as string[])].sort(),

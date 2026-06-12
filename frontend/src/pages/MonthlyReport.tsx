@@ -12,6 +12,8 @@ import SummaryTab from './monthly/SummaryTab'
 
 import DateSelector from '@/components/DateSelector'
 import AgentSearch from '@/components/AgentSearch'
+import MultiSelect from '@/components/MultiSelect'
+import { useLocalStorage } from '@/hooks/useLocalStorage'
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
 
@@ -49,6 +51,8 @@ export default function MonthlyReport() {
   const [targetMap, setTargetMap] = useState<Map<string, number>>(new Map())
   const [advisorBranchMap, setAdvisorBranchMap] = useState<Map<string, string>>(new Map())
   const [viewType, setViewType] = useState<'advisor' | 'branch'>('advisor')
+  const [selDepts, setSelDepts] = useLocalStorage<string[]>(`sp_filter_monthly_depts_${line}`, [])
+  const [selAdvisors, setSelAdvisors] = useLocalStorage<string[]>(`sp_filter_monthly_advisors_${line}`, [])
   const [retryCount, setRetryCount] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -162,6 +166,29 @@ export default function MonthlyReport() {
 
   const activeItems = viewType === 'advisor' ? agents : aggregatedBranches
   const activeTargetMap = viewType === 'advisor' ? targetMap : branchTargetMap
+
+  const allDepts = useMemo(() => {
+    if (viewType === 'branch') return aggregatedBranches.map(b => b.name).sort()
+    return [...new Set([...advisorBranchMap.values()].filter(Boolean))].sort()
+  }, [viewType, advisorBranchMap, aggregatedBranches])
+
+  const allAdvisors = useMemo(
+    () => viewType === 'advisor' ? [...new Set(agents.map(a => a.name))].sort() : [],
+    [viewType, agents],
+  )
+
+  const filteredItems = useMemo(() => {
+    return activeItems.filter(item => {
+      if (viewType === 'branch') {
+        return selDepts.length === 0 || selDepts.includes(item.name)
+      }
+      const branch = advisorBranchMap.get(item.name.toLowerCase()) ?? ''
+      if (selDepts.length > 0 && !selDepts.includes(branch)) return false
+      if (selAdvisors.length > 0 && !selAdvisors.includes(item.name)) return false
+      return true
+    })
+  }, [activeItems, viewType, advisorBranchMap, selDepts, selAdvisors])
+
   const isInsurance = line.toLowerCase() === 'insurance'
   const displayMetrics = getMetrics(isInsurance)
 
@@ -171,7 +198,7 @@ export default function MonthlyReport() {
     else { setSortField(field); setSortAsc(field === 'name') }
   }
 
-  const sorted = useMemo(() => [...activeItems].sort((a, b) => {
+  const sorted = useMemo(() => [...filteredItems].sort((a, b) => {
     if (sortField === 'name') return sortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name)
     let aVal = 0, bVal = 0
     if (sortField === 'total') {
@@ -210,10 +237,13 @@ export default function MonthlyReport() {
         <div className="flex flex-wrap items-center gap-6">
           <div>
             <p className="text-[12px] font-medium text-muted-foreground">
-              {line} Division &middot; {viewType === 'advisor' ? `${agents.length} advisors` : `${aggregatedBranches.length} branches`} &middot; {monthColumns.length} months
+              {line} Division &middot; {viewType === 'advisor'
+                ? `${filteredItems.length}${filteredItems.length !== agents.length ? ` of ${agents.length}` : ''} advisors`
+                : `${filteredItems.length}${filteredItems.length !== aggregatedBranches.length ? ` of ${aggregatedBranches.length}` : ''} branches`
+              } &middot; {monthColumns.length} months
             </p>
             <h1 className="mt-0.5 text-2xl font-bold tracking-tight">
-              Monthly Report
+              Monthly Breakdown
               <span className="ml-2 text-lg font-semibold text-primary/60">— {displayMetrics.find(m => m.key === metric)?.label ?? metric}</span>
             </h1>
           </div>
@@ -254,6 +284,42 @@ export default function MonthlyReport() {
           </button>
         </div>
       </div>
+
+      {/* Filter bar */}
+      {(allDepts.length > 1 || allAdvisors.length > 1) && (
+        <div className="animate-enter flex flex-wrap items-end gap-3">
+          {allDepts.length > 1 && (
+            <div className="relative">
+              <MultiSelect
+                label="Department"
+                options={allDepts}
+                selected={selDepts}
+                onChange={setSelDepts}
+                placeholder="All departments"
+              />
+            </div>
+          )}
+          {allAdvisors.length > 1 && (
+            <div className="relative">
+              <MultiSelect
+                label="Advisor"
+                options={allAdvisors}
+                selected={selAdvisors}
+                onChange={setSelAdvisors}
+                placeholder="All advisors"
+              />
+            </div>
+          )}
+          {(selDepts.length > 0 || selAdvisors.length > 0) && (
+            <button
+              onClick={() => { setSelDepts([]); setSelAdvisors([]) }}
+              className="self-end pb-1.5 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Row 2: Metric & Tab Selectors (Combined/Horizontal on one line) */}
       <div className="animate-enter flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/40 pb-3">
@@ -302,7 +368,7 @@ export default function MonthlyReport() {
       {/* Tab Content */}
       {tab === 'charts' && (
         <ChartsTab
-          agents={activeItems}
+          agents={filteredItems}
           monthColumns={monthColumns}
           monthTotals={monthTotals}
           divTotals={divTotals}
@@ -321,7 +387,7 @@ export default function MonthlyReport() {
         />
       )}
       {tab === 'summary' && (
-        <SummaryTab agents={activeItems} monthColumns={monthColumns} divTotals={divTotals} metric={metric} line={line} periodLabel={periodLabel} viewType={viewType} />
+        <SummaryTab agents={filteredItems} monthColumns={monthColumns} divTotals={divTotals} metric={metric} line={line} periodLabel={periodLabel} viewType={viewType} />
       )}
     </div>
   )
