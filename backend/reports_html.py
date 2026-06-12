@@ -209,6 +209,12 @@ def _finding(num, head, body, border=T1):
             f'<div><div class="finding-head">{head}</div>'
             f'<div class="finding-body">{body}</div></div></div>')
 
+def _insight_box(emoji, title, body, color=T1):
+    items = "".join(f"<p>{line}</p>" for line in body) if isinstance(body, list) else f"<p>{body}</p>"
+    return (f'<div class="insight-box" style="border-left:4px solid {color}">'
+            f'<div class="insight-title">{emoji} {title}</div>'
+            f'{items}</div>')
+
 def _opp(rank, title, current, target, actions, color=T1):
     acts = "".join(f"<li>{a}</li>" for a in actions)
     return (f'<div class="opp-card"><div class="opp-rank" style="background:{color}">{rank}</div>'
@@ -311,6 +317,12 @@ body{{font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;background
 .opp-actions{{font-size:12.5px;color:{GR1};padding-left:16px}}
 .opp-actions li{{margin-bottom:4px}}
 .footnote{{font-size:11px;color:{GR2};margin-top:8px;font-style:italic}}
+.insight-box{{background:white;border-radius:8px;padding:20px 22px;box-shadow:0 1px 3px rgba(0,0,0,.05);margin-bottom:16px}}
+.insight-box p{{font-size:13.5px;color:{GR1};line-height:1.65;margin-bottom:8px}}
+.insight-box p:last-child{{margin-bottom:0}}
+.insight-title{{font-size:13px;font-weight:700;color:{N1};margin-bottom:8px}}
+.insight-grid{{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px}}
+.appendix-label{{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:{GR2};margin-bottom:6px}}
 @media print{{.top-bar{{position:relative}};body{{background:white}}}}
 """
 
@@ -459,6 +471,19 @@ def build_html(d: dict) -> str:
     </div>
     <div class="card"><h4>Traveler Distribution by Household Income Band</h4>{inc_html}</div>
   </div>
+  <div class="insight-grid">
+    {_insight_box("📍","Geographic Intelligence — Where to Focus",[
+      "Erie County concentration is both our strength and our risk. The top 5 ZIPs (all in Erie) account for approximately 20% of all 3-year travelers. Deep penetration here is our baseline, but geographic concentration creates revenue risk if this market softens.",
+      "Monroe County (Pittsford, Fairport, Webster) represents the highest-upside growth market: median household income $100–140K, only 4–6% traveler penetration, and a professional/retiree demographic perfectly aligned with cruise and international tour products. This is the single clearest under-served opportunity in the territory.",
+      "Onondaga (Syracuse), Broome, and St. Lawrence counties show traveler counts that underperform their population size — likely a coverage and awareness gap rather than lack of demand.",
+    ], T1)}
+    {_insight_box("🎯","ZIP Codes to Prioritize Next 12 Months",[
+      "<strong>14534 (Pittsford)</strong> — $139K median income, only 5.2% penetration. Luxury cruise and international tour target.",
+      "<strong>14051 (East Amherst)</strong> — $117K income, 10.5% penetration. Strong performer; deepen with river cruise and premium European tours.",
+      "<strong>14450 (Fairport)</strong> — $104K income, 5.7% penetration. Monroe County anchor; open advisor capacity here.",
+      "<strong>14580 (Webster)</strong> — $91K income, 3.8% penetration — lowest in top 10. Awareness campaign opportunity.",
+    ], N3)}
+  </div>
 </div>
 <div class="section">
   <div class="section-header"><div class="snum">02</div>
@@ -473,17 +498,17 @@ def build_html(d: dict) -> str:
   </div>
   <div class="card" style="margin-bottom:24px"><h4>Commission Income by Destination  ({plabel})</h4>
     <img src="{c_dest}" class="chart-img"></div>
-  <div class="two-col">
-    <div class="card"><h4>Full Destination Breakdown</h4>
-      <table class="data-table">
-        <thead><tr><th>Destination</th><th class="num">Commission</th><th class="num">Share</th>
-          <th class="num">Trips</th><th class="num">Gross</th><th>Bar</th></tr></thead>
-        <tbody>{dest_rows}</tbody>
-      </table>
-      <p class="footnote">Group/Uncat. = affinity group bookings + no destination classification</p>
-    </div>
-    <div class="card"><h4>Revenue by Product</h4><img src="{c_prod}" class="chart-img"></div>
+  <div class="card" style="margin-bottom:24px"><h4>Revenue by Product — {plabel}</h4>
+    <img src="{c_prod}" class="chart-img"></div>
+  <div class="insight-grid">
+    {_insight_box("🚢","Cruise + Europe = The Profit Engine",
+      "Cruise and International Tours together generate the majority of all commission income — both running at ~13% margin. This is our structural advantage over direct-booking OTAs who cannot match the expertise, group pricing, and included value AAA advisors provide. Protecting and growing these two categories is the #1 revenue priority.", T1)}
+    {_insight_box("🛡️","Travel Insurance: 28% Margin — Underutilized",
+      "Travel Insurance is the highest-margin product in the entire portfolio at 28%. Attaching it to 80% of trips vs. the current ~60% would add approximately $700K annually with zero incremental trip volume required. Every uninsured booking is margin left on the table.", G1)}
+    {_insight_box("🌍","Emerging: South America, Mexico, Caribbean-West",
+      "Three destination regions each generating $380–505K with significant headroom. Mexico generates over 1,100 trips at under-monetized per-trip rates — tour packaging opportunity is real. South America and Caribbean-West show the fastest growth trajectory in the portfolio.", N3)}
   </div>
+  <p style="font-size:11px;color:{GR2};margin-top:8px;font-style:italic">Full destination breakdown table available in the Appendix at the end of this report.</p>
 </div>
 <div class="section">
   <div class="section-header"><div class="snum">03</div>
@@ -511,7 +536,14 @@ def build_html(d: dict) -> str:
       <p class="footnote">Group/Affinity = bulk affinity bookings (AAA Group Cruises)</p>
     </div>
   </div>
-  <div class="card"><h4>Monthly Booking Cadence — Seasonality ({plabel})</h4>
+  {_insight_box("👤","The AAA WCNY Traveler Profile",[
+    "<strong>Typical traveler:</strong> AAA member, suburban homeowner, 45–65 years old, household income $75–125K, Erie or Monroe County — books a cruise or international tour every 1–2 years through a trusted AAA advisor.",
+    "<strong>📍 Geography:</strong> Erie County ~45% · Monroe ~15–20% · Onondaga ~10% · Rest of territory ~25%",
+    "<strong>💰 Income:</strong> Census-weighted median ~$82K — upper-middle suburban, price-aware but willing to pay for expertise and peace of mind.",
+    "<strong>🎂 Age:</strong> Member base peaks 65–74 (largest cohort). Traveler origin ZIP median age 42–47 — the 45–64 sweet spot who still work, have disposable income, and travel 1–2 times per year.",
+    "<strong>🔁 Loyalty:</strong> Repeat traveler rate is high — most top-ZIP customers have booked multiple times in 3 years. Retention of this core is far cheaper than acquiring new travelers.",
+  ], T1)}
+  <div class="card" style="margin-top:24px"><h4>Monthly Booking Cadence — Seasonality ({plabel})</h4>
     <img src="{c_month}" class="chart-img">
     <p class="footnote">February peak = advance summer booking season · September trough = post-summer lull · Partial months marked * · Year bands: teal=current, gold=prior yr</p>
   </div>
@@ -533,6 +565,20 @@ def build_html(d: dict) -> str:
     {_opp("04","International Tour Expansion","Intl Tours = #2 product by revenue, 13% margin","Grow 15-20% over next 2 years",["Add Scandinavia itineraries — high margin, growing demand","Ireland and Greece above average margin — expand inventory allocation","South America emerging — launch 2 new packages targeting affluent Erie travelers","Exclusive AAA 'insider access' experiences to command OTA price premium"],N3)}
     {_opp("05","Non-Member Conversion Pipeline",f"{prospect_row['customers']:,} Prospect travelers in this period","Convert 2,500 to AAA membership in 12 months",["90-day post-trip membership offer sequence — loyalty highest immediately after travel","Quantify value: 'You saved $X on this trip — annual membership costs $Y'","Prospects with 2+ bookings are most convertible — target them first","Track Prospect → Member conversion rate as a monthly Travel KPI"],N3)}
     {_opp("06","Monroe County Market Development","Rochester ZIPs average $100K+ income but only 4–6% traveler penetration","Grow Monroe Co. to 20% of total travel revenue",["Open dedicated travel advisor capacity at Pittsford and Fairport branches","Partner with Rochester employers for corporate group and incentive travel","Host quarterly in-branch travel events — wine-paired destination showcases","Targeted digital campaign: 'Rochester's AAA Travel Specialists'"],GR1)}
+  </div>
+</div>
+<div class="section">
+  <div class="section-header"><div class="snum">A</div>
+    <div class="stb"><div class="label">Appendix</div>
+      <h2>Full Destination Breakdown</h2>
+      <p>{plabel} — All destinations ranked by commission income</p></div></div>
+  <div class="card">
+    <table class="data-table">
+      <thead><tr><th>Destination</th><th class="num">Commission</th><th class="num">Share</th>
+        <th class="num">Trips</th><th class="num">Gross</th><th>Bar</th></tr></thead>
+      <tbody>{dest_rows}</tbody>
+    </table>
+    <p class="footnote">Group/Uncat. = affinity group bookings + no destination classification · INTL = international · DOM = domestic USA</p>
   </div>
 </div>
 <div style="border-top:2px solid {GR3};padding-top:24px;margin-top:16px">

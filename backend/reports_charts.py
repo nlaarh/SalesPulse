@@ -13,7 +13,7 @@ import matplotlib.patches as mpatches
 import numpy as np
 
 CENSUS_PATH = Path(__file__).resolve().parent / "seed_data" / "census_zips.json"
-TZIP_PATH   = Path(__file__).resolve().parent.parent / "Analysis_Apr" / "strategic_report" / "data" / "travel_by_zip.csv"
+TZIP_PATH   = Path(__file__).resolve().parent / "seed_data" / "travel_by_zip.csv"
 TZIPS_PATH  = Path(__file__).resolve().parent / "seed_data" / "growth_data" / "territory_zips.json"
 
 N1="#0B2545"; N2="#1B3A6B"; N3="#2E5FA3"
