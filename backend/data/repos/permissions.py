@@ -53,6 +53,7 @@ _DEFAULTS: dict[str, set[str]] = {
         'page:dashboard', 'page:pipeline', 'page:opportunities', 'page:leads',
         'page:customers', 'page:territory_map', 'page:monthly_report',
         'page:cross_sell', 'page:agent_dashboard',
+        'page:reports', 'page:market_pulse',
         'line:Insurance',
         'action:upload_targets', 'action:export_data',
         'feature:opportunity_scoring',

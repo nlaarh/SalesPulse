@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { useSales } from '@/contexts/SalesContext'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -8,7 +8,7 @@ import {
   Users, GitBranch, Megaphone, Table2, Target, DollarSign,
   Sun, Moon, Command, Radio, Map, BarChart3,
   Settings, LogOut, Lightbulb, RefreshCw,
-  TrendingUp,
+  Trophy, FileText, ChevronRight, Shield, Plane,
 } from 'lucide-react'
 import SalesPulseLogo from '@/components/SalesPulseLogo'
 import CommandPalette from '@/components/CommandPalette'
@@ -35,14 +35,18 @@ const NAV_ANALYTICS = [
   { to: '/territory', label: 'Market Penetration Map', icon: Map, desc: 'Penetration heatmap' },
 ]
 
-// Note: `Strategic Growth Plan` is admin/superadmin-only — filtered at render time.
 const NAV_EXTERNAL = [
-  { to: '/growth-plan', label: 'Strategic Growth Plan', icon: TrendingUp, desc: 'Board-grade growth plan with maps & analysis', adminOnly: true },
   { to: '/census', label: 'Market Demographics', icon: BarChart3, desc: 'Population & demographics' },
   { to: '/market-pulse', label: 'Advisories & Alerts', icon: Radio, desc: 'Advisories & intelligence' },
 ] as const
 
-const LINES = ['Travel', 'Insurance', 'All'] as const
+const NAV_MEMBERSHIP = [
+  { to: '/membership',          label: 'Membership Overview',   icon: Users,      desc: 'KPIs, renewals & trends' },
+  { to: '/membership/channels', label: 'Revenue by Channel',    icon: BarChart3,  desc: 'New & renewals by channel' },
+  { to: '/membership/advisors', label: 'Advisor Performance',   icon: Trophy,     desc: 'Agent rankings & leaderboard' },
+] as const
+
+const LINES = ['Travel', 'Insurance', 'Membership'] as const
 
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 
@@ -50,12 +54,16 @@ export default function Layout() {
   const { line, setLine } = useSales()
   const { isDark, toggle } = useTheme()
   const { user, logout, isAdminOrSuperadmin } = useAuth()
-  // Filter nav entries that are tagged adminOnly (e.g. Strategic Growth Plan)
-  // so managers don't see them. Backend remains authoritative.
-  const externalNav = NAV_EXTERNAL.filter(
-    (n) => !('adminOnly' in n && n.adminOnly) || isAdminOrSuperadmin || user?.role === 'executive',
-  )
+  const externalNav = NAV_EXTERNAL
   const navigate = useNavigate()
+  const location = useLocation()
+
+  // ── Reports submenu ──
+  const isOnReports = location.pathname.startsWith('/reports')
+  const [reportsOpen, setReportsOpen] = useState(isOnReports)
+  useEffect(() => {
+    if (isOnReports) setReportsOpen(true)
+  }, [isOnReports])
 
   // ── Command Palette ──
   const [cmdOpen, setCmdOpen] = useState(false)
@@ -113,7 +121,7 @@ export default function Layout() {
           <SalesPulseLogo size={28} showText />
         </div>
 
-        {/* Business line — top of sidebar, always visible */}
+        {/* Business line */}
         <div className="border-b border-sidebar-border px-4 pb-3 pt-2">
           {lineLocked ? (
             <div className="space-y-1">
@@ -134,113 +142,160 @@ export default function Layout() {
           )}
         </div>
 
-        {/* Nav + Filters — scrollable middle section */}
+        {/* Nav — scrollable middle section */}
         <div className="flex-1 overflow-y-auto">
         <nav className="space-y-0.5 px-3 pt-3">
-          {/* Analytics */}
-          <span className="mb-2 block px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
-            Analytics
-          </span>
-          {NAV_ANALYTICS.map(({ to, label, icon: Icon, desc }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) => cn(
-                'group relative flex items-center gap-3 rounded-lg px-2.5 py-2',
-                'text-[13px] font-medium transition-all duration-200',
-                isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-              )}
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <div className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-primary" />
-                  )}
-                  <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2 : 1.5} />
-                  <div className="flex flex-col">
-                    <span>{label}</span>
-                    <span className={cn(
-                      'text-[10px] font-normal leading-tight',
-                      isActive ? 'text-primary/60' : 'text-muted-foreground/40',
-                    )}>
-                      {desc}
-                    </span>
-                  </div>
-                </>
-              )}
-            </NavLink>
-          ))}
 
-          {/* External Data */}
-          <span className="mb-2 mt-4 block px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
-            External Data
-          </span>
-          {externalNav.map(({ to, label, icon: Icon, desc }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) => cn(
-                'group relative flex items-center gap-3 rounded-lg px-2.5 py-2',
-                'text-[13px] font-medium transition-all duration-200',
-                isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-              )}
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <div className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-primary" />
+          {effectiveLine === 'Membership' ? (
+            <>
+              <span className="mb-2 block px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
+                Membership
+              </span>
+              {NAV_MEMBERSHIP.map(({ to, label, icon: Icon, desc }) => (
+                <NavLink key={to} to={to}
+                  className={({ isActive }) => cn(
+                    'group relative flex items-center gap-3 rounded-lg px-2.5 py-2',
+                    'text-[13px] font-medium transition-all duration-200',
+                    isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
                   )}
-                  <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2 : 1.5} />
-                  <div className="flex flex-col">
-                    <span>{label}</span>
-                    <span className={cn(
-                      'text-[10px] font-normal leading-tight',
-                      isActive ? 'text-primary/60' : 'text-muted-foreground/40',
-                    )}>
-                      {desc}
-                    </span>
-                  </div>
-                </>
-              )}
-            </NavLink>
-          ))}
-
-          {/* User Management lives inside Settings → "Users" tab, gated to admin+superadmin */}
-
-          {/* Settings — admin or superadmin (Users tab lives here) */}
-          {isAdminOrSuperadmin && (
-            <NavLink
-              to="/settings"
-              className={({ isActive }) => cn(
-                'group relative flex items-center gap-3 rounded-lg px-2.5 py-2 mt-2',
-                'text-[13px] font-medium transition-all duration-200',
-                isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-              )}
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <div className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-primary" />
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && <div className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-primary" />}
+                      <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2 : 1.5} />
+                      <div className="flex flex-col">
+                        <span>{label}</span>
+                        <span className={cn('text-[10px] font-normal leading-tight', isActive ? 'text-primary/60' : 'text-muted-foreground/40')}>{desc}</span>
+                      </div>
+                    </>
                   )}
-                  <Settings className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2 : 1.5} />
-                  <div className="flex flex-col">
-                    <span>Settings</span>
-                    <span className={cn(
-                      'text-[10px] font-normal leading-tight',
-                      isActive ? 'text-primary/60' : 'text-muted-foreground/40',
-                    )}>
-                      Admin & configuration
-                    </span>
-                  </div>
-                </>
+                </NavLink>
+              ))}
+            </>
+          ) : (
+            <>
+              <span className="mb-2 block px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
+                Analytics
+              </span>
+              {NAV_ANALYTICS.map(({ to, label, icon: Icon, desc }) => (
+                <NavLink key={to} to={to}
+                  className={({ isActive }) => cn(
+                    'group relative flex items-center gap-3 rounded-lg px-2.5 py-2',
+                    'text-[13px] font-medium transition-all duration-200',
+                    isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                  )}
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && <div className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-primary" />}
+                      <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2 : 1.5} />
+                      <div className="flex flex-col">
+                        <span>{label}</span>
+                        <span className={cn('text-[10px] font-normal leading-tight', isActive ? 'text-primary/60' : 'text-muted-foreground/40')}>{desc}</span>
+                      </div>
+                    </>
+                  )}
+                </NavLink>
+              ))}
+
+              {/* ── Reports expandable submenu ── */}
+              {(isAdminOrSuperadmin || ['executive','travel_manager','travel_director','insurance_manager'].includes(user?.role ?? '')) && (
+                <div>
+                  <button
+                    onClick={() => setReportsOpen(o => !o)}
+                    className={cn(
+                      'group relative flex w-full items-center gap-3 rounded-lg px-2.5 py-2',
+                      'text-[13px] font-medium transition-all duration-200',
+                      isOnReports ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                    )}
+                  >
+                    {isOnReports && <div className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-primary" />}
+                    <FileText className="h-[18px] w-[18px] shrink-0" strokeWidth={isOnReports ? 2 : 1.5} />
+                    <div className="flex flex-col flex-1 text-left">
+                      <span>Reports</span>
+                      <span className={cn('text-[10px] font-normal leading-tight', isOnReports ? 'text-primary/60' : 'text-muted-foreground/40')}>
+                        Board &amp; executive presentations
+                      </span>
+                    </div>
+                    <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 transition-transform duration-200', reportsOpen && 'rotate-90')} />
+                  </button>
+
+                  {reportsOpen && (
+                    <div className="ml-4 mt-0.5 space-y-0.5 border-l border-border pl-3">
+                      {(isAdminOrSuperadmin || ['executive','insurance_manager'].includes(user?.role ?? '')) && (
+                        <NavLink
+                          to="/reports/insurance"
+                          className={({ isActive }) => cn(
+                            'flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[12.5px] font-medium transition-all duration-200',
+                            isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                          )}
+                        >
+                          <Shield className="h-[15px] w-[15px] shrink-0" />
+                          Insurance
+                        </NavLink>
+                      )}
+                      {(isAdminOrSuperadmin || ['executive','travel_manager','travel_director'].includes(user?.role ?? '')) && (
+                        <NavLink
+                          to="/reports/travel"
+                          className={({ isActive }) => cn(
+                            'flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[12.5px] font-medium transition-all duration-200',
+                            isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                          )}
+                        >
+                          <Plane className="h-[15px] w-[15px] shrink-0" />
+                          Travel
+                        </NavLink>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
-            </NavLink>
+
+              <span className="mb-2 mt-4 block px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/50">
+                External Data
+              </span>
+              {externalNav.map(({ to, label, icon: Icon, desc }) => (
+                <NavLink key={to} to={to}
+                  className={({ isActive }) => cn(
+                    'group relative flex items-center gap-3 rounded-lg px-2.5 py-2',
+                    'text-[13px] font-medium transition-all duration-200',
+                    isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                  )}
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && <div className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-primary" />}
+                      <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2 : 1.5} />
+                      <div className="flex flex-col">
+                        <span>{label}</span>
+                        <span className={cn('text-[10px] font-normal leading-tight', isActive ? 'text-primary/60' : 'text-muted-foreground/40')}>{desc}</span>
+                      </div>
+                    </>
+                  )}
+                </NavLink>
+              ))}
+
+              {isAdminOrSuperadmin && (
+                <NavLink to="/settings"
+                  className={({ isActive }) => cn(
+                    'group relative flex items-center gap-3 rounded-lg px-2.5 py-2 mt-2',
+                    'text-[13px] font-medium transition-all duration-200',
+                    isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                  )}
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && <div className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-primary" />}
+                      <Settings className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2 : 1.5} />
+                      <div className="flex flex-col">
+                        <span>Settings</span>
+                        <span className={cn('text-[10px] font-normal leading-tight', isActive ? 'text-primary/60' : 'text-muted-foreground/40')}>Admin & configuration</span>
+                      </div>
+                    </>
+                  )}
+                </NavLink>
+              )}
+            </>
           )}
         </nav>
 
