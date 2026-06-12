@@ -5,7 +5,7 @@
  * Pure presentation — receives all data via props.
  */
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { formatCurrency, formatNumber, formatPct, cn } from '@/lib/utils'
 import { useChartColors, getEChartTooltip } from '@/lib/chart-theme'
 import { Tip, TIPS } from '@/components/MetricTip'
@@ -15,6 +15,7 @@ import type { SlippingDeal } from '@/lib/types'
 import { Users, ArrowUpDown, ChevronRight, Download } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
 import { exportToExcel } from '@/lib/exportExcel'
+import MultiSelect from '@/components/MultiSelect'
 
 /* ── Props ────────────────────────────────────────────────────────────────── */
 
@@ -35,7 +36,7 @@ export default function RankingsTab({ leaders, slipping, leadSources, c, targetM
     <>
       {/* Full Leaderboard */}
       <div className="animate-enter card-premium overflow-hidden">
-        <LeaderboardFull leaders={leaders} onSelect={onSelectAdvisor} targetMap={targetMap} showBranch={line === 'Travel'} line={line} />
+        <LeaderboardFull leaders={leaders} onSelect={onSelectAdvisor} targetMap={targetMap} line={line} />
       </div>
 
       {/* At-Risk + Lead Sources */}
@@ -72,14 +73,25 @@ function getVal(a: Advisor, key: SortKey): number {
   return (a[key as keyof Advisor] as number) || 0
 }
 
-function LeaderboardFull({ leaders, onSelect, targetMap, showBranch, line }: {
-  leaders: Advisor[]; onSelect: (name: string) => void; targetMap?: Map<string, number>; showBranch?: boolean; line?: string
+function LeaderboardFull({ leaders, onSelect, targetMap, line }: {
+  leaders: Advisor[]; onSelect: (name: string) => void; targetMap?: Map<string, number>; line?: string
 }) {
   const isInsurance = line?.toLowerCase() === 'insurance'
   const hasTargets = targetMap && targetMap.size > 0
   const [sortKey, setSortKey] = useState<SortKey>('commission')
   const [sortAsc, setSortAsc] = useState(false)
   const [showAll, setShowAll] = useState(false)
+  const [selDepts, setSelDepts] = useState<string[]>([])
+  const [selAdvisors, setSelAdvisors] = useState<string[]>([])
+
+  const allDepts = useMemo(
+    () => [...new Set(leaders.map(a => a.branch).filter(Boolean) as string[])].sort(),
+    [leaders],
+  )
+  const allAdvisors = useMemo(
+    () => [...new Set(leaders.map(a => a.name))].sort(),
+    [leaders],
+  )
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortAsc(!sortAsc)
@@ -92,7 +104,14 @@ function LeaderboardFull({ leaders, onSelect, targetMap, showBranch, line }: {
     return sortAsc ? aVal - bVal : bVal - aVal
   })
 
-  const displayed = showAll ? sorted : sorted.slice(0, 15)
+  const filtered = sorted.filter(a => {
+    if (selDepts.length > 0 && !selDepts.includes(a.branch ?? '')) return false
+    if (selAdvisors.length > 0 && !selAdvisors.includes(a.name)) return false
+    return true
+  })
+
+  const displayed = showAll ? filtered : filtered.slice(0, 15)
+  const showBranch = allDepts.length > 0
 
   // Totals for share calculation
   const totalBookings = leaders.reduce((s, a) => s + (a.bookings || 0), 0)
@@ -122,10 +141,12 @@ function LeaderboardFull({ leaders, onSelect, targetMap, showBranch, line }: {
           <h3 className="text-sm font-semibold">Advisor Leaderboard</h3>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[12px] text-muted-foreground">{leaders.length} advisors</span>
+          <span className="text-[12px] text-muted-foreground">
+            {filtered.length}{filtered.length !== leaders.length ? ` of ${leaders.length}` : ''} advisors
+          </span>
           <button
             onClick={() => {
-              const rows = sorted.map((a, i) => {
+              const rows = filtered.map((a, i) => {
                 const agentBase = totalCommission > 0 ? (a.commission || 0) : (a.bookings || 0)
                 const sharePct = shareBase > 0 ? (agentBase / shareBase) * 100 : 0
                 return isInsurance ? {
@@ -158,6 +179,41 @@ function LeaderboardFull({ leaders, onSelect, targetMap, showBranch, line }: {
           </button>
         </div>
       </div>
+
+      {(allDepts.length > 1 || allAdvisors.length > 1) && (
+        <div className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
+          {allDepts.length > 1 && (
+            <div className="relative">
+              <MultiSelect
+                label="Department"
+                options={allDepts}
+                selected={selDepts}
+                onChange={setSelDepts}
+                placeholder="All departments"
+              />
+            </div>
+          )}
+          {allAdvisors.length > 1 && (
+            <div className="relative">
+              <MultiSelect
+                label="Advisor"
+                options={allAdvisors}
+                selected={selAdvisors}
+                onChange={setSelAdvisors}
+                placeholder="All advisors"
+              />
+            </div>
+          )}
+          {(selDepts.length > 0 || selAdvisors.length > 0) && (
+            <button
+              onClick={() => { setSelDepts([]); setSelAdvisors([]) }}
+              className="self-end pb-1.5 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -236,10 +292,10 @@ function LeaderboardFull({ leaders, onSelect, targetMap, showBranch, line }: {
                 </tr>
               )
             })}
-            {leaders.length === 0 && (
+            {filtered.length === 0 && (
               <tr>
                 <td colSpan={COLS.length + 4} className="px-5 py-8 text-center text-[12px] text-muted-foreground">
-                  No advisor data available
+                  {leaders.length === 0 ? 'No advisor data available' : 'No advisors match the selected filters'}
                 </td>
               </tr>
             )}
@@ -247,12 +303,12 @@ function LeaderboardFull({ leaders, onSelect, targetMap, showBranch, line }: {
         </table>
       </div>
 
-      {leaders.length > 15 && (
+      {filtered.length > 15 && (
         <button
           onClick={() => setShowAll(!showAll)}
           className="flex w-full items-center justify-center gap-1.5 border-t border-border px-4 py-2.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
         >
-          {showAll ? `Show top 15` : `Show all ${leaders.length} advisors`}
+          {showAll ? `Show top 15` : `Show all ${filtered.length} advisors`}
         </button>
       )}
     </div>
