@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -16,13 +17,26 @@ export default function MultiSelect({ label, options, selected, onChange, placeh
   const btnRef = useRef<HTMLButtonElement>(null)
   const dropRef = useRef<HTMLDivElement>(null)
 
+  function calcPosition() {
+    if (!btnRef.current) return
+    const r = btnRef.current.getBoundingClientRect()
+    setDropStyle({
+      position: 'fixed',
+      top: r.bottom + 4,
+      left: r.left,
+      minWidth: Math.max(r.width, 200),
+      zIndex: 9999,
+    })
+  }
+
   // Close on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (
-        btnRef.current && !btnRef.current.contains(e.target as Node) &&
-        dropRef.current && !dropRef.current.contains(e.target as Node)
-      ) setOpen(false)
+        btnRef.current?.contains(e.target as Node) ||
+        dropRef.current?.contains(e.target as Node)
+      ) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
@@ -31,25 +45,17 @@ export default function MultiSelect({ label, options, selected, onChange, placeh
   // Reposition on scroll/resize while open
   useEffect(() => {
     if (!open) return
-    function reposition() {
-      if (!btnRef.current) return
-      const r = btnRef.current.getBoundingClientRect()
-      setDropStyle({ top: r.bottom + 4, left: r.left, minWidth: Math.max(r.width, 200) })
-    }
-    reposition()
-    window.addEventListener('scroll', reposition, true)
-    window.addEventListener('resize', reposition)
+    calcPosition()
+    window.addEventListener('scroll', calcPosition, true)
+    window.addEventListener('resize', calcPosition)
     return () => {
-      window.removeEventListener('scroll', reposition, true)
-      window.removeEventListener('resize', reposition)
+      window.removeEventListener('scroll', calcPosition, true)
+      window.removeEventListener('resize', calcPosition)
     }
   }, [open])
 
   function handleToggle() {
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect()
-      setDropStyle({ top: r.bottom + 4, left: r.left, minWidth: Math.max(r.width, 200) })
-    }
+    calcPosition()
     setOpen(o => !o)
   }
 
@@ -92,10 +98,10 @@ export default function MultiSelect({ label, options, selected, onChange, placeh
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
           ref={dropRef}
-          style={{ ...dropStyle, position: 'fixed', zIndex: 9999 }}
+          style={dropStyle}
           className="rounded-lg border border-border bg-card shadow-xl"
         >
           <div className="max-h-60 overflow-y-auto py-1">
@@ -104,7 +110,7 @@ export default function MultiSelect({ label, options, selected, onChange, placeh
                 key={opt}
                 onClick={() => toggle(opt)}
                 className={cn(
-                  'flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors',
+                  'flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-foreground transition-colors',
                   'hover:bg-secondary',
                   selected.includes(opt) && 'font-medium text-primary',
                 )}
@@ -126,7 +132,8 @@ export default function MultiSelect({ label, options, selected, onChange, placeh
               <div className="px-3 py-2 text-[12px] text-muted-foreground">No options</div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
