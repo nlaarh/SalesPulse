@@ -27,7 +27,7 @@ def _table_args(*indexes, **kw):
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
-VALID_ROLES = ('superadmin', 'admin', 'executive', 'travel_manager', 'travel_director', 'insurance_manager')
+VALID_ROLES = ('superadmin', 'admin', 'executive', 'travel_manager', 'travel_director', 'insurance_manager', 'insurance_director')
 VALID_DEPARTMENTS = ('Travel', 'Insurance', None)  # None = all departments (executive/superadmin/admin)
 
 
@@ -191,7 +191,7 @@ class MonthlyAdvisorTarget(Base):
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    advisor_target_id = Column(Integer, nullable=False, index=True)
+    advisor_target_id = Column(Integer, nullable=False)
     year = Column(Integer, nullable=False)
     month = Column(Integer, nullable=False)
     target_amount = Column(Float, nullable=False)
@@ -227,6 +227,15 @@ class GeoCounty(Base):
     housing_units = Column(Integer, nullable=True)
     median_home_value = Column(Integer, nullable=True)
     college_educated = Column(Integer, nullable=True)
+    registered_vehicles = Column(Integer, nullable=True)
+    vehicles_3plus_yrs = Column(Integer, nullable=True)
+    age_16_18 = Column(Integer, nullable=True)
+    age_18_24 = Column(Integer, nullable=True)
+    age_25_34 = Column(Integer, nullable=True)
+    age_35_44 = Column(Integer, nullable=True)
+    age_45_54 = Column(Integer, nullable=True)
+    age_55_64 = Column(Integer, nullable=True)
+    age_65_plus = Column(Integer, nullable=True)
     geojson = Column(Text, nullable=True)
 
 
@@ -255,6 +264,15 @@ class GeoZip(Base):
     housing_units = Column(Integer, nullable=True)
     median_home_value = Column(Integer, nullable=True)
     college_educated = Column(Integer, nullable=True)
+    registered_vehicles = Column(Integer, nullable=True)
+    vehicles_3plus_yrs = Column(Integer, nullable=True)
+    age_16_18 = Column(Integer, nullable=True)
+    age_18_24 = Column(Integer, nullable=True)
+    age_25_34 = Column(Integer, nullable=True)
+    age_35_44 = Column(Integer, nullable=True)
+    age_45_54 = Column(Integer, nullable=True)
+    age_55_64 = Column(Integer, nullable=True)
+    age_65_plus = Column(Integer, nullable=True)
 
 
 class GeoVehicleRegistration(Base):
@@ -262,11 +280,12 @@ class GeoVehicleRegistration(Base):
     __table_args__ = _table_args(
         Index('ix_geo_vehicles_zip', 'zip_code'),
         Index('ix_geo_vehicles_county', 'county_name'),
+        Index('ix_geo_vehicles_aggregation', 'county_name', 'model_year', 'fuel_type', 'vehicle_count'),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    zip_code = Column(String(10), nullable=True, index=True)
-    county_name = Column(String(128), nullable=False, index=True)
+    zip_code = Column(String(10), nullable=True)
+    county_name = Column(String(128), nullable=False)
     model_year = Column(String(10), nullable=True)
     make = Column(String(64), nullable=True)
     fuel_type = Column(String(32), nullable=True)
@@ -323,9 +342,9 @@ class ApiRequestMetric(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     method = Column(String(16), nullable=False)
-    path = Column(String(512), nullable=False, index=True)
+    path = Column(String(512), nullable=False)
     raw_path = Column(String(1024), nullable=True)
-    status_code = Column(Integer, nullable=False, index=True)
+    status_code = Column(Integer, nullable=False)
     duration_ms = Column(Float, nullable=False)
     user_id = Column(Integer, nullable=True, index=True)
     user_email = Column(String(255), nullable=True, index=True)
@@ -342,8 +361,8 @@ class ClientRenderMetric(Base):
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    page = Column(String(128), nullable=False, index=True)
-    metric = Column(String(128), nullable=False, index=True)
+    page = Column(String(128), nullable=False)
+    metric = Column(String(128), nullable=False)
     duration_ms = Column(Float, nullable=False)
     metadata_json = Column(Text, nullable=True)
     user_id = Column(Integer, nullable=True, index=True)

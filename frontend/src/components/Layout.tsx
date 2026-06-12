@@ -199,7 +199,7 @@ export default function Layout() {
               ))}
 
               {/* ── Reports expandable submenu ── */}
-              {(isAdminOrSuperadmin || ['executive','travel_manager','travel_director','insurance_manager'].includes(user?.role ?? '')) && (
+              {(isAdminOrSuperadmin || ['executive','travel_manager','travel_director','insurance_manager','insurance_director'].includes(user?.role ?? '')) && (
                 <div>
                   <button
                     onClick={() => setReportsOpen(o => !o)}
@@ -222,7 +222,7 @@ export default function Layout() {
 
                   {reportsOpen && (
                     <div className="ml-4 mt-0.5 space-y-0.5 border-l border-border pl-3">
-                      {(isAdminOrSuperadmin || ['executive','insurance_manager'].includes(user?.role ?? '')) && (
+                      {(isAdminOrSuperadmin || ['executive','insurance_manager','insurance_director'].includes(user?.role ?? '')) && (
                         <NavLink
                           to="/reports/insurance"
                           className={({ isActive }) => cn(
